@@ -76,7 +76,7 @@ A built-in example inside this toolkit can be compiled and launched with the def
 ```
 cd   streamsx.cppws/samples/WebSocketSourceTester
 make
-st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester/BuildConfig/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab 
+st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab 
 ```
 
 Following IBM Streams job sumission command shows how to override the default values with your own as needed for the various options that are available:
@@ -84,7 +84,7 @@ Following IBM Streams job sumission command shows how to override the default va
 ```
 cd   streamsx.cppws/samples/WebSocketSourceTester
 make
-st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester/BuildConfig/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456
+st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456
 ```
 
 There is also an example WebSocket based client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.
@@ -93,4 +93,4 @@ There is also an example WebSocket based client application that can be run from
 
 v1.0.0:
 - Mar/05/2020
-- Very first release of this toolkit that was tested to support ingesting text or binary data from remote client applications via WebSocket. In this release, this toolkit provides a single C++ based operator named WebSocketSource.
+- Very first release of this toolkit that was tested to support receiving of text or binary data from remote client applications via WebSocket. In this release, this toolkit provides a single C++ based operator named WebSocketSource.
