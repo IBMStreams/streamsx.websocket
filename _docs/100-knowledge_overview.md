@@ -28,6 +28,8 @@ The streamsx.cppws toolkit provides the following C++ based operators that can h
 In a Streams application, these operators can either be used together or independent of each other. 
 
 ## Technical positioning of this toolkit
+WebSocket, a computer communication protocol has been in commercial use since 2012 after it became an official IETF standard. It enables two-way (full duplex) communication between a client and a remote server over TCP with low overhead when compared to the other Web protocols such as HTTP or HTTPS. Another superb benefit of WebSocket is that it can be overlayed on top of HTTP or HTTPS by making the initial connection using HTTP or HTTPS and then upgrading that connection to a full duplex TCP connection to the standard port 80 or port 443 thereby being able to flow through the firewall.
+
 At a very high level, this toolkit shares the same design goal as two other operators available in a different IBM Streams toolkit named com.ibm.streamsx.inetserver which provides two similar operators written in Java using a built-in Jetty web server. The com.ibm.streamsx.cppws provided operators are written using C++ by employing the Boost ASIO facility which is expected to use less CPU and memory and provide a better overall throughput.
 
 ## Requirements for this toolkit
