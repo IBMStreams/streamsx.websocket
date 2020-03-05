@@ -1,0 +1,41 @@
+# main links
+main:
+  - title: "Toolkit Background"
+    url: /docs/knowledge/overview/
+  - title: "User Documentation"
+    url: /docs/user/overview
+  - title: "Developer Documentation"
+    url: /docs/developer/overview
+  # - title: "Sample Collections"
+  #   url: /collection-archive/
+  # - title: "Sitemap"
+  #   url: /sitemap/
+
+# knowledge documentation links
+knowledgedocs:
+  - title: Toolkit Background
+    children:
+      - title: "Overview"
+        url: /docs/knowledge/overview
+
+# user documentation links
+userdocs:
+  - title: User Documentation
+    children:
+      - title: "Toolkit Usage Overview"
+        url: /docs/user/overview
+      - title: "SPL Documentation"
+        url: /docs/user/SPLDoc
+      - title: "Operator Design"
+        url: /docs/user/OperatorDesign
+      - title: "Operator Usage Patterns"
+        url: /docs/user/CppWSUsagePatterns
+
+# developer documentation links
+developerdocs:
+  - title: Developer Documentation
+    children:
+      - title: "Toolkit Development Overview"
+        url: /docs/developer/overview
+      - title: "New Feature Checklist"
+        url: /docs/developer/new_feature_checklist
