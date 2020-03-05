@@ -15,9 +15,9 @@ sidebar:
 
 The streamsx.cppws toolkit provides the following C++ based operators that can help you to receive text or binary data from the remote client applications via WebSocket (OR) send text or binary data from your IBM Streams applications to external server based applications via WebSocket.
 
-1) WebSocketSource
-2) WebSocketSendReceive    [Will be available in 2Q2020]
-3) WebSocketSink           [Will be available in 2Q2020]
+1. WebSocketSource
+2. WebSocketSendReceive    [Will be available in 2Q2020]
+3. WebSocketSink           [Will be available in 2Q2020]
 
 **WebSocketSource** is a source operator that can be used to receive text or binary data from multiple client applications. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect and start sending data. This is Receive-only from multiple clients.
 

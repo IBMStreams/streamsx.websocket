@@ -1,4 +1,4 @@
-# streamsx.sttgateway documentation README
+# streamsx.cppws documentation README
 
 
 This toolkit documentation project is currently incubating.
