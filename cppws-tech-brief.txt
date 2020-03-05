@@ -43,7 +43,7 @@ compared to the other Web protocols such as HTTP or HTTPS. Another superb
 benefit of WebSocket is that it can be overlayed on top of HTTP or HTTPS by making
 the initial connection using HTTP or HTTPS and then upgrading that connection
 to a full duplex TCP connection to the standard port 80 or port 443 thereby
-being abke to flow through the firewall.
+being able to flow through the firewall.
 
 At a very high level, this toolkit shares the same design goal as two other 
 operators available in a different IBM Streams toolkit named 
