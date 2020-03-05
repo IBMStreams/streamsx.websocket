@@ -1,0 +1,890 @@
+/*
+ ==============================================
+ # Licensed Materials - Property of IBM
+ # Copyright IBM Corp. 2020
+ ==============================================
+ */
+
+/*
+ ============================================================
+ First created on: Feb/22/2020
+ Last modified on: Mar/02/2020
+
+ This particular operator (WebSocketSource) is used to
+ receive either text data or binary data from one or more
+ remote WebSocket clients. This operator relies on the
+ C++ boost ASIO and websocketpp open source libraries to provide
+ support for data exchange using the WebSocket protocol.
+ 
+ The C++ code logic here works in conjunction with the
+ operator model file (WebSocketSource.xml) and the operator
+ interface C++ file (WebSocketSource_h.cgt).
+  ============================================================
+ */
+#include <SPL/Runtime/ProcessingElement/ProcessingElement.h>
+
+/* Additional includes go here */
+// https://docs.websocketpp.org/index.html
+// This operator heavily relies on the Websocket++ header only library.
+// This C++11 library code does the asynchronous full duplex Websocket communication with
+// the remote WebSocket client via a series of event handlers (a.k.a callback methods).
+// Bulk of the logic in this operator class appears in those event handler methods below.
+#include <websocketpp/config/asio.hpp>
+#include <websocketpp/server.hpp>
+
+// Necessary headers from boost.
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/exception/to_string.hpp>
+#include <boost/thread/thread.hpp>
+
+// For the core logic below, we will need these namespaces from websocketpp.
+using websocketpp::lib::placeholders::_1;
+using websocketpp::lib::placeholders::_2;
+using websocketpp::lib::bind;
+
+// Verify the input tuple attribute name(s) and then read the operator parameters.
+// It is all done via Perl.
+<%
+# Check the output port 0 i.e. the first output port. 
+my $outputPort1 = $model->getOutputPortAt(0);
+my $outputTupleName1 = $outputPort1->getCppTupleName();
+my $dataOutputAsRString = undef;
+my $dataOutputAsBlob = undef;
+my $outputAttrs1 = $outputPort1->getAttributes();
+my $strDataAttributeFound = 0;
+my $blobDataAttributeFound = 0;
+
+foreach my $outputAttr (@$outputAttrs1) {
+	my $outAttrName = $outputAttr->getName();
+	my $outAttrType = $outputAttr->getSPLType();
+
+	# This source operator will accept an output stream with either an attribute named
+	# rstring strData or an attribute named blob blobData.
+	# Users can either use just one of those two attributes or both depending on
+	# whether the remote clients will send only string based data or only blob based data or both.
+	if ($outAttrName eq "strData") {
+		$strDataAttributeFound = 1;
+
+		if ($outAttrType eq "rstring") {
+			# This tuple attribute will carry a rstring containing either the xml or JSON string based data.
+			$dataOutputAsRString = 1;
+		}
+	}
+	
+	if ($outAttrName eq "blobData") {
+		$blobDataAttributeFound = 1;
+
+		if ($outAttrType eq "blob") {
+			# This tuple attribute will carry a blob containing binary data.
+			$dataOutputAsBlob = 1;
+		}
+	}
+}
+
+if ($strDataAttributeFound == 0 and $blobDataAttributeFound == 0) {
+	SPL::CodeGen::exitln("WebSocketSource_cpp.cgt: The required output tuple attribute 'strData' or 'blobData' is missing in the first output port.");
+}
+
+if ($strDataAttributeFound == 1 and !(defined($dataOutputAsRString))) {
+	SPL::CodeGen::exitln("WebSocketSource_cpp.cgt: The required output tuple attribute 'strData' is not of type 'rstring' in the first output port.");
+}
+
+if ($blobDataAttributeFound == 1 and !(defined($dataOutputAsBlob))) {
+	SPL::CodeGen::exitln("WebSocketSource_cpp.cgt: The required output tuple attribute 'blobData' is not of type 'blob' in the first output port.");
+}
+
+# Check the output port number 1 i.e. the second output port.
+my $outputPort2 = $model->getOutputPortAt(1);
+my $outputTupleName2 = $outputPort2->getCppTupleName();
+my $clientSessionIdAsUint64 = undef;	
+my $outputAttrs2 = $outputPort2->getAttributes();
+my $clientSessionIdAttributeFound = 0;
+
+foreach my $outputAttr2 (@$outputAttrs2) {
+	my $outAttrName2 = $outputAttr2->getName();
+	my $outAttrType2 = $outputAttr2->getSPLType();
+	
+	if ($outAttrName2 eq "clientSessionId") {
+		$clientSessionIdAttributeFound = 1;
+		
+		if ($outAttrType2 eq "uint64") {
+			# This tuple attribute will carry the WebSocket client session Id.
+			$clientSessionIdAsUint64 = 1;
+		}
+	}	
+}
+
+if ($clientSessionIdAttributeFound == 0 ) {
+	SPL::CodeGen::exitln("WebSocketSource_cpp.cgt: The required output tuple attribute 'clientSessionId' is missing in the second output port.");
+}
+
+if (!(defined($clientSessionIdAsUint64))) {
+	SPL::CodeGen::exitln("WebSocketSource_cpp.cgt: The required output tuple attribute 'clientSessionId' is not of type 'uint64' in the second output port.");
+}
+
+
+# Following are the operator parameters.
+my $tlsPort = $model->getParameterByName("tlsPort");
+# Default: 443
+$tlsPort = $tlsPort ? $tlsPort->getValueAt(0)->getCppExpression() : 443;
+
+my $certificateFileName = $model->getParameterByName("certificateFileName");
+# Default: Default is to read ws-server.pem from the etc sub-directory of the application.
+$certificateFileName = $certificateFileName ? $certificateFileName->getValueAt(0)->getCppExpression() : "";
+
+my $nonTlsEndpointNeeded = $model->getParameterByName("nonTlsEndpointNeeded");
+# Default: 0
+$nonTlsEndpointNeeded = $nonTlsEndpointNeeded ? $nonTlsEndpointNeeded->getValueAt(0)->getCppExpression() : 0;
+
+my $nonTlsPort = $model->getParameterByName("nonTlsPort");
+# Default: 80
+$nonTlsPort = $nonTlsPort ? $nonTlsPort->getValueAt(0)->getCppExpression() : 80;
+
+my $initDelay = $model->getParameterByName("initDelay");
+# Default: 0.0
+$initDelay = $initDelay ? $initDelay->getValueAt(0)->getCppExpression() : 0.0;
+
+my $websocketLiveMetricsUpdateNeeded = $model->getParameterByName("websocketLiveMetricsUpdateNeeded");
+# Default: 1
+$websocketLiveMetricsUpdateNeeded = $websocketLiveMetricsUpdateNeeded ? $websocketLiveMetricsUpdateNeeded->getValueAt(0)->getCppExpression() : 1;
+
+my $websocketLoggingNeeded = $model->getParameterByName("websocketLoggingNeeded");
+# Default: 0
+$websocketLoggingNeeded = $websocketLoggingNeeded ? $websocketLoggingNeeded->getValueAt(0)->getCppExpression() : 0;
+
+my $wsClientSessionLoggingNeeded = $model->getParameterByName("wsClientSessionLoggingNeeded");
+# Default: 0
+$wsClientSessionLoggingNeeded = $wsClientSessionLoggingNeeded ? $wsClientSessionLoggingNeeded->getValueAt(0)->getCppExpression() : 0;
+
+my $websocketStaleConnectionPurgeInterval = $model->getParameterByName("websocketStaleConnectionPurgeInterval");
+# Default: 3*60*60 seconds
+$websocketStaleConnectionPurgeInterval = $websocketStaleConnectionPurgeInterval ? $websocketStaleConnectionPurgeInterval->getValueAt(0)->getCppExpression() : 3*60*60;
+
+my $ipv6Available = $model->getParameterByName("ipv6Available");
+# Default: 1
+$ipv6Available = $ipv6Available ? $ipv6Available->getValueAt(0)->getCppExpression() : 1;
+
+my $numberOfMessagesToReceiveBeforeAnAck = $model->getParameterByName("numberOfMessagesToReceiveBeforeAnAck");
+# Default: 0
+$numberOfMessagesToReceiveBeforeAnAck = $numberOfMessagesToReceiveBeforeAnAck ? $numberOfMessagesToReceiveBeforeAnAck->getValueAt(0)->getCppExpression() : 0;
+%>
+
+<%SPL::CodeGen::implementationPrologue($model);%>
+
+// Constructor
+MY_OPERATOR::MY_OPERATOR() {
+	// Custom metrics for this operator are already defined in the operator model XML file. 
+	// Hence, there is no need to explicitly create them here.
+	// Simply get the custom metrics already defined for this operator. 
+	// We will update the Counter kind custom metrics when the operator starts.
+	// We will update the Gauge kind custom metrics during connection close only when the 
+	// websocketLiveMetricsUpdateNeeded optional operator parameter is set to true.
+	OperatorMetrics & opm = getContext().getMetrics();
+	nClientsConnectedMetric = &opm.getCustomMetricByName(
+			"nClientsConnected");
+	nDataBytesReceivedMetric = &opm.getCustomMetricByName(
+			"nDataBytesReceived");
+	nOutputTuplesSentMetric = &opm.getCustomMetricByName("nOutputTuplesSent");
+
+	// Initialize the member variables as needed from the operator parameter values read above.	
+	strDataAttributeFound = <%=$strDataAttributeFound%>;
+	blobDataAttributeFound = <%=$blobDataAttributeFound%>;
+	tlsPort = <%=$tlsPort%>;
+	nonTlsEndpointNeeded = <%=$nonTlsEndpointNeeded%>;
+	nonTlsPort = <%=$nonTlsPort%>;
+	initDelay = <%=$initDelay%>;
+	websocketLiveMetricsUpdateNeeded = <%=$websocketLiveMetricsUpdateNeeded%>;
+	websocketLoggingNeeded = <%=$websocketLoggingNeeded%>;
+	wsClientSessionLoggingNeeded = <%=$wsClientSessionLoggingNeeded%>;
+	websocketStaleConnectionPurgeInterval = <%=$websocketStaleConnectionPurgeInterval%>;
+	ipv6Available = <%=$ipv6Available%>;
+	numberOfMessagesToReceiveBeforeAnAck = <%=$numberOfMessagesToReceiveBeforeAnAck%>;
+	certificateFileName = <%=$certificateFileName%>;
+
+	if (certificateFileName == "") {
+		// User didn't provide a PEM file. We are going to read 
+		// ws-server.pem from the etc directory of the application.
+		certificateFileName = ProcessingElement::pe().getApplicationDirectory()
+				+ "/etc/ws-server.pem";
+	}
+
+	tlsEndpointStarted = false;
+	nonTlsEndpointStarted = false;
+	clientSessionId = 0;
+}
+
+// Destructor
+MY_OPERATOR::~MY_OPERATOR() {
+	// Finalization code goes here
+}
+
+// Notify port readiness
+void MY_OPERATOR::allPortsReady() {
+	// Notifies that all ports are ready. No tuples should be submitted before
+	// this. Source operators can use this method to spawn threads.
+	operatorPhysicalName = getContext().getName();
+	// This operator is most likely not going to be in an 
+	// UDP parallel region due to the need by the remote clients'  
+	// need to connect to a single URL (machine name and port).
+	// So, this variable here may not carry much value.
+	udpChannelNumber = getContext().getChannel();
+
+	//
+	// This is a source operator. Let us create a thread.
+	createThreads(1); // Create source thread
+}
+
+// Notify pending shutdown
+void MY_OPERATOR::prepareToShutdown() {
+	// As this operator is about to be shutdown, we will tell the 
+	// WebSocket++ endpoints not to accept any more new client connections.
+	if (tlsEndpointStarted == true) {
+		endpoint_tls.stop_listening();
+	}
+
+	if (nonTlsEndpointStarted == true) {
+		endpoint_plain.stop_listening();
+	}
+
+	// We must properly close the client connections that are currently active.
+	// That will allow them to be closed normally on their end. Otherwise, clients will end up
+	// with limbo (dangling) connections which will lead to unnecessary broken TCP or
+	// unclean disconnect or timeouts in the remote end.
+	// In addition, it also causes undesirable behaviors by not cleanly terminating the
+	// asio run loop in the process method below.
+	// So, we must go through the client connections map and 
+	// close such existing active client connections in a proper way.
+	// This will initiate the WebSocket closing handshake for 
+	// these active client connections.
+	con_map::iterator it = client_connections_map.begin();
+
+	while (it != client_connections_map.end()) {
+		websocketpp::connection_hdl hdl = it->first;
+
+		// Properly close the client connection now.
+		std::string closeReason =
+				"Normal close by streamsx.cppws due to the shutdown of the WebSocketSource operator.";
+		websocketpp::lib::error_code ec;
+
+		// Check if this connection handle is based on a TLS endpoint.
+		// During the websocket++ connection creation, we have cached the 
+		// TLS based connection handles in an std::set. We can look up in that set now.
+		bool is_tls_connection = tls_connections_set.find(hdl)
+				!= tls_connections_set.end();
+
+		// This connection closing technique is discussed in these URLs:
+		// https://stackoverflow.com/questions/25260852/shut-down-websocket-connection
+		// https://github.com/zaphoyd/websocketpp/issues/803
+		// https://mayaposch.wordpress.com/2015/09/16/creating-a-websocket-server-with-websocket/
+		if (is_tls_connection == true) {
+			endpoint_tls.close(hdl, websocketpp::close::status::normal,
+					closeReason, ec);
+		} else {
+			endpoint_plain.close(hdl, websocketpp::close::status::normal,
+					closeReason, ec);
+		}
+
+		it++;
+	}
+
+	// This operator is being shutdown now.
+	// We can empty the following containers.
+	tls_connections_set.clear();
+	client_connections_map.clear();
+}
+
+// Processing for source and threaded operators   
+void MY_OPERATOR::process(uint32_t idx) {
+	// If the user provided an initDelay parameter value,
+	// then, we will do a one time wait here before doing anything else.
+	if (initDelay > 0.0) {
+		SPL::Functions::Utility::block (initDelay);
+	}
+
+	// Initialize this value to current time.
+	// This is mainly used inside the on_message method to
+	// remove any stale client connections.
+	timeOfPreviousStaleConnectionRemoval = SPL::Functions::Time::getSeconds(
+			SPL::Functions::Time::getTimestamp());
+
+	// Initialize this source operator's custom metrics variables.
+	nClientsConnected = 0;
+	nDataBytesReceived = 0;
+	nOutputTuplesSent = 0;
+
+	// A typical source operator implementation will loop until shutdown.
+	// In the code below, boost ASIO run method will block forever until
+	// the server socket is closed. We will take measures for closing the
+	// server socket in the prepareToShutdown method above when the operator is 
+	// about to be shutdown. So, we need not go in a while loop as commonly
+	// done in other source operators.
+	// Hence, I commented out the following while loop line and its
+	// corresponding close brace at the end of the code block below.
+	//
+	// while(!getPE().getShutdownRequested()) {
+	// Set up an external io_service to run both endpoints on. This is not
+	// strictly necessary, but simplifies thread management a bit.
+	boost::asio::io_service ios;
+
+	// If the user opted for an additional non-TLS (plain) 
+	// Websocket endpoint, let us create that as well.
+	// This plain insecure endpoint is here for a very 
+	// remote possibility of this operator getting used with plain HTTP for any future use cases.
+	// It is fine to provide both plain and TLS ports as it is
+	// supported by the WebSocket++ library.
+	if (nonTlsEndpointNeeded == true) {
+		// Set up a plain endpoint without TLS.
+		// Initialize asio with our external io_service rather than an internal one.
+		endpoint_plain.init_asio(&ios);
+		endpoint_plain.set_open_handler(
+				bind(&MY_OPERATOR::on_open, this, ::_1));
+		endpoint_plain.set_message_handler(
+				bind(&MY_OPERATOR::on_message<server_plain>, this,
+						&endpoint_plain, ::_1, ::_2));
+		endpoint_plain.set_close_handler(
+				bind(&MY_OPERATOR::on_close, this, ::_1));
+
+		// https://docs.websocketpp.org/reference_8logging.html
+		// Set the logging policy as needed
+		// Turn off or turn on selectively all the Websocket++ access interface and 
+		// error interface logging channels. Do this based on how the user has
+		// configured this operator.
+		if (websocketLoggingNeeded == true) {
+			// Enable certain error logging channels and certain access logging channels.
+			endpoint_plain.set_access_channels(
+					websocketpp::log::alevel::frame_header);
+			endpoint_plain.set_access_channels(
+					websocketpp::log::alevel::frame_payload);
+		} else {
+			// Turn off both the access and error logging channels completely.
+			endpoint_plain.clear_access_channels(websocketpp::log::alevel::all);
+			endpoint_plain.clear_error_channels(websocketpp::log::elevel::all);
+		}
+
+		// Plain (non-TLS) endpoint listens on its own port.
+		// Most of the modern day Linux machines will have an ipv6 protocol stack. 
+		// By default, WebSocket++ listens in a dual stack ipv4/ipv6 mode. 
+		// It will fail with the following error if an ipv6 stack is not available. 
+		// "asio listen error: system:97 (Address family not supported by protocol)"
+		// If it is an issue to enable ipv6 on a Linux macchine, a quick fix is to 
+		// use one of the endpoint::listen overloads that lets us specify 
+		// an address family to listen on and manually select to listen only via ipv4.
+		// This solution is suggested in these URLs:
+		// https://groups.google.com/forum/#!topic/websocketpp/-BB_Kr_rFPg
+		// https://github.com/zaphoyd/websocketpp/issues/674
+		if (ipv6Available == true) {
+			endpoint_plain.listen(nonTlsPort);
+		} else {
+			// We must use only the ipv4 protocol stack in this case.
+			endpoint_plain.listen(boost::asio::ip::tcp::v4(), nonTlsPort);
+		}
+
+		endpoint_plain.start_accept();
+		nonTlsEndpointStarted = true;
+	}
+
+	// Set up a TLS endpoint at all times since some of the 
+	// remote clients may use a secure endpoint.
+	endpoint_tls.init_asio(&ios);
+	endpoint_tls.set_open_handler(bind(&MY_OPERATOR::on_open, this, ::_1));
+	endpoint_tls.set_message_handler(
+			bind(&MY_OPERATOR::on_message<server_tls>, this, &endpoint_tls,
+					::_1, ::_2));
+	endpoint_tls.set_close_handler(bind(&MY_OPERATOR::on_close, this, ::_1));
+	// TLS endpoint has an extra handler for the tls init
+	endpoint_tls.set_tls_init_handler(
+			bind(&MY_OPERATOR::on_tls_init, this, ::_1));
+
+	if (websocketLoggingNeeded == true) {
+		// Enable certain error logging channels and certain access logging channels.
+		endpoint_tls.set_access_channels(
+				websocketpp::log::alevel::frame_header);
+		endpoint_tls.set_access_channels(
+				websocketpp::log::alevel::frame_payload);
+	} else {
+		// Turn off both the access and error logging channels completely.
+		endpoint_tls.clear_access_channels(websocketpp::log::alevel::all);
+		endpoint_tls.clear_error_channels(websocketpp::log::elevel::all);
+	}
+
+	// TLS endpoint listens on a different port.
+	// Please refer to the detailed comments in the endpoint_plain.listen 
+	// code block above about this ipv6 availability check.
+	if (ipv6Available == true) {
+		endpoint_tls.listen(tlsPort);
+	} else {
+		// We must use only the ipv4 protocol stack in this case.
+		endpoint_tls.listen(boost::asio::ip::tcp::v4(), tlsPort);
+	}
+
+	// Start accepting the remote WebSocket client TLS connections now.
+	endpoint_tls.start_accept();
+	tlsEndpointStarted = true;
+
+	// Start the Boost ASIO io_service run loop that can handle both endpoints.
+	// This will block until the server socket gets closed.
+	// For additional details, please refer to the commentary and 
+	// logic in the prepareToShutdown method
+	ios.run();
+	// }
+}
+
+// This method sets up the TLS for a given client connection handle.
+MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(
+		websocketpp::connection_hdl hdl) {
+	bool wsSessionLoggingDone = false;
+
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR, "on_tls_init called with hdl: " << hdl.lock().get(),
+				"on_tls_init");
+		wsSessionLoggingDone = true;
+	}
+
+	if (wsSessionLoggingDone == false) {
+		SPLAPPTRC(L_INFO, "on_tls_init called with hdl: " << hdl.lock().get(),
+				"on_tls_init");
+	}
+
+	context_ptr ctx(
+			new boost::asio::ssl::context(boost::asio::ssl::context::tlsv1));
+
+	try {
+		ctx->set_options(
+				boost::asio::ssl::context::default_workarounds
+						| boost::asio::ssl::context::no_sslv2
+						| boost::asio::ssl::context::no_sslv3
+						| boost::asio::ssl::context::single_dh_use);
+		ctx->set_password_callback(bind(&MY_OPERATOR::get_password, this));
+		ctx->use_certificate_chain_file(certificateFileName.c_str());
+		ctx->use_private_key_file(certificateFileName.c_str(),
+				boost::asio::ssl::context::pem);
+		// Let us keep track of all the connection handles that use TLS context.
+		// This will be useful in the prepareToShutdown method above to
+		// distinguish between TLS endpoint and non-TLS (plain) endpoint.
+		// Because, to close the active client connections at the time of the
+		// operator shutdown, we have to call the close method on an 
+		// appropriate endpoint.
+		tls_connections_set.insert(hdl);
+	} catch (std::exception& e) {
+		std::cout << e.what() << std::endl;
+	}
+
+	return ctx;
+}
+
+// When a client establishes a new Websocket connection, this callback method is run.
+void MY_OPERATOR::on_open(websocketpp::connection_hdl hdl) {
+	bool wsSessionLoggingDone = false;
+
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR, "on_open called for hdl: " << hdl.lock().get(), "on_open");
+		wsSessionLoggingDone = true;
+	}
+
+	if (wsSessionLoggingDone == false) {
+		SPLAPPTRC(L_INFO, "on_open called for hdl: " << hdl.lock().get(), "on_open");
+	}
+
+	// Add this newly opened client connection to the associative container.
+	connection_metadata con_metadata;
+	con_metadata.wsSessionStatus = CLIENT_OPENED_A_WS_CONNECTION;
+	con_metadata.wsSessionStartTime = SPL::Functions::Time::getSeconds(
+		SPL::Functions::Time::getTimestamp());
+	con_metadata.messagesReceivedCnt = 0;
+	con_metadata.dataBytesReceived = 0;
+	con_metadata.clientSessionId = ++clientSessionId;
+	client_connections_map[hdl] = con_metadata;
+	
+	// Update this client connection for the metric reporting.
+	nClientsConnected++;
+}
+
+// The shared on_message handler takes a template parameter so the function can
+// resolve any endpoint dependent types like message_ptr or connection_ptr
+template<typename EndpointType>
+void MY_OPERATOR::on_message(EndpointType* s, websocketpp::connection_hdl hdl,
+		typename EndpointType::message_ptr msg) {
+	bool wsSessionLoggingDone = false;
+	OPort0Type oTuple;
+
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR,
+			"on_message called with hdl: " << hdl.lock().get()
+			<< " with a message size of: "
+			<< msg->get_payload().size() << " bytes.",
+			"on_message");
+		wsSessionLoggingDone = true;
+	}
+
+	if (wsSessionLoggingDone == false) {
+		SPLAPPTRC(L_INFO,
+			"on_message called with hdl: " << hdl.lock().get()
+			<< " with a message size of: "
+			<< msg->get_payload().size() << " bytes.",
+			"on_message");
+	}
+
+	// Get the metadata details for this connection handle from our client connections map.
+	connection_metadata& con_metadata = get_con_metadata_from_hdl(hdl);
+
+	// If it is the very first time we are getting a message from a client after it
+	// opened a connection with us, let us transition its status now.
+	if (con_metadata.wsSessionStatus == CLIENT_OPENED_A_WS_CONNECTION) {
+		// At this point, we can claim that the remote client started a  
+		// WebSocket session. So, we can transition this connection's 
+		// status to the next logical state.
+		con_metadata.wsSessionStatus = CLIENT_STARTED_A_WS_SESSION;
+		// Update it in the client connections map.
+		client_connections_map[hdl] = con_metadata;
+
+		if (wsClientSessionLoggingNeeded == true) {
+			SPLAPPTRC(L_ERROR,
+				"Operator " << operatorPhysicalName << "-->Channel "
+				<< boost::to_string(udpChannelNumber)
+				<< "-->X1 Received and processed the first message in a new session for a client.",
+				"on_message");
+		}
+
+		// At this time, we will also check for any stale client connections and try to release them.
+		if (websocketStaleConnectionPurgeInterval > 0) {
+			// PERIODIC STALE CLIENT CONNECTION REMOVAL.
+			// Do this only if the user provided a non-zero purge interval.
+			int64_t currentTimeInSeconds = SPL::Functions::Time::getSeconds(SPL::Functions::Time::getTimestamp());
+
+			if (currentTimeInSeconds - timeOfPreviousStaleConnectionRemoval
+				>= websocketStaleConnectionPurgeInterval) {
+				std::list<websocketpp::connection_hdl> staleList2;
+				staleList2.clear();
+
+				// Let us now check the client connections map.
+				// Stale entries happening in this map is a rarity just because
+				// on_close handler is almost always gets invoked during the
+				// normal as well as abnormal client connection closures.
+				for (con_map::iterator it = client_connections_map.begin();
+					it != client_connections_map.end(); it++) {
+					connection_metadata cmd = it->second;
+
+					if (currentTimeInSeconds - cmd.wsSessionStartTime > websocketStaleConnectionPurgeInterval) {
+						// This is a stale entry. Store the connection handle.
+						staleList2.push_back(it->first);
+					}
+				}
+
+				int32_t stale2RemovedCnt = 0;
+				// Now, we can remove the stale entries if any.
+				for (std::list<websocketpp::connection_hdl>::iterator it = staleList2.begin(); 
+					it != staleList2.end(); it++) {
+					client_connections_map.erase(*it);
+					stale2RemovedCnt++;
+				}
+
+				if (wsClientSessionLoggingNeeded == true && stale2RemovedCnt > 0) {
+					SPLAPPTRC(L_ERROR,
+						"Operator " << operatorPhysicalName
+						<< "-->Channel "
+						<< boost::to_string(udpChannelNumber)
+						<< "-->X4 Removed a few stale client connection handles. Removed count="
+						<< stale2RemovedCnt, "on_message");
+				}
+
+				// Set it to the current time so that we can do our next 
+				// stale connection removal at the required time interval.
+				timeOfPreviousStaleConnectionRemoval = currentTimeInSeconds;
+			}
+		} // End of if (websocketStaleConnectionPurgeInterval > 0)
+	} // End of if (con_metadata.wsSessionStatus == CLIENT_OPENED_A_WS_CONNECTION)
+
+	// We can't accept the data coming from this client without that client going through the
+	// proper state transition from CLIENT_OPENED_A_WS_CONNECTION to CLIENT_STARTED_A_WS_SESSION.
+	// Possibility of this happening is extremely rare.
+	if(con_metadata.wsSessionStatus != CLIENT_STARTED_A_WS_SESSION) {
+		if (wsClientSessionLoggingNeeded == true) {
+			SPLAPPTRC(L_ERROR,
+				"Operator " << operatorPhysicalName << "-->Channel "
+				<< boost::to_string(udpChannelNumber)
+				<< "-->X1 Received a text or binary based message from a client and " 
+				<< "ignored it because there is no valid connection from this remote client.",
+				"on_message");
+		}
+		
+		return;
+	}
+
+	int32_t payloadSize = msg->get_payload().size();
+	
+	// A WebSocket client connecting to this source operator can send messages via a given client connection
+	// either with textual data or with binary data. 
+	// Let us first determine if the received message contains textual or binary data.
+	if (msg->get_opcode() == websocketpp::frame::opcode::text) {
+		// We can't accept text based data if there is no 
+		// text based attribute present in the output tuple.
+		if (strDataAttributeFound == false) {
+			if (wsClientSessionLoggingNeeded == true) {
+				SPLAPPTRC(L_ERROR,
+					"Operator " << operatorPhysicalName << "-->Channel "
+					<< boost::to_string(udpChannelNumber)
+					<< "-->X1 Received a text based message from a client and " 
+					<< "ignored it because of no 'rstring strData' attribute present in the output tuple.",
+					"on_message");
+			}
+			
+			return;
+		}
+	
+		std::stringstream ss;
+		ss << msg->get_payload();
+		// We will receive the text data and send it on this
+		// operator's first output port for consumption by the other
+		// downstream operators in the application flow graph.
+		<%if ($strDataAttributeFound == 1 and defined($dataOutputAsRString)) {%>
+		oTuple.set_strData(ss.str());
+		<%}%>
+	} // End of if (msg->get_opcode() == websocketpp::frame::opcode::text)
+	
+	// Check if the remote client sent us binary data.
+	if (msg->get_opcode() == websocketpp::frame::opcode::binary) {
+		// We can't accept binary based data if there is no 
+		// blob based attribute present in the output tuple.
+		if (blobDataAttributeFound == false) {
+			if (wsClientSessionLoggingNeeded == true) {
+				SPLAPPTRC(L_ERROR,
+					"Operator " << operatorPhysicalName << "-->Channel "
+					<< boost::to_string(udpChannelNumber)
+					<< "-->X1 Received a blob based message from a client and " 
+					<< "ignored it because of no 'blob blobData' attribute present in the output tuple.",
+					"on_message");
+			}
+			
+			return;
+		}
+
+		// We will receive the binary data and send it on this
+		// operator's first output port for consumption by the other
+		// downstream operators in the application flow graph.
+		// In WebSocket++, payload is in std::string format for both
+		// text and binary data. So, we can get the binary buffer from
+		// that string payload. This idea is discussed in this URL:
+		// https://github.com/zaphoyd/websocketpp/issues/412
+		const char* payload = msg->get_payload().data();
+		uint8_t const* payloadBuffer =
+			reinterpret_cast<const uint8_t*>(payload);
+		// Let us create an output tuple and send it out.
+		// Create an SPL blob type.
+		SPL::blob myBlob;
+		// This transfers (copies) the payload buffer into the 
+		// internal buffer hold by the blob. 
+		// The blob owns the copied data in memory.
+		myBlob.setData((unsigned char*)payloadBuffer, (uint64_t)payloadSize);
+		OPort0Type oTuple;
+		<%if ($blobDataAttributeFound == 1 and defined($dataOutputAsBlob)) {%>
+		oTuple.set_blobData(myBlob);
+		<%}%>
+	} // End of if (msg->get_opcode() == websocketpp::frame::opcode::binary)
+	
+	// Now let us set any attributes that the caller of this operator is trying to
+	// assign through this operator's output functions.
+	<%
+	my $oport = $model->getOutputPortAt(0);
+	foreach my $attribute(@ { $oport->getAttributes() }) {
+		my $name = $attribute->getName();
+		my $paramValues =
+		$attribute->getAssignmentOutputFunctionParameterValues();
+		my $operation =
+		$attribute->getAssignmentOutputFunctionName();
+
+		if ($operation eq "getClientSessionId") { 					  
+		%> 
+			// Send the current clientSessionId.
+			oTuple.set_<%=$name%>(<%=$operation%>(con_metadata.clientSessionId));
+		<%} elsif ($operation eq "getTupleCnt") {
+		%>
+			oTuple.set_<%=$name%>(<%=$operation%>(con_metadata.messagesReceivedCnt));
+		<%} elsif ($operation eq "getTotalDataBytesReceived") {
+		%>
+			oTuple.set_<%=$name%>(<%=$operation%>(con_metadata.dataBytesReceived));
+		<%}
+	}%>
+
+	// We have a valid message from the remote websocket client.
+	// Update some of the counters that we maintain in the con_metadata.
+	con_metadata.messagesReceivedCnt++;
+	con_metadata.dataBytesReceived += payloadSize;
+	// Update it in the client connections map.
+	client_connections_map[hdl] = con_metadata;
+	// Submit the output tuple.
+	submit(oTuple, 0);
+
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR,
+			"Operator "
+			<< operatorPhysicalName
+			<< "-->Channel " << boost::to_string(udpChannelNumber)
+			<< "-->X2 Received data from a remote client "
+			<< " and sent it via an output tuple. "
+			<< "messagesReceivedCnt="
+			<< con_metadata.messagesReceivedCnt
+			<< ", currentDataPacketSize="
+			<< payloadSize
+			<< ", totalDataBytesReceived="
+			<< con_metadata.dataBytesReceived,
+			"on_message");
+	}
+	
+	// If this operator is configured to send an acknowledgement to the remote client after
+	// receiving certain number of messages, let us do that now.
+	if (numberOfMessagesToReceiveBeforeAnAck > 0) {
+		if (con_metadata.messagesReceivedCnt % numberOfMessagesToReceiveBeforeAnAck == 0) {
+			// Time to send an acknowledgement back to this client.
+			try {
+				char buf[520];
+				sprintf(buf, "%d", numberOfMessagesToReceiveBeforeAnAck);
+				std::string response = "Ack. Received messages count: " + std::string(buf);
+				s->send(hdl, response, websocketpp::frame::opcode::text);
+			} catch (websocketpp::exception const & e) {
+				SPLAPPTRC(L_ERROR, "Failure while sending an ack to the remote client. Error: " << 
+					"(" << e.what() << ")", "on_message");
+				// In this case, the remote client can try to send the messages again.
+		    }			
+		}
+	}
+} // End of on_message
+
+// When a client's established connection closes, this callback method is run.
+void MY_OPERATOR::on_close(websocketpp::connection_hdl hdl) {
+	connection_metadata& con_metadata = get_con_metadata_from_hdl(hdl);
+	int64_t currentTimeInSeconds =
+		SPL::Functions::Time::getSeconds(SPL::Functions::Time::getTimestamp());
+	int64_t sessionDuration = currentTimeInSeconds - con_metadata.wsSessionStartTime;
+
+	bool wsSessionLoggingDone = false;
+
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR, "on_close called for hdl: " << 
+			hdl.lock().get() << 
+			", sessionDuration: " << 
+			sessionDuration <<
+			" seconds.",
+			"on_close");
+
+		wsSessionLoggingDone = true;
+	}
+
+	if (wsSessionLoggingDone == false) {
+		SPLAPPTRC(L_INFO, "on_close called for hdl: " << 
+			hdl.lock().get() << 
+			", sessionDuration: " <<
+			sessionDuration <<
+			" seconds.",
+			"on_close");
+	}
+
+	nClientsConnected -= 1;
+	nDataBytesReceived += (uint64_t)con_metadata.dataBytesReceived;
+	nOutputTuplesSent += (uint64_t)con_metadata.messagesReceivedCnt;
+
+	// Update the operator metric only if the user asked for a live update.
+	if (websocketLiveMetricsUpdateNeeded == true) {
+		nClientsConnectedMetric->setValueNoLock(nClientsConnected);
+		nDataBytesReceivedMetric->setValueNoLock(nDataBytesReceived);
+		nOutputTuplesSentMetric->setValueNoLock(nOutputTuplesSent);
+	}						
+
+	// Send the "End of Client Session" signal now for this client session.
+	OPort1Type oTuple;
+	oTuple.set_clientSessionId(con_metadata.clientSessionId);
+	submit(oTuple, 1);
+	
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR, "Operator " << operatorPhysicalName <<
+			"-->Channel " << boost::to_string(udpChannelNumber) <<
+			"-->X3 Sent an 'End of Client Session' signal for clientSessionId=" << 
+			con_metadata.clientSessionId << 
+			".", "on_close");
+	}		
+	
+	if (wsSessionLoggingDone == false) {
+		SPLAPPTRC(L_INFO, "Operator " << operatorPhysicalName <<
+			"-->Channel " << boost::to_string(udpChannelNumber) <<
+			"-->X3 Sent an 'End of Client Session' signal for clientSessionId=" << 
+			con_metadata.clientSessionId << 
+			".", "on_close");
+	}
+	
+	// Delete this handle from our associative container.        
+	client_connections_map.erase(hdl);
+}
+
+// No change to TLS init methods from echo_server_tls
+std::string MY_OPERATOR::get_password() {
+	return "test";
+}
+
+// This is an utility method to get the client connection meta data for a given connection handle.
+MY_OPERATOR::connection_metadata& MY_OPERATOR::get_con_metadata_from_hdl(
+	websocketpp::connection_hdl hdl) {
+	auto it = client_connections_map.find(hdl);
+
+	if (it == client_connections_map.end()) {
+		std::ostringstream errorStringStream;
+		errorStringStream
+			<< "No connection metadata avaliable for a given connection handle: "
+			<< hdl.lock().get();
+		std::string error_string =
+			errorStringStream.str();
+		// This connection is not in the list. This really shouldn't happen
+		// and probably means something else is wrong.
+		throw std::invalid_argument(
+			error_string.c_str());
+	}
+
+	return it->second;
+}
+
+// Tuple processing for mutating ports 
+void MY_OPERATOR::process(
+	Tuple & tuple,
+	uint32_t port) {
+	// Sample submit code
+	/* 
+	 submit(otuple, 0); // submit to output port 0
+	*/
+}
+
+// Tuple processing for non-mutating ports
+void MY_OPERATOR::process(
+	Tuple const & tuple,
+	uint32_t port) {
+	// Sample submit code
+	/* 
+	 OPort0Type otuple;
+	 submit(otuple, 0); // submit to output port 0
+	 */
+}
+
+// Punctuation processing
+void MY_OPERATOR::process(
+	Punctuation const & punct,
+	uint32_t port) {
+	/*
+	 if(punct==Punctuation::WindowMarker) {
+	 // ...;
+	 } else if(punct==Punctuation::FinalMarker) {
+	 // ...;
+	 }
+	 */
+}
+
+// WebSocketSource Output Functions that are needed to set the output tuple attributes with their values.
+uint64_t MY_OPERATOR::getClientSessionId(uint64_t const & clientSessionId) {
+	return(clientSessionId);
+}
+
+int32_t MY_OPERATOR::getTupleCnt(int32_t const & emittedTupleCnt) {
+	return (emittedTupleCnt);
+}
+
+int32_t MY_OPERATOR::getTotalDataBytesReceived(int32_t const & totalDataBytesReceived) {
+	return (totalDataBytesReceived);
+}
+
+<%SPL::CodeGen::implementationEpilogue($model);%>

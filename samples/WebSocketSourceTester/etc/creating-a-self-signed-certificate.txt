@@ -1,0 +1,97 @@
+Saturday, October/12/2019
+==========================================================
+It is necessary for the users to create a Root CA signed 
+server side certificate file and point to that file at the time of
+starting the IBM Streams application that uses the 
+WebSocketSource operator. If the user doesn't point to this file
+at the time of starting the application, then the application will
+look for a default file named ws-server.pem inside the etc sub-directory
+of the application. This certificate will be presented to the
+WebSocketSource operator for validation when it establishes a WebSocket 
+connection with this application. For doing quick tests, you may save
+time and effort needed in getting a proper Root CA signed certificate by
+going with a simpler option of creating your own self-signed certificate.
+However, you must ensure that using a self-signed certificate is allowed 
+in your environment before going that route. We have provided below a 
+set of instructions to create a self-signed certificate.
+==========================================================
+a) On your Linux machine, create a directory: mkdir ~/ws-cert
+
+b) Change to that directory:  cd ~/ws-cert
+
+c) In that directory, create new file named ws-server-ssl.conf, 
+   add the following contents, save and close the file. You have to 
+   change the C, ST, L, O and OU fields  shown below to suit your environment.
+   For IP addresses, you should use the IP addresses of your IBM Streams 
+   cluster machine's IP addresses. More specifically, the IP addresses of the 
+   machines where you think the WebSocketSource operator might be placed.
+
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_req
+prompt = no
+[req_distinguished_name]
+C = US
+ST = NY
+L = Yorktown Heights
+O = IBM
+OU = AI
+CN = cppws.streams
+emailAddress = cppws.streams@ibm.com
+[v3_req]
+keyUsage = keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+[alt_names]
+IP.1 = 172.30.49.199
+IP.2 = 172.30.49.189
+IP.3 = 172.30.49.179
+IP.4 = 172.30.49.169
+
+d) Create this sub-directory now: mkdir ~/ws-cert/cert
+
+e) Change to the newly created sub-directory:  cd ~/ws-cert/cert
+
+f) Create a new key and then a self-signed certificate using that key.
+
+openssl req -x509 -nodes -days 7300 -newkey rsa:2048 -keyout ws-server.pem -out ws-server.pem -config ../ws-server-ssl.conf -extensions 'v3_req'
+
+g) Extract just the self-signed certificate into a separate file.
+
+openssl x509 -outform pem -in ws-server.pem -out ibm-streams-server-cppws-crt.pem
+
+h) We are done. You can verify the different parts of the certificate as shown below. Ensure that the IP addresses you entered in your config file show up inside the certificate.
+
+   openssl x509 -noout -text -in ibm-streams-server-cppws-crt.pem
+   openssl verify ibm-streams-server-cppws-crt.pem  [You may ignore error 20 since there is no root CA in this self-signed certificate.]
+   openssl x509 -in ibm-streams-server-cppws-crt.pem -noout -issuer
+   openssl x509 -noout -subject -in ibm-streams-server-cppws-crt.pem
+
+i) At this time, copy the ws-server.pem file to the etc sub-directory of your 
+   IBM Streams application that uses the WebSocketSource operator. 
+   After copying this file there, you must build your application so that 
+   the new ws-server.pem will get added into the SAB file.
+
+j) Use the ibm-streams-server-cppws-crt.pem file to configure the 
+   remote WebSocket client's security (trust store) details by following the 
+   required steps mandated by the client application.
+
+k) Since it is a self-signed certificate, your client application may 
+   give this error at runtime: 
+   
+   unable to verify the first certificate.
+
+   If you are running your remote client application in your private 
+   trusted network, you may consider setting the following Linux environment 
+   variable in the terminal window or shell from where your client application
+   is started. That will prevent the above mentioned error from happening. 
+
+   export NODE_TLS_REJECT_UNAUTHORIZED=0
+
+If you are not allowed or not comfortable with this configuration, 
+then you must not use a self-signed certificate. Instead, you must 
+create a certificate and get it signed by a well-known root CA so that 
+your certificate will include the details about the full chain of the 
+signers. That will make your remote client application to validate the 
+signers properly and not give the error mentioned above.
+==========================================================

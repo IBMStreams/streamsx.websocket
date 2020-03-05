@@ -1,0 +1,295 @@
+<?xml version="1.0" ?>
+<operatorModel
+  xmlns="http://www.ibm.com/xmlns/prod/streams/spl/operator" 
+  xmlns:cmn="http://www.ibm.com/xmlns/prod/streams/spl/common" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.ibm.com/xmlns/prod/streams/spl/operator operatorModel.xsd">
+  <cppOperatorModel>
+    <context>
+      <description>
+      The WebSocketSource operator is designed to ingest 
+      text (plain text, JSON or XML) or binary data from the remote Websocket clients. 
+      One or more remote clients can connect to this operator either via plain Websocket (ws or http) or
+      via TLS Websocket (wss or https). For a TLS Websocket, a server side certificate must be
+      generated first and the text file available in the etc directory of this toolkit provides more details.
+      
+      This operator provides two output ports. On the first output port, it keeps sending the data
+      received from the remote clients. On the second output port, it keeps sending the "End of Client Session"
+      signal whenever a remote client closes its connection. Please refer to the output port section below.
+      
+      This operator can also be optionally configured to send an ack back to the remote clients after receiving a
+      certain number of messages from a given client. This is configured by one of the operator parameters explained below.
+      This feature can be used by a remote client to wait for an ack after sending a certain number of messages.
+      A missing ack can indicate the remote client about a server side network error or an operator crash/error and make that
+      client to retransmit the previously sent, but unacknowledged messages.
+            
+      This operator can be configured with a Websocket server port number which is optional. If the user of this
+      operator doesn't specify a Websocket server port number, then a default port number of 443 will be used.
+      
+      Requirements: 
+      * Intel RHEL6 or RHEL7 hosts installed with IBM Streams. 
+      
+      See the samples folder inside this toolkit for a working example that shows how to use this operator.
+      
+      For a detailed documentation about the operator design, usage patterns and in-depth technical
+      details, please refer to the official cppws toolkit documentation available at this URL:
+      
+      [https://ibmstreams.github.io/streamsx.cppws]
+      </description>
+
+      <iconUri size="16">ibmwssource_16.gif</iconUri>
+      <iconUri size="32">ibmwssource_32.gif</iconUri>
+      
+      <metrics>
+        <metric>
+          <name>nClientsConnected</name>
+          <description>Number of remote clients currently connected to this operator instance.</description>
+          <kind>Gauge</kind>
+        </metric>
+
+        <metric>
+          <name>nDataBytesReceived</name>
+          <description>Total number of data bytes received by this operator instance.</description>
+          <kind>Gauge</kind>
+        </metric>
+        
+        <metric>
+          <name>nOutputTuplesSent</name>
+          <description>Number of output tuples sent by this operator instance.</description>
+          <kind>Gauge</kind>
+        </metric>
+      </metrics>
+
+      <customOutputFunctions>
+        <customOutputFunction>
+          <name>WebSocketSourceFunctions</name>
+          <function>
+            <description>The default function for output attributes. This function assigns the output attribute to the value of the input attribute with the same name.</description>
+            <prototype><![CDATA[<any T> T AsIs(T)]]></prototype> 
+          </function>
+          <function>
+            <description>Returns an uint64 value indicating the client session id that corresponds to the current output tuple.</description>
+            <prototype><![CDATA[uint64 getClientSessionId()]]></prototype>
+          </function>      
+          <function>
+            <description>Returns an int32 value indicating the total number of output tuples emitted so far as received from a given remote client connection.</description>
+            <prototype><![CDATA[int32 getTupleCnt()]]></prototype>
+          </function>
+          <function>
+            <description>Returns an int32 value indicating the total number of data bytes received so far from a remote client connection.</description>
+            <prototype><![CDATA[int32 getTotalDataBytesReceived()]]></prototype>
+          </function>
+		</customOutputFunction>
+      </customOutputFunctions>
+      
+      <libraryDependencies>
+        <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_system</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library>
+         
+        <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_chrono</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library>
+                
+        <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_random</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library>       
+
+         <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_thread</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library> 
+      </libraryDependencies>
+      
+      <providesSingleThreadedContext>Never</providesSingleThreadedContext>
+    </context>  
+    
+    <parameters>
+      <allowAny>false</allowAny>
+      
+      <parameter>
+        <name>tlsPort</name>
+        <description>This parameter specifies the WebSocket TLS port number. Default port number is 443.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter> 
+      
+      <parameter>
+        <name>certificateFileName</name>
+        <description>This parameter specifies the full path of the WebSocket server PEM certificate file name. Default is to read ws-server.pem from the etc sub-directory of the application that is invoking this operator.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>nonTlsEndpointNeeded</name>
+        <description>This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>nonTlsPort</name>
+        <description>This parameter specifies the WebSocket (plain) non-TLS port number. Default port number is 80.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter> 
+
+      <parameter>
+        <name>initDelay</name>
+        <description>This parameter specifies a one time delay in seconds for which this source operator should wait before start generating its first tuple. Default delay is 0.0.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>float64</type>
+        <cardinality>1</cardinality>
+      </parameter> 
+
+      <parameter>
+        <name>websocketLiveMetricsUpdateNeeded</name>
+        <description>This parameter specifies whether live update for this operator's custom metrics is needed. (Default is true)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>websocketLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed from the WebSocket library. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>wsClientSessionLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed when the remote client session is in progress with this operator. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>websocketStaleConnectionPurgeInterval</name>
+        <description>This parameter specifies periodic time interval in seconds during which any stale remote client connection should be purged to free up memory usage. (Default is 3*60*60 seconds)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>ipv6Available</name>
+        <description>This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the IBMVoiceGatewaySource operator is running. (Default is true)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>numberOfMessagesToReceiveBeforeAnAck</name>
+        <description>This parameter indicates how many messages are to be received before sending an ack to the remote client. (Default is 0 i.e. no ack sent)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
+    </parameters>
+        
+    <inputPorts>
+    </inputPorts>
+    <outputPorts>
+      <outputPortSet>
+      	<description>
+      	This port produces the output tuples that carry the text or binary data received from 
+      	the remote Websocket client. The schema for this port must either have an attribute named 
+      	strData with an rstring data type to hold the received text data or an attribute named
+      	blobData with a blob data type to hold the received binary data or both. Remaining attributes can be 
+      	of any type based on the needs of the application. This operator is capable of sending out data
+		received from multiple clients that can all communicate with this operator at the very same time. 
+		Please refer to the custom output functions provided by this operator to query the client session number
+		and other client session specific metrics and assign such values to other optional attributes in this
+		output port. 
+      	
+        **There are multiple available output functions**, and output attributes can also be 
+        assigned values with any SPL expression that evaluates to the proper type.      	
+      	</description>
+        <expressionMode>Expression</expressionMode> 
+        <autoAssignment>false</autoAssignment>
+        <completeAssignment>false</completeAssignment>
+        <rewriteAllowed>true</rewriteAllowed>
+        <outputFunctions>
+            <default>AsIs</default>
+            <type>WebSocketSourceFunctions</type>
+        </outputFunctions> 
+        <windowPunctuationOutputMode>Free</windowPunctuationOutputMode>
+        <tupleMutationAllowed>false</tupleMutationAllowed>
+        <cardinality>1</cardinality>
+        <optional>false</optional>
+      </outputPortSet> 
+      
+      <outputPortSet>
+      	<description>
+      	This port produces periodic output tuples to give an indication about the end of a 
+      	specific client session that was in progress moments ago for 
+      	the given client session id. The schema for this port must have one  
+      	attribute with its correct data type as shown here. 
+      	uint64 clientSessionId
+      	This source operator will set the appropriate value for this attribute to 
+      	indicate which particular client  
+      	(i.e. session id) just ended the data exchange. Downstream operators can make 
+      	use of this "End Of Client Session" signal as they see fit.
+      	</description>
+        <expressionMode>Expression</expressionMode> 
+        <autoAssignment>false</autoAssignment>
+        <completeAssignment>false</completeAssignment>
+        <rewriteAllowed>true</rewriteAllowed>
+        <windowPunctuationOutputMode>Free</windowPunctuationOutputMode>
+        <tupleMutationAllowed>false</tupleMutationAllowed>
+        <cardinality>1</cardinality>
+        <optional>false</optional>
+      </outputPortSet>          
+    </outputPorts>
+  </cppOperatorModel>
+</operatorModel>
