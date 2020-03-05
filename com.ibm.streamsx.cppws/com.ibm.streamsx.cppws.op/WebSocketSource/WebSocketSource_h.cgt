@@ -1,0 +1,172 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+============================================================
+First created on: Feb/23/2020
+Last modified on: Mar/02/2020
+
+This include file contains the necessary inclusion of 
+other C++ header files, declaration of member variables and
+output assignment functions for the WebSocketSource operator.
+
+This file will be used in conjunction with the
+operator model file (WebSocketSource.xml) and the operator
+implementation C++ file (WebSocketSource_cpp.cgt).
+============================================================
+*/
+
+/* Additional includes go here */
+// Websocketpp server include files
+#include <websocketpp/config/asio.hpp>
+#include <websocketpp/server.hpp>
+#include <iostream>
+#include <fstream>
+#include <iterator>
+#include <algorithm>
+#include <vector>
+// Operator metrics related include files.
+#include <SPL/Runtime/Common/Metric.h>
+#include <SPL/Runtime/Operator/OperatorMetrics.h>
+
+<%SPL::CodeGen::headerPrologue($model);%>
+
+// State transition for a remote WebSocket client that
+// we will maintain inside this operator.
+#define CLIENT_OPENED_A_WS_CONNECTION 1
+#define CLIENT_STARTED_A_WS_SESSION 2
+#define CLIENT_ENDED_AN_STT_SESSION 3
+
+class MY_OPERATOR : public MY_BASE_OPERATOR 
+{
+public:
+	// Websocket related type definitions.
+	// Define types for two different server endpoints, 
+	// one for each config we are using.
+	// This operator supports both plain http and https (TLS) server endpoints.
+	typedef websocketpp::server<websocketpp::config::asio> server_plain;
+	typedef websocketpp::server<websocketpp::config::asio_tls> server_tls;
+
+	// Alias some of the bind related functions as they are a bit long
+	// Type of the ssl context pointer is long so alias it
+	typedef websocketpp::lib::shared_ptr<boost::asio::ssl::context> context_ptr;
+	
+	// Operator related member variables
+	std::string operatorPhysicalName;
+	SPL::int32 udpChannelNumber;
+	SPL::uint32 tlsPort;
+	std::string certificateFileName;
+	SPL::boolean nonTlsEndpointNeeded;
+	SPL::uint32 nonTlsPort;
+	SPL::float64 initDelay;
+	SPL::boolean websocketLiveMetricsUpdateNeeded;
+	bool websocketLoggingNeeded;
+	bool wsClientSessionLoggingNeeded;
+	SPL::int64 websocketStaleConnectionPurgeInterval;
+	bool ipv6Available;
+	server_plain endpoint_plain;
+	server_tls endpoint_tls;
+	SPL::boolean tlsEndpointStarted;
+	SPL::boolean nonTlsEndpointStarted;
+	SPL::int64 timeOfPreviousStaleConnectionRemoval;
+	SPL::uint64 clientSessionId;
+	SPL::boolean strDataAttributeFound;
+	SPL::boolean blobDataAttributeFound;
+	SPL::uint32 numberOfMessagesToReceiveBeforeAnAck;
+	
+	// These variables hold the values needed for the operator metrics.
+	SPL::uint64 nClientsConnected;
+	SPL::uint64 nDataBytesReceived;
+	SPL::uint64 nOutputTuplesSent;
+	
+	// We will maintain the TLS connection details for all the 
+	// active remote WebSocket clients in this std set data structure. 
+	typedef std::set<websocketpp::connection_hdl,
+		std::owner_less<websocketpp::connection_hdl>> tls_con_set;
+	tls_con_set tls_connections_set;
+	
+	// This is the structure that will get stored in the map declard below.
+	struct connection_metadata {
+		// Websocket session status will carry the following values:
+		// 1 = Client opened a Websocket connection.
+		// 2 = Client started the session to send data on a persistent connection.
+		// 3 = Client ended the data exchange.
+	    int32_t wsSessionStatus;
+	    int64_t wsSessionStartTime;
+	    int32_t messagesReceivedCnt;
+	    int32_t dataBytesReceived;
+	    // Following are client specific session's meta data details.
+	    uint64_t clientSessionId;
+	};
+	
+	// This technique of storing and tracking the client connection specific
+	// details via an associative container is well discussed in this URL:
+	// https://www.zaphoyd.com/websocketpp/manual/common-patterns/storing-connection-specificsession-information
+	typedef std::map<websocketpp::connection_hdl, 
+		connection_metadata, std::owner_less<websocketpp::connection_hdl>> con_map;
+	
+	// This map's key is connection_hdl and value is the connection_metadata structure.
+	con_map client_connections_map;
+
+	// Custom metrics for this operator.
+	Metric *nClientsConnectedMetric;
+	Metric *nDataBytesReceivedMetric;
+	Metric *nOutputTuplesSentMetric;
+	
+	// Constructor
+	MY_OPERATOR();
+
+	// Destructor
+	virtual ~MY_OPERATOR(); 
+
+	// Notify port readiness
+	void allPortsReady(); 
+
+	// Notify pending shutdown
+	void prepareToShutdown(); 
+
+	// Processing for source and threaded operators   
+	void process(uint32_t idx);
+    
+	// Tuple processing for mutating ports 
+	void process(Tuple & tuple, uint32_t port);
+    
+	// Tuple processing for non-mutating ports
+	void process(Tuple const & tuple, uint32_t port);
+
+	// Punctuation processing
+	void process(Punctuation const & punct, uint32_t port);
+
+	// Websocket client connection open handler.
+	void on_open(websocketpp::connection_hdl hdl);
+		
+	// Websocket message reception event handler
+	template <typename EndpointType>
+	void on_message(EndpointType* s, websocketpp::connection_hdl hdl,
+	    typename EndpointType::message_ptr msg);
+	
+	// Websocket client connection close handler.
+	void on_close(websocketpp::connection_hdl hdl);
+	
+	// Websocket TLS binding event handler
+	context_ptr on_tls_init(websocketpp::connection_hdl hdl);
+	
+	// Callback method needed within the TLS event handler.
+	std::string get_password();
+	
+	// Method that looks up connection metadata for a connection handle in our associate container.
+	MY_OPERATOR::connection_metadata& get_con_metadata_from_hdl(websocketpp::connection_hdl hdl);
+
+private:
+	// These are the output attribute assignment functions for this operator.
+	int32_t getTupleCnt(int32_t const & emittedTupleCnt);
+	int32_t getTotalDataBytesReceived(int32_t const & totalDataBytesReceived);
+	uint64_t getClientSessionId(uint64_t const & clientSessionId);
+}; 
+
+<%SPL::CodeGen::headerEpilogue($model);%>
+
