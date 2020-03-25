@@ -8,10 +8,16 @@
 /*
 ==============================================
 First created on: Feb/23/2020
-Last modified on: Mar/02/2020
+Last modified on: Mar/24/2020
 
 This example demonstrates the ingestion of text or binary data
-from one or more remote WebSocket clients.
+from one or more remote WebSocket clients. It also shows how to
+receive regular HTTP and HTTPS POST messages from remote HTTP based
+client applications. 
+
+[WebSocketSource operator from the streamsx.cppws toolkit supports 
+message reception via both WebSocket and HTTP on plain as well as secure endpoints.
+Users will get a two-in-one benefit from this operator.]
 
 You can build this example from command line via the make command by using the
 Makefile available in the top-level directory of this example. Inside that
@@ -96,6 +102,9 @@ composite WebSocketSourceTester {
 		// an ack should be sent back to that client.
 		expression<uint32> $numberOfMessagesToReceiveBeforeAnAck :(uint32)
 			getSubmissionTimeValue("numberOfMessagesToReceiveBeforeAnAck", "0");
+		// Specify if we want to allow the client applications to do an HTTP POST.
+		expression<boolean> $allowHttpPost : (boolean)
+			getSubmissionTimeValue("allowHttpPost", "false");
 
 	type
 		// The following is the schema of the first output stream for the
@@ -146,6 +155,9 @@ composite WebSocketSourceTester {
 				websocketStaleConnectionPurgeInterval: $websocketStaleConnectionPurgeInterval;
 				ipv6Available: $ipv6Available;
 				numberOfMessagesToReceiveBeforeAnAck: $numberOfMessagesToReceiveBeforeAnAck;
+				// Are we going to allow client applications to send their 
+				// text based data (plain text, JSON, XML etc.) via HTTP/HTTPS POST?
+				allowHttpPost: $allowHttpPost;
 			
 			// Get these values via custom output functions	provided by this operator.
 			output
@@ -194,7 +206,7 @@ composite WebSocketSourceTester {
 						(strDataLength > blobDataLength) ? strDataLength : blobDataLength;
 					
 					if(payloadSize > _largestPayloadSizeObserved) {
-						_largestPayloadSizeObserved = payloadSize;
+						_largestPayloadSizeObserved = payloadSize;						
 					}
 					
 					// printStringLn("Payload=" + (rstring)WSRD);
@@ -210,6 +222,7 @@ composite WebSocketSourceTester {
 							", rate=" + (rstring)(_tupleCnt - _previousTupleCnt) + 
 							", largestPayloadSizeObserved=" + 
 							(rstring)_largestPayloadSizeObserved);
+						
 						_previousTupleCnt = _tupleCnt;
 						_largestPayloadSizeObserved = 0;
 					}

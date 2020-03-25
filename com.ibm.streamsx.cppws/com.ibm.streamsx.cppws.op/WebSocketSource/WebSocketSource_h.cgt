@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Feb/23/2020
-Last modified on: Mar/02/2020
+Last modified on: Mar/17/2020
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables and
@@ -68,6 +68,9 @@ public:
 	bool wsClientSessionLoggingNeeded;
 	SPL::int64 websocketStaleConnectionPurgeInterval;
 	bool ipv6Available;
+	// This variable is set via an operator parameter to
+	// indicate whether this operator will allow HTTP(S) POST from remote clients.
+	bool allowHttpPost;
 	server_plain endpoint_plain;
 	server_tls endpoint_tls;
 	SPL::boolean tlsEndpointStarted;
@@ -82,6 +85,7 @@ public:
 	SPL::uint64 nClientsConnected;
 	SPL::uint64 nDataBytesReceived;
 	SPL::uint64 nOutputTuplesSent;
+	SPL::uint64 nHttpPostMessagesReceived;
 	
 	// We will maintain the TLS connection details for all the 
 	// active remote WebSocket clients in this std set data structure. 
@@ -116,6 +120,7 @@ public:
 	Metric *nClientsConnectedMetric;
 	Metric *nDataBytesReceivedMetric;
 	Metric *nOutputTuplesSentMetric;
+	Metric *nHttpPostMessagesReceivedMetric;
 	
 	// Constructor
 	MY_OPERATOR();
@@ -154,6 +159,12 @@ public:
 	
 	// Websocket TLS binding event handler
 	context_ptr on_tls_init(websocketpp::connection_hdl hdl);
+	
+	// HTTP handler (only for HTTP POST messages)
+	void on_http_message(websocketpp::connection_hdl hdl);
+	
+	// HTTPS handler (only for HTTPS POST messages)
+	void on_https_message(websocketpp::connection_hdl hdl);
 	
 	// Callback method needed within the TLS event handler.
 	std::string get_password();
