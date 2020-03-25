@@ -5,7 +5,7 @@
 # Please point this to your correct C++ boost lib directory.
 LD_LIBRARY_PATH=$(HOME)/boost_1_69_0/lib
 # Please point this to your websocketpp install direcctory
-WEBSOCKETPP_INSTALL_DIR=$(HOME)/cpp-stt-websocket-server-test/websocketpp-0.8.1
+WEBSOCKETPP_INSTALL_DIR=$(HOME)/websocketpp-0.8.1
 
 CPP_FLAGS = -std=c++11
 
