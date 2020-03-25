@@ -2,7 +2,7 @@
 title: "Toolkit Usage Overview"
 permalink: /docs/user/overview/
 excerpt: "How to use this toolkit."
-last_modified_at: 2020-03-04T08:28:48+01:00
+last_modified_at: 2020-03-25T08:28:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -134,7 +134,7 @@ Following IBM Streams job sumission command shows how to override the default va
 ```
 cd   streamsx.cppws/samples/WebSocketSourceTester
 make
-st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456
+st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456 -P allowHttpPost=true
 ```
 
 ### Working examples shipped with this toolkit
@@ -143,5 +143,6 @@ This toolkit ships with the following examples that can be used as reference app
 * [WebSocketSourceTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSourceTester)
 * [WebSocketSendReceiveTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSendReceiveTester)
 * [WebSocketSinkTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSinkTester)
+* [HttpPostTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/HttpPostTester)
 
 There is also an example WebSocket based client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.

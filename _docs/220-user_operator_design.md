@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the Cpp WS toolkit operators."
-last_modified_at: 2020-03-04T08:47:48+01:00
+last_modified_at: 2020-03-25T08:47:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -28,6 +28,8 @@ Main goal of this operator is to receive data from one or more client applicatio
 
 The data received from the client applications can be in text or binary format. This operator is capable of receiving data from multiple clients that can all send data at the very same time. When a given client application closes its connection, this operator will send a tuple on its second output port to give an indication about the end of data reception from that client identified by its client session id. Downstream operators can make use of this "End Of Client Session" signal as they see fit.
 
+This operator also allows client applications to send data via both WebSocket and HTTP POST. By default HTTP message reception is not enabled and it can be enabled by via the allowHttpPost operator parameter.
+
 ### WebSocketSource operator parameters
 Following are the parameters accepted by the WebSocketSource operator. Some parameters are mandatory with user-provided values and others are optional with default values assigned within the C++ operator logic.
 
@@ -44,6 +46,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | websocketStaleSessionPurgeInterval | `uint32` | `10800` | This parameter specifies periodic time interval in seconds during which any stale client sessions should be purged to free up memory usage. |
 | ipv6Available | `boolean` | `true` | This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSource operator is running. |
 | numberOfMessagesToReceiveBeforeAnAck | `uint32` | `23456` | This parameter indicates how many messages are to be received before sending an ack to the remote client. |
+| allowHttpPost | `boolean` | `false` | This parameter specifies whether this operator will allow message reception via HTTP(S) POST. |
 
 ### WebSocketSource operator's custom output functions
 Following are the custom output functions supported by the WebSocketSource operator. These functions can be called as needed within the output clause of this operator's SPL invocation code.

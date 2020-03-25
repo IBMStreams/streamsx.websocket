@@ -2,7 +2,7 @@
 title: "Operator Usage Patterns"
 permalink: /docs/user/CppWSUsagePatterns/
 excerpt: "Describes the CppWS toolkit usage patterns."
-last_modified_at: 2020-03-04T08:53:48+01:00
+last_modified_at: 2020-03-25T08:53:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -12,7 +12,7 @@ sidebar:
 {%include editme %}
 
 ## Important details needed for using the WebSocketSource operator
-The WebSocketSource operator uses the WebSocket server interface to accept multiple concurrent client connections. Single connection per client is opened and kept alive for the entire lifetime of that client. Please refer to a chapter titled "Toolkit Overview [Technical]" and focus on step 3 of one of its sections titled "Requirements for this toolkit".
+The WebSocketSource operator uses the WebSocket server interface to accept multiple concurrent client connections. Single connection per client is opened and kept alive for the entire lifetime of that client. Please refer to a chapter titled "Toolkit Overview [Technical]" and focus on step 3 of one of its sections titled "Requirements for this toolkit". It is important to note that this operator will optionally allow message reception via HTTP(S) POST if needed.
 
 In order to use this operator in your Streams application, the following values must be with you at the time of launching the Streams application.
 
@@ -78,6 +78,7 @@ In your SPL application, this operator can be invoked with either all operator p
          websocketStaleConnectionPurgeInterval: $websocketStaleConnectionPurgeInterval;
          ipv6Available: $ipv6Available;
          numberOfMessagesToReceiveBeforeAnAck: $numberOfMessagesToReceiveBeforeAnAck;
+         allowHttpPost: $allowHttpPost;
 			
       // Get these values via custom output functions provided by this operator.
       output
@@ -110,13 +111,15 @@ This operator provides the following custom metrics that can be queried via the 
 
 3. **nOutputTuplesSent**: It shows the total number of output tuples emitted by this operator instance.
 
+4. **nHttpPostMessagesReceived**: It shows the number of HTTP POST messages received by this operator instance.
+
 ## Running the example application that use the WebSocketSource operator
 There is a working example included within this toolkit. You can use it as a reference to learn more about putting this operator to use in your own applications. You can use similar streamtool submitjob commands as shown below in your own applications.
 
 ```
 cd   streamsx.cppws/samples/WebSocketSourceTester
 make
-st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester/BuildConfig/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456
+st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester/BuildConfig/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456 -P allowHttpPost=true
 ```
 
 *******************************

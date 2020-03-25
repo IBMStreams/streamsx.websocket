@@ -2,7 +2,7 @@
 title: "Toolkit Overview [Technical]"
 permalink: /docs/knowledge/overview/
 excerpt: "Basic knowledge of the toolkit's technical domain."
-last_modified_at: 2020-03-04T08:15:48+01:00
+last_modified_at: 2020-03-25T08:15:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -19,11 +19,13 @@ The streamsx.cppws toolkit provides the following C++ based operators that can h
 2. WebSocketSendReceive    [Will be available in 2Q2020]
 3. WebSocketSink           [Will be available in 2Q2020]
 
-**WebSocketSource** is a source operator that can be used to receive text or binary data from multiple client applications. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect and start sending data. This is Receive-only from multiple clients.
+**WebSocketSource** is a source operator that can be used to receive text or binary data from multiple client applications. This operator supports message reception via both WebSocket and HTTP on plain as well as secure endpoints. Users will get a two-in-one benefit from this operator. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect and start sending data. This is Receive-only from multiple clients.
 
-**WebSocketSendReceive** (when released in 2Q2020) is an analytic operator that can be used to initiate a connection to an external WebSocket server based application in order to send and receive text or binary data via that connection. This is. Send-and-Receive to/from a single server based remote WebSocket application.
+**WebSocketSendReceive** (when released in 2Q2020) is an analytic operator that can be used to initiate a connection to an external WebSocket server based application in order to send and receive text or binary data via that connection. This is Send-and-Receive to/from a single server based remote WebSocket application.
 
 **WebSocketSink** (when released in 2Q2020) is a sink operator that can be used to send text or binary data to multiple clients. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect and start. receiving data. This is Send-only to multiple clients.
+
+This toolkit also provides an utility operator (HttpPost) to test the optional HTTP(S) message reception feature available in the WebSocketSource operator. If other application scenarios see a fit for this utility operator, they can also use it as needed. If you clone this toolkit from the IBMStreams GitHub, then you must build this utility operator by running "ant clean" and "ant all" from the com.ibm.streamsx.cppws directory. 
 
 In a Streams application, these operators can either be used together or independent of each other. 
 
