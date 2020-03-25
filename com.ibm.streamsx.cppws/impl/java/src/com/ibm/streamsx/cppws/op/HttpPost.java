@@ -9,7 +9,7 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Mar/23/2020
+Last modified on: Mar/25/2020
 
 This Java operator is an utility operator available in the
 streamsx.cppws toolkit. It can be used to do HTTP(S) post of
@@ -305,7 +305,7 @@ public class HttpPost extends AbstractOperator {
     }
     
     public static final String DESC = "This operator sends the incoming tuple's contents to the " +
-    		"specified HTTP or HTTPS endpoint via the operator named url. The incoming tuple " +
+    		"specified HTTP or HTTPS endpoint via the operator parameter named url. The incoming tuple " +
     		"must have its first attribute with a data type rstring and it must carry " + 
     		"string based content that needs be posted to the remote web server. " +
     		"Support for blob data will be added in a future version. This operator is " + 
