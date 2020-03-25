@@ -7,11 +7,13 @@ The streamsx.cppws toolkit provides the following C++ based operators that can h
 2. WebSocketSendReceive    [Will be available in 2Q2020]
 3. WebSocketSink           [Will be available in 2Q2020]
 
-**WebSocketSource** is a source operator that can be used to receive text or binary data from multiple client applications. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect and start sending data. This is Receive-only from multiple clients.
+**WebSocketSource** is a source operator that can be used to receive text or binary data from multiple client applications. This operator supports message reception via both WebSocket and HTTP on plain as well as secure endpoints. Users will get a two-in-one benefit from this operator. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect and start sending data. This is Receive-only from multiple clients.
 
 **WebSocketSendReceive** (when released in 2Q2020) is an analytic operator that can be used to initiate a connection to an external WebSocket server based application in order to send and receive text or binary data via that connection. This is Send-and-Receive to/from a single server based remote WebSocket application.
 
 **WebSocketSink** (when released in 2Q2020) is a sink operator that can be used to send text or binary data to multiple clients. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect and start receiving data. This is Send-only to multiple clients.
+
+This toolkit also provides an utility operator (HttpPost) to test the optional HTTP(S) message reception feature available in the WebSocketSource operator. If other application scenarios see a fit for this utility operator, they can also use it as needed. If you clone this toolkit from the IBMStreams GitHub, then you must build this utility operator by running "ant clean" and "ant all" from the com.ibm.streamsx.cppws directory. 
 
 In a Streams application, these operators can either be used together or independent of each other. 
 
@@ -84,12 +86,18 @@ Following IBM Streams job sumission command shows how to override the default va
 ```
 cd   streamsx.cppws/samples/WebSocketSourceTester
 make
-st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456
+st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  output/com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456 -P allowHttpPost=true
 ```
 
 There is also an example WebSocket based client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.
 
 ## WHATS NEW
+
+v1.0.1:
+* Mar/25/2020
+* Added support for receiving messages via HTTP(S) POST in the WebSocketSource operator.
+* Added an utility operator HttpPost to test the feature mentioned above.
+* Added a new HttpPostTester example application.
 
 v1.0.0:
 - Mar/05/2020

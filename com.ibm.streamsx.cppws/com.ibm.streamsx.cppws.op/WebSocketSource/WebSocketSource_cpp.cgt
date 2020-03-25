@@ -8,13 +8,17 @@
 /*
  ============================================================
  First created on: Feb/22/2020
- Last modified on: Mar/02/2020
+ Last modified on: Mar/24/2020
 
  This particular operator (WebSocketSource) is used to
  receive either text data or binary data from one or more
  remote WebSocket clients. This operator relies on the
  C++ boost ASIO and websocketpp open source libraries to provide
  support for data exchange using the WebSocket protocol.
+ 
+ Please note that this operator supports message reception via 
+ both WebSocket and HTTP on plain as well as secure endpoints.
+ Users will get a two-in-one benefit from this operator.
  
  The C++ code logic here works in conjunction with the
  operator model file (WebSocketSource.xml) and the operator
@@ -167,6 +171,10 @@ $ipv6Available = $ipv6Available ? $ipv6Available->getValueAt(0)->getCppExpressio
 my $numberOfMessagesToReceiveBeforeAnAck = $model->getParameterByName("numberOfMessagesToReceiveBeforeAnAck");
 # Default: 0
 $numberOfMessagesToReceiveBeforeAnAck = $numberOfMessagesToReceiveBeforeAnAck ? $numberOfMessagesToReceiveBeforeAnAck->getValueAt(0)->getCppExpression() : 0;
+
+my $allowHttpPost = $model->getParameterByName("allowHttpPost");
+# Default: 0
+$allowHttpPost = $allowHttpPost ? $allowHttpPost->getValueAt(0)->getCppExpression() : 0;
 %>
 
 <%SPL::CodeGen::implementationPrologue($model);%>
@@ -185,6 +193,8 @@ MY_OPERATOR::MY_OPERATOR() {
 	nDataBytesReceivedMetric = &opm.getCustomMetricByName(
 			"nDataBytesReceived");
 	nOutputTuplesSentMetric = &opm.getCustomMetricByName("nOutputTuplesSent");
+	nHttpPostMessagesReceivedMetric = 
+		&opm.getCustomMetricByName("nHttpPostMessagesReceived");
 
 	// Initialize the member variables as needed from the operator parameter values read above.	
 	strDataAttributeFound = <%=$strDataAttributeFound%>;
@@ -199,13 +209,14 @@ MY_OPERATOR::MY_OPERATOR() {
 	websocketStaleConnectionPurgeInterval = <%=$websocketStaleConnectionPurgeInterval%>;
 	ipv6Available = <%=$ipv6Available%>;
 	numberOfMessagesToReceiveBeforeAnAck = <%=$numberOfMessagesToReceiveBeforeAnAck%>;
+	allowHttpPost = <%=$allowHttpPost%>;
 	certificateFileName = <%=$certificateFileName%>;
 
 	if (certificateFileName == "") {
 		// User didn't provide a PEM file. We are going to read 
 		// ws-server.pem from the etc directory of the application.
 		certificateFileName = ProcessingElement::pe().getApplicationDirectory()
-				+ "/etc/ws-server.pem";
+			+ "/etc/ws-server.pem";
 	}
 
 	tlsEndpointStarted = false;
@@ -311,6 +322,7 @@ void MY_OPERATOR::process(uint32_t idx) {
 	nClientsConnected = 0;
 	nDataBytesReceived = 0;
 	nOutputTuplesSent = 0;
+	nHttpPostMessagesReceived = 0;
 
 	// A typical source operator implementation will loop until shutdown.
 	// In the code below, boost ASIO run method will block forever until
@@ -344,6 +356,12 @@ void MY_OPERATOR::process(uint32_t idx) {
 		endpoint_plain.set_close_handler(
 				bind(&MY_OPERATOR::on_close, this, ::_1));
 
+		// Is this operator configured to receive HTTP POST messages from remote clients?
+		if (allowHttpPost == true) {
+			// This HTTP handler is only for HTTP posts (plain text, json, xml and blob).
+			endpoint_plain.set_http_handler(bind(&MY_OPERATOR::on_http_message, this, ::_1));
+		}
+		
 		// https://docs.websocketpp.org/reference_8logging.html
 		// Set the logging policy as needed
 		// Turn off or turn on selectively all the Websocket++ access interface and 
@@ -394,6 +412,12 @@ void MY_OPERATOR::process(uint32_t idx) {
 	// TLS endpoint has an extra handler for the tls init
 	endpoint_tls.set_tls_init_handler(
 			bind(&MY_OPERATOR::on_tls_init, this, ::_1));
+	
+	// Is this operator configured to receive HTTPS POST messages from remote clients?
+	if(allowHttpPost == true) {
+		// This http handler is only for HTTPS posts (plain text, json, xml and blob).
+		endpoint_tls.set_http_handler(bind(&MY_OPERATOR::on_https_message, this, ::_1));
+	}
 
 	if (websocketLoggingNeeded == true) {
 		// Enable certain error logging channels and certain access logging channels.
@@ -675,12 +699,18 @@ void MY_OPERATOR::on_message(EndpointType* s, websocketpp::connection_hdl hdl,
 		// internal buffer hold by the blob. 
 		// The blob owns the copied data in memory.
 		myBlob.setData((unsigned char*)payloadBuffer, (uint64_t)payloadSize);
-		OPort0Type oTuple;
 		<%if ($blobDataAttributeFound == 1 and defined($dataOutputAsBlob)) {%>
 		oTuple.set_blobData(myBlob);
 		<%}%>
 	} // End of if (msg->get_opcode() == websocketpp::frame::opcode::binary)
-	
+
+	// We have a valid message from the remote websocket client.
+	// Update some of the counters that we maintain in the con_metadata.
+	con_metadata.messagesReceivedCnt++;
+	con_metadata.dataBytesReceived += payloadSize;
+	// Update it in the client connections map.
+	client_connections_map[hdl] = con_metadata;
+		
 	// Now let us set any attributes that the caller of this operator is trying to
 	// assign through this operator's output functions.
 	<%
@@ -705,12 +735,6 @@ void MY_OPERATOR::on_message(EndpointType* s, websocketpp::connection_hdl hdl,
 		<%}
 	}%>
 
-	// We have a valid message from the remote websocket client.
-	// Update some of the counters that we maintain in the con_metadata.
-	con_metadata.messagesReceivedCnt++;
-	con_metadata.dataBytesReceived += payloadSize;
-	// Update it in the client connections map.
-	client_connections_map[hdl] = con_metadata;
 	// Submit the output tuple.
 	submit(oTuple, 0);
 
@@ -787,6 +811,7 @@ void MY_OPERATOR::on_close(websocketpp::connection_hdl hdl) {
 		nClientsConnectedMetric->setValueNoLock(nClientsConnected);
 		nDataBytesReceivedMetric->setValueNoLock(nDataBytesReceived);
 		nOutputTuplesSentMetric->setValueNoLock(nOutputTuplesSent);
+		nHttpPostMessagesReceivedMetric->setValueNoLock(nHttpPostMessagesReceived);
 	}						
 
 	// Send the "End of Client Session" signal now for this client session.
@@ -839,6 +864,186 @@ MY_OPERATOR::connection_metadata& MY_OPERATOR::get_con_metadata_from_hdl(
 
 	return it->second;
 }
+
+// When a client opens a HTTP connection to our WebSocket endpoint, this callback method is run.
+// We will only process HTTP POST messages carrying a text payload (not binary payload).
+// 
+// This idea of using a HTTP handler along with the regular
+// header-only websocketpp features are described in these URLs below.
+// https://github.com/zaphoyd/websocketpp/issues/266
+// https://github.com/zaphoyd/websocketpp/issues/425
+// https://www.zaphoyd.com/websocketpp/manual/reference/handler-list/httphandler
+// https://github.com/zaphoyd/websocketpp/issues/513
+// https://github.com/zaphoyd/websocketpp/issues/181
+//
+// C++ methods that are used below in the following HTTP callback
+// methods are available in the hpp file shown in this URL.
+// https://github.com/zaphoyd/websocketpp/blob/master/websocketpp/connection.hpp
+// 
+// The logic here is exactly same as another method below this one.
+// The method below is for handling TLS http message from the client.
+// This method here is for handling plain http message from the client.
+// Any code change you make here should also be made in the method below.
+void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl) {
+	server_plain::connection_ptr con = NULL;
+	bool wsSessionLoggingDone = false;
+	
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR, "on_https_message called with hdl: " << hdl.lock().get(),
+				"on_http_message");
+		wsSessionLoggingDone = true;
+	}
+	
+	if (wsSessionLoggingDone == false) {
+		SPLAPPTRC(L_INFO, "on_https_message called with hdl: " << hdl.lock().get(),
+			"on_http_message");
+	}
+
+	// Upgrade our connection handle to a full connection_ptr.
+	// This connection is through a plain HTTP endpoint.
+	con = endpoint_plain.get_con_from_hdl(hdl);
+	
+	if (con == NULL) {
+		// Unable to get a valid connection.
+		return;
+	}
+	
+	SPL::int32 contentLength = 0;
+	std::string contentLengthString = con->get_request_header("Content-Length");
+	contentLength = atoi(contentLengthString.c_str());
+
+	// Send a response back to the client.
+	con->set_body(std::string("Received ") + 
+		contentLengthString + std::string(" byte(s) of your data."));
+	con->set_status(websocketpp::http::status_code::ok);
+
+	if (contentLength <= 0) {
+		// This HTTP POST didn't carry any payload.
+		return;
+	}
+
+	// Update the metric counter.
+	nHttpPostMessagesReceived++;
+	SPLAPPTRC(L_INFO, nHttpPostMessagesReceived << 
+		") Content-Length=" << contentLengthString << 
+		".", "on_http_message");
+	
+	// We have content available in the HTTP POST sent by the client.
+	// Assign it to the output tuple and send it out now.
+	OPort0Type oTuple;
+		
+	// In the HTTP POST mode, we will support only the text data and not binary at this time.
+    // At a future time, we will add support for clients to post binary data.
+	<%if ($strDataAttributeFound == 1 and defined($dataOutputAsRString)) {%>
+		oTuple.set_strData(con->get_request_body());
+		submit(oTuple, 0);
+		
+		// Update the metric counter.
+		nHttpPostMessagesReceived++;
+		
+		// Update the operator metric only if the user asked for a live update.
+		if (websocketLiveMetricsUpdateNeeded == true) {
+			nHttpPostMessagesReceivedMetric->setValueNoLock(nHttpPostMessagesReceived);
+		}
+		
+	    if (wsClientSessionLoggingNeeded == true) { 
+			SPLAPPTRC(L_ERROR, "Operator " << operatorPhysicalName <<
+				"-->Channel " << boost::to_string(udpChannelNumber) <<
+				"HTTP Request=" << con->get_request().raw() << 
+				", HTTP Body=" << con->get_request_body() << 
+				".", "on_http_message");
+	    }
+	    
+	    if (wsSessionLoggingDone == false) {
+			SPLAPPTRC(L_INFO, "Operator " << operatorPhysicalName <<
+				"-->Channel " << boost::to_string(udpChannelNumber) <<
+				"HTTP Request=" << con->get_request().raw() << 
+				", HTTP Body=" << con->get_request_body() << 
+				".", "on_http_message");
+	    }
+	<%}%>
+} // End of on_http_message
+
+// The logic here is exactly same as another method above this one.
+// The method above is for handling plain http message from the client.
+// This method here is for handling TLS https message from the client.
+// Any code change you make here should also be made in the method above.
+void MY_OPERATOR::on_https_message(websocketpp::connection_hdl hdl) {
+	server_tls::connection_ptr con = NULL;
+	bool wsSessionLoggingDone = false;
+	
+	if (wsClientSessionLoggingNeeded == true) {
+		SPLAPPTRC(L_ERROR, "on_https_message called with hdl: " << hdl.lock().get(),
+				"on_https_message");
+		wsSessionLoggingDone = true;
+	}
+	
+	if (wsSessionLoggingDone == false) {
+		SPLAPPTRC(L_INFO, "on_https_message called with hdl: " << hdl.lock().get(),
+			"on_https_message");
+	}
+
+	// Upgrade our connection handle to a full connection_ptr.
+	// This connection is through a TLS endpoint.
+    con = endpoint_tls.get_con_from_hdl(hdl);
+
+	if (con == NULL) {
+		// Unable to get a valid connection.
+		return;
+	}
+		
+	SPL::int32 contentLength = 0;
+	std::string contentLengthString = con->get_request_header("Content-Length");
+	contentLength = atoi(contentLengthString.c_str());
+
+	// Send a response back to the client.
+	con->set_body(std::string("Received ") + 
+		contentLengthString + std::string(" byte(s) of your data."));
+	con->set_status(websocketpp::http::status_code::ok);
+
+	if (contentLength <= 0) {
+		// This HTTP POST didn't carry any payload.
+		return;
+	}
+
+	// Update the metric counter.
+	nHttpPostMessagesReceived++;
+	SPLAPPTRC(L_INFO, nHttpPostMessagesReceived << 
+		") Content-Length=" << contentLengthString << 
+		".", "on_https_message");
+	
+	// We have content available in the HTTP POST sent by the client.
+	// Assign it to the output tuple and send it out now.
+	OPort0Type oTuple;
+	
+	// In the HTTP POST mode, we will support only the text data and not binary at this time.
+    // At a future time, we will add support for clients to post binary data.
+	<%if ($strDataAttributeFound == 1 and defined($dataOutputAsRString)) {%>
+		oTuple.set_strData(con->get_request_body());
+		submit(oTuple, 0);
+		
+		// Update the operator metric only if the user asked for a live update.
+		if (websocketLiveMetricsUpdateNeeded == true) {
+			nHttpPostMessagesReceivedMetric->setValueNoLock(nHttpPostMessagesReceived);
+		}
+		
+	    if (wsClientSessionLoggingNeeded == true) { 
+			SPLAPPTRC(L_ERROR, "Operator " << operatorPhysicalName <<
+				"-->Channel " << boost::to_string(udpChannelNumber) <<
+				"HTTP Request=" << con->get_request().raw() << 
+				", HTTP Body=" << con->get_request_body() << 
+				".", "on_https_message");
+	    }
+	    
+	    if (wsSessionLoggingDone == false) {
+			SPLAPPTRC(L_INFO, "Operator " << operatorPhysicalName <<
+				"-->Channel " << boost::to_string(udpChannelNumber) <<
+				"HTTP Request=" << con->get_request().raw() << 
+				", HTTP Body=" << con->get_request_body() << 
+				".", "on_https_message");
+	    }
+	<%}%>
+} // End of on_https_message
 
 // Tuple processing for mutating ports 
 void MY_OPERATOR::process(

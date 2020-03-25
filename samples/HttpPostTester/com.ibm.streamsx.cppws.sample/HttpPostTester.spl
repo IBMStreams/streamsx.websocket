@@ -1,0 +1,210 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+==================================================================
+First created on: Feb/13/2020
+Last modified on: Mar/22/2020
+
+This main composite file contains the logic to send
+a payload (plain text, JSON or XML) to a given HTTP(S) endpoint.
+This application is mainly used to test the WebSocketSource
+operator in the streamsx.cppws toolkit by sending data via
+HTTP(S) POST. In order to send the data, it also uses another
+utility operator named HttpPost available in that same 
+streamsx.cppws toolkit.
+
+This test application can be built using the Makefile available
+in this example directory.
+
+make clean
+make
+==================================================================
+*/
+namespace com.ibm.streamsx.cppws.sample;
+
+use com.ibm.streamsx.cppws.op::*;
+
+// This is a main composite.
+composite HttpPostTester {
+	param
+		// XML Payload is 2.5KB in size.
+		expression<rstring> $XML_PAYLOAD : 
+			'<?xml version="1.0" encoding="UTF-8"?>' +  
+			'<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.ibm.com/wbe/casoap/types" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+' +
+			'<soapenv:Header />' +
+			'<soapenv:Body>' +
+			'<typ:PowerOutageNotification>' +
+			'<EndDeviceEvent>' +
+			'<CorrelationID>41b405a6-5b56-45d1-a1f7-f209dc0a26b1</CorrelationID>' +
+			'<meterId>999_E_meter</meterId>' +
+			'<transformerId />' +
+			'<circuitId />' +
+			'<meterTimestamp>2020-01-13T00:24:51.078</meterTimestamp>' +
+			'<headendTimestamp>2020-01-13T00:24:51.079</headendTimestamp>' +
+			'<alarmType>3.26.1.185</alarmType>' +
+			'<alarmPayload>PG06TWV0ZXJBbGFybSB4bWxuczptPSJodHRwOi8vbWV0ZXJhbGFybS5lc20uZHRlY28uY29tL3YyIyI+PEhlYWRlciB4bWxucz0iaHR0cDovL2VzbS5kdGVjby5jb20vY29tbW9uL3YxIj48VmVyYj5jcmVhdGVkPC9WZXJiPjxOb3VuPkVuZERldmljZUV2ZW50PC9Ob3VuPjxUaW1lc3RhbXA+MjAyMC0wMS0xM1QwODoyNDo1MVo8L1RpbWVzdGFtcD48U291cmNlPkVTQjwvU291cmNlPjxNZXNzYWdlSUQ+MzY5M2Y2ZDktMTIzOC00YWNmLWEzMTQtZjIwOWRjMGE0YmQ0PC9NZXNzYWdlSUQ+PENvcnJlbGF0aW9uSUQ+NDFiNDA1YTYtNWI1Ni00NWQxLWExZjctZjIwOWRjMGEyNmIxPC9Db3JyZWxhdGlvbklEPjwvSGVhZGVyPjxFbmREZXZpY2VFdmVudHMgeG1sbnM9Imh0dHA6Ly9pZWMuY2gvVEM1Ny8yMDExL0VuZERldmljZUV2ZW50cyMiPjxFbmREZXZpY2VFdmVudD48Y3JlYXRlZERhdGVUaW1lPjIwMjAtMDEtMTNUMDA6MjQ6NTEuMDc5PC9jcmVhdGVkRGF0ZVRpbWU+PGlzc3VlcklEPkl0cm9uPC9pc3N1ZXJJRD48aXNzdWVyVHJhY2tpbmdJRD4xODAwMTwvaXNzdWVyVHJhY2tpbmdJRD48QXNzZXRzPjxtUklEPjk5OV9FX21ldGVyPC9tUklEPjxOYW1lcz48bmFtZT45OTlfRV9tZXRlcjwvbmFtZT48TmFtZVR5cGU+PGRlc2NyaXB0aW9uPkVsZWN0cm9uaWMgU2VyaWFsIE51bWJlcjwvZGVzY3JpcHRpb24+PG5hbWU+RVNOPC9uYW1lPjwvTmFtZVR5cGU+PC9OYW1lcz48L0Fzc2V0cz48RW5kRGV2aWNlRXZlbnREZXRhaWxzPjxuYW1lPlRyYW5zZm9ybWVySUQ8L25hbWU+PHZhbHVlIHJlZj0iIi8+PC9FbmREZXZpY2VFdmVudERldGFpbHM+PEVuZERldmljZUV2ZW50RGV0YWlscz48bmFtZT5DaXJjdWl0SUQ8L25hbWU+PHZhbHVlIHJlZj0iIi8+PC9FbmREZXZpY2VFdmVudERldGFpbHM+PEVuZERldmljZUV2ZW50RGV0YWlscz48bmFtZT5WZW5kb3JBbGFybUNhdGVnb3J5PC9uYW1lPjx2YWx1ZSByZWY9IlBvd2VyT3V0YWdlT3JSZXN0b3JhdGlvbiIvPjwvRW5kRGV2aWNlRXZlbnREZXRhaWxzPjxFbmREZXZpY2VFdmVudERldGFpbHM+PG5hbWU+VmVuZG9yQWxhcm1OYW1lPC9uYW1lPjx2YWx1ZSByZWY9IlByaW1hcnkgUG93ZXIgVXAiLz48L0VuZERldmljZUV2ZW50RGV0YWlscz48RW5kRGV2aWNlRXZlbnRUeXBlIHJlZj0iMy4yNi4xLjIxNiIvPjxzdGF0dXM+PGRhdGVUaW1lPjIwMjAtMDEtMTNUMDA6MjQ6NTEuMDc4PC9kYXRlVGltZT48L3N0YXR1cz48VXNhZ2VQb2ludD48bVJJRC8+PC9Vc2FnZVBvaW50PjwvRW5kRGV2aWNlRXZlbnQ+PC9FbmREZXZpY2VFdmVudHM+PC9tOk1ldGVyQWxhcm0+</alarmPayload>
+' +
+			'</EndDeviceEvent>' +
+			'</typ:PowerOutageNotification>' +
+			'</soapenv:Body>' +
+			'</soapenv:Envelope>';
+		
+		// User can configure the number of senders they want to
+		// use for pushing the XML payload in parallel.
+		expression<int32> $numSenders : 
+			(int32)getSubmissionTimeValue("NumSenders", "1");
+		
+		// User must provide the URL for the HTTP endpoint.
+		expression<rstring> $url : getSubmissionTimeValue("Url");
+		
+		// Do we want HttpsPost to display the status of its POST steps/actions.
+		expression<boolean> $logHttpPostActions : (boolean)getSubmissionTimeValue("LogHttpPostActions", "false");
+		
+		// What is the desired message rate we want to test with.
+		expression<float64> $maxMessageRate : 
+			(float64)getSubmissionTimeValue("MaxMessageRate", "500.00");
+		
+		// Number of seconds during which to assemble a batch of 
+		// incoming payload (XML or JSON) messages and then send it via HTTP POST.
+		expression<float64> $messageBatchingTime : 
+			(float64)getSubmissionTimeValue("MessageBatchingTime", "5.0");
+					
+	graph
+		// Keep generating infinite number of tuples as fast as 
+		// possible carrying the XML payload.
+		(stream<rstring payload> Payload) = Beacon() {
+			param
+				initDelay: 5.0;
+				// iterations: 1;
+				
+			output
+				Payload: payload = $XML_PAYLOAD;
+		}
+		
+		// This operator sends a periodic timer signal to 
+		// send a batch of messages collected during that period.
+		(stream<boolean signal> MessageBatchTimer) = Beacon() {
+			param
+				period: $messageBatchingTime;
+		} 
+		
+		// Throttle the incoming messages to meet the rate per second that we need.
+		(stream<Payload> ThrottledPayload) = Throttle(Payload) {
+			param
+				rate: $maxMessageRate;
+		}
+		
+		// This operator collects the incoming tuples for a specific 
+		// period of time and then sends that collected batch of tuples for
+		// HTTP POST targeted to a remote web server.
+		(stream<Payload, tuple<uint64 batchCnt>> MyPayload as MP) = 
+			Custom(ThrottledPayload as TP; MessageBatchTimer as MBT) {
+			logic
+				state: {
+					mutable list<rstring> _msgList = [];
+					mutable uint64 _batchCnt = 0ul;
+					mutable MyPayload _oTuple = {};
+				}
+				
+				// Keep collecting the incoming messages in a list.
+				onTuple TP: {
+					// Simply insert in the message list and leave.
+					// Collected messages will be sent periodically in a batch when
+					// receiving a timer signal.
+					//
+					// If you don't want to do batching of messages, you can
+					// change the logic in this operator to send every message on
+					// their own without inserting into a list.
+					appendM(_msgList, TP.payload);
+				}
+				
+				// When this timer signal arrives, we will send a 
+				// batch of messages as a single tuple to the downstream operator.
+				onTuple MBT: {
+					int32 msgCnt = size(_msgList);
+
+					// If there is nothing in the list, return now.					
+					if(msgCnt <= 0) {
+						return;
+					}
+					
+					++_batchCnt;
+					
+					// We can now send a batch of messages via a single HTTP POST.
+					if ($logHttpPostActions == true) {
+						printStringLn((rstring)_batchCnt + ") " + 
+							(rstring)msgCnt + " messages are ready to be sent.");
+					}
+					
+					// Convert the entire list as a string i.e. "['abc', 'rst', 'xyz']"
+					_oTuple.payload = (rstring)_msgList;
+					_oTuple.batchCnt = _batchCnt;
+					// Clear the list.
+					clearM(_msgList);
+					submit(_oTuple, MP);
+				}
+		
+			config
+				threadedPort: queue(TP, Sys.Wait), queue(MBT, Sys.Wait);
+		}
+
+		// Use as many copies of this operator to push the 
+		// payload to the remote HTTP(S) endpoint.
+		//
+		// The following Java utility operator available in the
+		// streamsx.cppws toolkit can do the HTTPS (SSL) POST at a 
+		// faster rate (200 posts per second). 
+		// For the HTTP (non-SSL) POST, this utility Java operator can 
+		// give a post rate of 1500 per second. 
+		// 
+		// The same tests done with the streamsx.inet toolkit's deprecated 
+		// HTTPPost operator resulted in 28 HTTPS (SSL) and 350 HTTP (non-SSL)
+		// posts per second.
+		@parallel(width=$numSenders)
+		(stream<int32 statusCode, rstring statusMessage, 
+		 rstring responseMessage> PostResult) = HttpPost(MyPayload as MP) {
+			param
+				url: $url;
+				logHttpPostActions: $logHttpPostActions;
+		}
+
+		// We can write the HTTP response somewhere or nowhere.
+		() as HttpResponseSink = FileSink(PostResult as PR) {
+			param
+				file: "/dev/null";
+				flush: 1u;
+				
+			//config
+				//threadedPort:  queue(PR, Sys.Wait);
+		}
+}
+
+// Following is the test XML payload we are using above. (2.5KB in size)
+/*
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:typ="http://www.ibm.com/wbe/casoap/types" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+   <soapenv:Header />
+   <soapenv:Body>
+      <typ:PowerOutageNotification>
+         <EndDeviceEvent>
+            <CorrelationID>41b405a6-5b56-45d1-a1f7-f209dc0a26b1</CorrelationID>
+            <meterId>999_E_meter</meterId>
+            <transformerId />
+            <circuitId />
+            <meterTimestamp>2020-01-13T00:24:51.078</meterTimestamp>
+            <headendTimestamp>2020-01-13T00:24:51.079</headendTimestamp>
+            <alarmType>3.26.1.185</alarmType>
+            <alarmPayload>PG06TWV0ZXJBbGFybSB4bWxuczptPSJodHRwOi8vbWV0ZXJhbGFybS5lc20uZHRlY28uY29tL3YyIyI+PEhlYWRlciB4bWxucz0iaHR0cDovL2VzbS5kdGVjby5jb20vY29tbW9uL3YxIj48VmVyYj5jcmVhdGVkPC9WZXJiPjxOb3VuPkVuZERldmljZUV2ZW50PC9Ob3VuPjxUaW1lc3RhbXA+MjAyMC0wMS0xM1QwODoyNDo1MVo8L1RpbWVzdGFtcD48U291cmNlPkVTQjwvU291cmNlPjxNZXNzYWdlSUQ+MzY5M2Y2ZDktMTIzOC00YWNmLWEzMTQtZjIwOWRjMGE0YmQ0PC9NZXNzYWdlSUQ+PENvcnJlbGF0aW9uSUQ+NDFiNDA1YTYtNWI1Ni00NWQxLWExZjctZjIwOWRjMGEyNmIxPC9Db3JyZWxhdGlvbklEPjwvSGVhZGVyPjxFbmREZXZpY2VFdmVudHMgeG1sbnM9Imh0dHA6Ly9pZWMuY2gvVEM1Ny8yMDExL0VuZERldmljZUV2ZW50cyMiPjxFbmREZXZpY2VFdmVudD48Y3JlYXRlZERhdGVUaW1lPjIwMjAtMDEtMTNUMDA6MjQ6NTEuMDc5PC9jcmVhdGVkRGF0ZVRpbWU+PGlzc3VlcklEPkl0cm9uPC9pc3N1ZXJJRD48aXNzdWVyVHJhY2tpbmdJRD4xODAwMTwvaXNzdWVyVHJhY2tpbmdJRD48QXNzZXRzPjxtUklEPjk5OV9FX21ldGVyPC9tUklEPjxOYW1lcz48bmFtZT45OTlfRV9tZXRlcjwvbmFtZT48TmFtZVR5cGU+PGRlc2NyaXB0aW9uPkVsZWN0cm9uaWMgU2VyaWFsIE51bWJlcjwvZGVzY3JpcHRpb24+PG5hbWU+RVNOPC9uYW1lPjwvTmFtZVR5cGU+PC9OYW1lcz48L0Fzc2V0cz48RW5kRGV2aWNlRXZlbnREZXRhaWxzPjxuYW1lPlRyYW5zZm9ybWVySUQ8L25hbWU+PHZhbHVlIHJlZj0iIi8+PC9FbmREZXZpY2VFdmVudERldGFpbHM+PEVuZERldmljZUV2ZW50RGV0YWlscz48bmFtZT5DaXJjdWl0SUQ8L25hbWU+PHZhbHVlIHJlZj0iIi8+PC9FbmREZXZpY2VFdmVudERldGFpbHM+PEVuZERldmljZUV2ZW50RGV0YWlscz48bmFtZT5WZW5kb3JBbGFybUNhdGVnb3J5PC9uYW1lPjx2YWx1ZSByZWY9IlBvd2VyT3V0YWdlT3JSZXN0b3JhdGlvbiIvPjwvRW5kRGV2aWNlRXZlbnREZXRhaWxzPjxFbmREZXZpY2VFdmVudERldGFpbHM+PG5hbWU+VmVuZG9yQWxhcm1OYW1lPC9uYW1lPjx2YWx1ZSByZWY9IlByaW1hcnkgUG93ZXIgVXAiLz48L0VuZERldmljZUV2ZW50RGV0YWlscz48RW5kRGV2aWNlRXZlbnRUeXBlIHJlZj0iMy4yNi4xLjIxNiIvPjxzdGF0dXM+PGRhdGVUaW1lPjIwMjAtMDEtMTNUMDA6MjQ6NTEuMDc4PC9kYXRlVGltZT48L3N0YXR1cz48VXNhZ2VQb2ludD48bVJJRC8+PC9Vc2FnZVBvaW50PjwvRW5kRGV2aWNlRXZlbnQ+PC9FbmREZXZpY2VFdmVudHM+PC9tOk1ldGVyQWxhcm0+</alarmPayload>
+         </EndDeviceEvent>
+      </typ:PowerOutageNotification>
+   </soapenv:Body>
+</soapenv:Envelope>
+*/
+
+
