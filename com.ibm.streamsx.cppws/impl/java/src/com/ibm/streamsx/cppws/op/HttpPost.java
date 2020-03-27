@@ -249,14 +249,15 @@ public class HttpPost extends AbstractOperator {
         	httpPost.setEntity(ue);
         } else  {
         	StringEntity se = new StringEntity(tuple.getString(0), ct);
-            httpPost.setEntity(se);
+        	httpPost.setEntity(se);
         }
         
         // Set the connection keep-alive request header.
         httpPost.setHeader("connection", "keep-alive");
+        httpPostCnt++;
         
         if(logHttpPostActions == true) {
-        	System.out.println((httpPostCnt+1) + 
+        	System.out.println((httpPostCnt) + 
     			") Executing request " + httpPost.getRequestLine());
         }
 
@@ -277,7 +278,7 @@ public class HttpPost extends AbstractOperator {
         }
         
         if(logHttpPostActions == true) {
-        	System.out.println((httpPostCnt+1) + ") Response=" + 
+        	System.out.println((httpPostCnt) + ") Response=" + 
         		response.getStatusLine() + " " + responseMessage);
         }
         
@@ -292,7 +293,6 @@ public class HttpPost extends AbstractOperator {
         outTuple.setString("responseMessage", responseMessage);
         // Submit new tuple to output port 0
         outStream.submit(outTuple);
-        httpPostCnt++;
         
         // Submit new tuple to output port 0
         outStream.submit(outTuple);
@@ -347,7 +347,7 @@ public class HttpPost extends AbstractOperator {
     }
     
     public static final String DESC = "This operator sends the incoming tuple's contents to the " +
-    		"specified HTTP or HTTPS endpoint via the operator named url. The incoming tuple " +
+    		"specified HTTP or HTTPS endpoint via the operator parameter named url. The incoming tuple " +
     		"must have its first attribute with a data type rstring and it must carry " + 
     		"string based content that needs be posted to the remote web server. " +
     		"Support for blob data will be added in a future version. This operator is " + 
