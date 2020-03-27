@@ -3,7 +3,7 @@
   <info:identity>
     <info:name>HttpPostTester</info:name>
     <info:description>It is used for testing the HttpPost operator available in the streamsx.cppws toolkit.</info:description>
-    <info:version>1.0.0</info:version>
+    <info:version>1.0.1</info:version>
     <info:requiredProductVersion>4.2.1.0</info:requiredProductVersion>
   </info:identity>
   <info:dependencies>

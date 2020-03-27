@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Feb/13/2020
-Last modified on: Mar/22/2020
+Last modified on: Mar/26/2020
 
 This main composite file contains the logic to send
 a payload (plain text, JSON or XML) to a given HTTP(S) endpoint.
@@ -103,7 +103,7 @@ composite HttpPostTester {
 		// This operator collects the incoming tuples for a specific 
 		// period of time and then sends that collected batch of tuples for
 		// HTTP POST targeted to a remote web server.
-		(stream<Payload, tuple<uint64 batchCnt>> MyPayload as MP) = 
+		(stream<Payload> MyPayload as MP) = 
 			Custom(ThrottledPayload as TP; MessageBatchTimer as MBT) {
 			logic
 				state: {
@@ -144,7 +144,6 @@ composite HttpPostTester {
 					
 					// Convert the entire list as a string i.e. "['abc', 'rst', 'xyz']"
 					_oTuple.payload = (rstring)_msgList;
-					_oTuple.batchCnt = _batchCnt;
 					// Clear the list.
 					clearM(_msgList);
 					submit(_oTuple, MP);
@@ -171,6 +170,17 @@ composite HttpPostTester {
 		 rstring responseMessage> PostResult) = HttpPost(MyPayload as MP) {
 			param
 				url: $url;
+				// text/plain is the default content type for this operator.
+				// It posts only the raw payload.
+				// Users can override it to suit their needs.
+				contentType: "text/plain";
+				//
+				// For scenarios that will require HTTP POST body to
+				// have the query string format (param=value),
+				// the following contentType can be used.
+				//
+				// contentType: "application/x-www-form-urlencoded";
+				//
 				logHttpPostActions: $logHttpPostActions;
 		}
 
