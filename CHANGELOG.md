@@ -1,5 +1,11 @@
 Changes
 =======
+## v1.0.2:
+* Mar/26/2020
+* Added a contentType parameter to the utility operator HttpPost.
+* Added necessary logic to have the HTTP POST message body to conform to the query string format when the content type is application/x-www-form-urlencoded.
+* Made necessary changes in the HttpPostTester example application.
+
 ## v1.0.1:
 * Mar/25/2020
 * Added support for receiving messages via HTTP(S) POST in the WebSocketSource operator.

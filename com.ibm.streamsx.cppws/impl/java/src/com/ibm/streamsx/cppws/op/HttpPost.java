@@ -9,7 +9,7 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Mar/25/2020
+Last modified on: Mar/26/2020
 
 This Java operator is an utility operator available in the
 streamsx.cppws toolkit. It can be used to do HTTP(S) post of
@@ -32,14 +32,19 @@ package com.ibm.streamsx.cppws.op;
 
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 import org.apache.http.HttpEntity;
+import org.apache.http.NameValuePair;
+import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.*;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
@@ -49,6 +54,8 @@ import org.apache.log4j.Logger;
 import com.ibm.streams.operator.AbstractOperator;
 import com.ibm.streams.operator.OperatorContext;
 import com.ibm.streams.operator.OutputTuple;
+import com.ibm.streams.operator.StreamSchema;
+import com.ibm.streams.operator.Attribute;
 import com.ibm.streams.operator.StreamingData.Punctuation;
 import com.ibm.streams.operator.StreamingInput;
 import com.ibm.streams.operator.StreamingOutput;
@@ -96,6 +103,7 @@ cardinality=1, optional=false, windowPunctuationOutputMode=WindowPunctuationOutp
 public class HttpPost extends AbstractOperator {
 	private HttpClient httpClient = null;
 	private String url = null;
+	private String contentType = "text/plain";
 	private boolean logHttpPostActions  = false;
 	private long httpPostCnt = 0;
 	
@@ -212,14 +220,43 @@ public class HttpPost extends AbstractOperator {
     	// At this time, the incoming tuple must have its string based
     	// POST content in its first attribute. In a future release,
     	// this operator will support blob content to be posted.
-        StringEntity se = new StringEntity(tuple.getString(0), 
-        	org.apache.http.entity.ContentType.TEXT_PLAIN);
-        httpPost.setEntity(se);
+    	httpPost.setHeader("Content-Type", contentType);
+    	org.apache.http.entity.ContentType ct = 
+    		org.apache.http.entity.ContentType.create(contentType);
+    	
+    	if (ct == null) {
+    		OperatorContext context = getOperatorContext();
+            Logger.getLogger(this.getClass()).error("Operator " + 
+            	context.getName() + ", Unable to create a MIME content type object from " + 
+            		contentType + ": " + context.getPE().getPEId() + 
+            		" in Job: " + context.getPE().getJobId() );
+            return;
+    	}
+    	
+        // if the content-type is set to application/x-www-form-urlencoded, then we will
+        // conform to the normal practice of having the request body's format as the query string.
+        // e-g: param1=value
+        if (contentType.equalsIgnoreCase("application/x-www-form-urlencoded") == true) {
+        	// This technique is explained in this URL: 
+        	// https://stackoverflow.com/questions/8120220/how-to-use-parameters-with-httppost
+        	ArrayList<NameValuePair> postParameters;
+        	postParameters = new ArrayList<NameValuePair>();
+        	StreamSchema ss = tuple.getStreamSchema();
+        	Attribute a1 = ss.getAttribute(0);
+        	String a1Name = a1.getName();
+        	postParameters.add(new BasicNameValuePair(a1Name, tuple.getString(a1Name)));
+        	UrlEncodedFormEntity ue = new UrlEncodedFormEntity(postParameters, "UTF-8");
+        	httpPost.setEntity(ue);
+        } else  {
+        	StringEntity se = new StringEntity(tuple.getString(0), ct);
+            httpPost.setEntity(se);
+        }
+        
         // Set the connection keep-alive request header.
         httpPost.setHeader("connection", "keep-alive");
         
         if(logHttpPostActions == true) {
-        	System.out.println(tuple.getLong("batchCnt") + 
+        	System.out.println((httpPostCnt+1) + 
     			") Executing request " + httpPost.getRequestLine());
         }
 
@@ -240,7 +277,7 @@ public class HttpPost extends AbstractOperator {
         }
         
         if(logHttpPostActions == true) {
-        	System.out.println(tuple.getLong("batchCnt") + ") Response=" + 
+        	System.out.println((httpPostCnt+1) + ") Response=" + 
         		response.getStatusLine() + " " + responseMessage);
         }
         
@@ -299,13 +336,18 @@ public class HttpPost extends AbstractOperator {
     	url = _url;
     }
     
+    @Parameter (name="contentType", description="Specify the MIME content type that you want. Default is text/plain.", optional=true)
+    public void setContentType(String _contentType) {
+    	contentType = _contentType;
+    }
+    
     @Parameter (name="logHttpPostActions", description="Do you want to log HTTP POST actions to the screen? (Default: false)", optional=true)
     public void setLogOnScreen(boolean val) {
     	logHttpPostActions = val;
     }
     
     public static final String DESC = "This operator sends the incoming tuple's contents to the " +
-    		"specified HTTP or HTTPS endpoint via the operator parameter named url. The incoming tuple " +
+    		"specified HTTP or HTTPS endpoint via the operator named url. The incoming tuple " +
     		"must have its first attribute with a data type rstring and it must carry " + 
     		"string based content that needs be posted to the remote web server. " +
     		"Support for blob data will be added in a future version. This operator is " + 
