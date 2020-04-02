@@ -93,7 +93,13 @@ There is also an example WebSocket based client application that can be run from
 
 ## WHATS NEW
 
-## v1.0.2:
+v1.0.3:
+* Apr/01/2020
+* Changed the boost asio server to use tlsv1.2.
+* Changed the WSClientDataSimulator to use tlsv1.2.
+* Changed the WSClientDataSimulator to reset the most recently received message after the application queries that value.
+
+v1.0.2:
 * Mar/26/2020
 * Added a contentType parameter to the utility operator HttpPost.
 * Added necessary logic to have the HTTP POST message body to conform to the query string format when the content type is application/x-www-form-urlencoded.

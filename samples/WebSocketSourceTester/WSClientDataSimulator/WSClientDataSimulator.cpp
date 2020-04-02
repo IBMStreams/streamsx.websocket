@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: Feb/24/2020
-Last modified on: Mar/03/2020
+Last modified on: Apr/01/2020
 
 This C++ example below can be used to generate data traffic to test the
 streamsx.cppws toolkit example named WebSocketSourceTester.
@@ -120,16 +120,38 @@ using websocketpp::lib::bind;
 
 // We need this to enable SSL on the websocket client side i.e. this application.
 context_ptr on_tls_init() {
-       // establishes a SSL connection
+	   // This method establishes the SSL negotiation and the connection.
+	   // TIP: If we want to know which TLS version gets negotiated between the
+	   // client and the server, we can run this command from a client machine:
+	   //
+	   // openssl s_client -connect TLSHost:port
+	   // openssl s_client -connect b0513:8443
+	   //
+	   // You can read more about that command in this URL:
+	   // https://security.stackexchange.com/questions/100029/how-do-we-determine-the-ssl-tls-version-of-an-http-request
+	   //
+	   // As a client, we can request the server to support only the tlsv12 protocol.
+	   // We can disable the other SSL, TLS protocol versions in order to
+	   // strengthen the security.
+	   // You can read more details about this from here.
+	   // https://stackoverflow.com/questions/47096415/how-to-make-boostasio-ssl-server-accept-both-tls-1-1-and-tls-1-2/47097088
+	   // https://www.boost.org/doc/libs/1_58_0/doc/html/boost_asio/reference/ssl__context.html
+	   // https://www.boost.org/doc/libs/1_58_0/doc/html/boost_asio/reference/ssl__context/method.html
+	   //
+	   // We can initialize the asio client context with sslv3. Then, we can apply the
+	   // no_tlsxxx flags to disable a particular tls version as needed.
        context_ptr ctx = std::make_shared<boost::asio::ssl::context>(boost::asio::ssl::context::sslv23);
 
+	   // We will support only tlsv1.2. Let us disable all the other older
+	   // tls versions including the very old ssl v2 and v3 protocols.
        try {
           ctx->set_options(boost::asio::ssl::context::default_workarounds |
-                         boost::asio::ssl::context::no_sslv2 |
-                         boost::asio::ssl::context::no_sslv3 |
-                         boost::asio::ssl::context::single_dh_use);
+                      boost::asio::ssl::context::no_sslv2 |
+                      boost::asio::ssl::context::no_sslv3 |
+					  boost::asio::ssl::context::no_tlsv1 |
+                      boost::asio::ssl::context::single_dh_use);
        } catch (std::exception &e) {
-           std::cout << "Error in context pointer: " << e.what() << std::endl;
+          std::cout << "Error in context pointer: " << e.what() << std::endl;
        }
 
        return ctx;
@@ -201,7 +223,13 @@ public:
     }
 
     std::string get_recent_message_received() {
-       return m_recent_message_received;
+       // When the application logic queries here for the most
+       // recently received message, we will deliver it only once.
+       // Since it is being now returned to the application logic,
+       // we will reset our member variable to an empty string.
+       std::string msg = m_recent_message_received;
+       m_recent_message_received = "";
+       return msg;
     }
 
     friend std::ostream & operator<< (std::ostream & out, connection_metadata const & data);
