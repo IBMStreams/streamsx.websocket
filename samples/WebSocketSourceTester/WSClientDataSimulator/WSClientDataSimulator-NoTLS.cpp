@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: Feb/24/2020
-Last modified on: Mar/09/2020
+Last modified on: Apr/01/2020
 
 This C++ example below can be used to generate data traffic to test the
 streamsx.cppws toolkit example named WebSocketSourceTester.
@@ -228,7 +228,13 @@ public:
     }
 
     std::string get_recent_message_received() {
-       return m_recent_message_received;
+       // When the application logic queries here for the most
+       // recently received message, we will deliver it only once.
+       // Since it is being now returned to the application logic,
+       // we will reset our member variable to an empty string.
+       std::string msg = m_recent_message_received;
+       m_recent_message_received = "";
+       return msg;
     }
 
     friend std::ostream & operator<< (std::ostream & out, connection_metadata const & data);

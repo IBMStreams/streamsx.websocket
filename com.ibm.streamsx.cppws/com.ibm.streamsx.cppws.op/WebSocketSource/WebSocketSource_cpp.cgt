@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Feb/22/2020
- Last modified on: Mar/24/2020
+ Last modified on: Apr/01/2020
 
  This particular operator (WebSocketSource) is used to
  receive either text data or binary data from one or more
@@ -469,19 +469,45 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(
 				"on_tls_init");
 	}
 
+	// TIP: If we want to know which TLS version gets negotiated between the
+	// client and the server, we can run this command from a client machine:
+	//
+	// openssl s_client -connect TLSHost:port
+	// openssl s_client -connect b0513:8443
+	//
+	// You can read more about that command in this URL:
+	// https://security.stackexchange.com/questions/100029/how-do-we-determine-the-ssl-tls-version-of-an-http-request
+	//
+	// We will configure the boost asio server to support only the tlsv12 protocol.
+	// We can disable the other SSL, TLS protocol versions in order to 
+	// strengthen the security.
+	// You can read more details about this from here.
+	// https://stackoverflow.com/questions/47096415/how-to-make-boostasio-ssl-server-accept-both-tls-1-1-and-tls-1-2/47097088
+	// https://www.boost.org/doc/libs/1_58_0/doc/html/boost_asio/reference/ssl__context.html
+	// https://www.boost.org/doc/libs/1_58_0/doc/html/boost_asio/reference/ssl__context/method.html
+	//
+	// As shown in the URL above, we can use one of several TLS context methods such as
+	// tlsv1, tlsv1_server, tlsv11, tlsv11_server, tlsv12, tlsv12_server. Using one of these
+	// options will start only a server supporting that TLS version. Alternatively, we can simply
+	// use tls_server which will allow all the versions i.e. v1, v11 and v12. Then, we can apply the 
+	// no_tlsxxx flags to disable a particular tls version as needed.
 	context_ptr ctx(
-			new boost::asio::ssl::context(boost::asio::ssl::context::tlsv1));
+		new boost::asio::ssl::context(boost::asio::ssl::context::tls_server));
 
 	try {
+		// We will support only tlsv1.2. Let us disable all the other older 
+		// tls versions including the very old ssl v2 and v3 protocols.
 		ctx->set_options(
 				boost::asio::ssl::context::default_workarounds
 						| boost::asio::ssl::context::no_sslv2
 						| boost::asio::ssl::context::no_sslv3
+						| boost::asio::ssl::context::no_tlsv1
+						| boost::asio::ssl::context::no_tlsv1_1
 						| boost::asio::ssl::context::single_dh_use);
 		ctx->set_password_callback(bind(&MY_OPERATOR::get_password, this));
 		ctx->use_certificate_chain_file(certificateFileName.c_str());
 		ctx->use_private_key_file(certificateFileName.c_str(),
-				boost::asio::ssl::context::pem);
+			boost::asio::ssl::context::pem);
 		// Let us keep track of all the connection handles that use TLS context.
 		// This will be useful in the prepareToShutdown method above to
 		// distinguish between TLS endpoint and non-TLS (plain) endpoint.
@@ -492,7 +518,7 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(
 	} catch (std::exception& e) {
 		std::cout << e.what() << std::endl;
 	}
-
+	
 	return ctx;
 }
 
