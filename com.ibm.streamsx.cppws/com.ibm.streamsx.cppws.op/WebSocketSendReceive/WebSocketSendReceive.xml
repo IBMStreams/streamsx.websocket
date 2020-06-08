@@ -1,0 +1,357 @@
+<?xml version="1.0" ?>
+<operatorModel
+  xmlns="http://www.ibm.com/xmlns/prod/streams/spl/operator" 
+  xmlns:cmn="http://www.ibm.com/xmlns/prod/streams/spl/common" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.ibm.com/xmlns/prod/streams/spl/operator operatorModel.xsd">
+  <cppOperatorModel>
+    <context>
+      <description>
+      The client-based WebSocketSendReceive operator is designed to serve a dual purpose of
+      simultaneously sending data to and receiving data from a remote WebSocket server.
+      This operator can be used to send and receive text (plain text, JSON or XML) 
+      and/or binary data. With this arrangement, sending and receiving of data can 
+      happen independent of each other. This feature of simultaneously sending and 
+      receiving data to/from the remote WebSocket server is possible due to the 
+      bidirectional (full duplex) connection offered by the WebSocket protocol. 
+      Such a connection to the remote server is persistent and long running until 
+      either party (client or server) closes the connection. Based on the remote 
+      WebSocket server url's protocol field, this operator will establish a 
+      connection either via plain WebSocket (ws or http) or via TLS WebSocket (wss or https). 
+      
+      This is Send-and-Receive to/from a single server-based remote WebSocket application. 
+      This operator promotes One-To-One data access pattern.
+      
+      Connection to the remote server is attempted when this operator starts up. 
+      If the remote WebSocket server becomes unavailable at any given time, 
+      this operator behind the scenes will try to establish the connection at a user 
+      configurable periodic interval. Once established, this operator will keep that 
+      connection persistent until this operator is shutdown or the remote server is stopped  
+      or any other network error occurs. If the remote server closes the connection when 
+      this operator is still active, any incoming tuple into this operator at that time 
+      will not be sent to the remote server at all. In this case, the application logic 
+      invoking this operator can retransmit that tuple at a later time just because 
+      this operator will keep trying to restablish the connection behind the scenes. 
+      It is a good practice for the application logic to backoff and wait for a 
+      reasonable amount of time when there is a connection error with the
+	  remote WebSocket server before inputting a tuple again into this operator.
+	  Otherwise, it will trigger too many connection attempts on every incoming
+	  tuple to send it to the remote server. So, the application logic should make an 
+	  attempt to wait for a while before attempting to send the data after knowing that 
+	  there is an ongoing connection problem with the remote server.
+      
+      This operator provides one input port through which an application can send data to the
+      remote WebSocket server. This input port must have either rstring strData or 
+      blob blobData or both of them as the incoming tuple attribute(s).
+      
+      This operator provides two output ports. On the first output port, it keeps returning the data
+      received from the remote server. This output port must have either rstring strData or 
+      blob blobData or both of them as the output tuple attribute(s). Optionally, it can have
+      uint64 numberOfDataItemsReceived and uint64 numberOfDataBytesReceived attributes to be
+      assigned via the output functions provided by this operator. On the second output port, 
+      it keeps returning the result about whether a given incoming tuple was successfully
+      sent to the remote server or not. This output port must have int32 sendResultCode and
+      rstring sendResultMessage as its output tuple attributes. A value of 0 in sendResultCode means
+      a successful sending of data, otherwise error in sending the data. If this attribute carries a
+      non-zero value, then the application can have additional logic to retransmit that same 
+      data item at a later time. Please refer to the output port section below for more details.
+      
+      Requirements: 
+      * Intel RHEL6 or RHEL7 hosts installed with IBM Streams. 
+      
+      See the samples folder inside this toolkit for a working example that shows how to use this operator.
+      
+      For a detailed documentation about the operator design, usage patterns and in-depth technical
+      details, please refer to the official cppws toolkit documentation available at this URL:
+      
+      [https://ibmstreams.github.io/streamsx.cppws]
+      </description>
+
+      <iconUri size="16">ibmwssendreceive_16.gif</iconUri>
+      <iconUri size="32">ibmwssendreceive_32.gif</iconUri>
+
+      <metrics>
+        <metric>
+          <name>nDataItemsSentToRemoteServer</name>
+          <description>Number of data items sent to the remote server thus far.</description>
+          <kind>Gauge</kind>
+        </metric>
+
+        <metric>
+          <name>nDataBytesSentToRemoteServer</name>
+          <description>Total number of data bytes sent to the remote server thus far.</description>
+          <kind>Gauge</kind>
+        </metric>
+        
+        <metric>
+          <name>nDataItemsReceivedFromRemoteServer</name>
+          <description>Number of data items received from the remote server thus far.</description>
+          <kind>Gauge</kind>
+        </metric>
+        
+        <metric>
+          <name>nDataBytesReceivedFromRemoteServer</name>
+          <description>Total number of data bytes received from the remote server thus far.</description>
+          <kind>Gauge</kind>
+        </metric>
+        
+        <metric>
+          <name>nWebsocketConnectionActiveStatus</name>
+          <description>Indicates the current active status of the WebSocket connection.</description>
+          <kind>Gauge</kind>
+        </metric>
+      </metrics>
+
+     <customOutputFunctions>
+        <customOutputFunction>
+          <name>WebSocketSendReceiveFunctions</name>
+          <function>
+            <description>The default function for output attributes. This function assigns the output attribute to the value of the input attribute with the same name.</description>
+            <prototype><![CDATA[<any T> T AsIs(T)]]></prototype> 
+          </function>          
+          <function>
+            <description>Returns an uint64 value indicating the total number of data items received so far from the remote server.</description>
+            <prototype><![CDATA[uint64 getTotalDataItemsReceived()]]></prototype>
+          </function>
+          <function>
+            <description>Returns an uint64 value indicating the total number of data bytes received so far from the remote server.</description>
+            <prototype><![CDATA[uint64 getTotalDataBytesReceived()]]></prototype>
+          </function>
+          <function>
+            <description>Returns an uint64 value indicating the total number of data items sent so far to the remote server.</description>
+            <prototype><![CDATA[uint64 getTotalDataItemsSent()]]></prototype>
+          </function>
+          <function>
+            <description>Returns an uint64 value indicating the total number of data bytes sent so far to the remote server.</description>
+            <prototype><![CDATA[uint64 getTotalDataBytesSent()]]></prototype>
+          </function>
+		</customOutputFunction>
+      </customOutputFunctions>
+      
+      <libraryDependencies>
+        <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_system</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library>
+         
+        <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_chrono</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library>
+                
+        <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_random</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library>       
+
+         <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_thread</cmn:lib>
+            <cmn:libPath>../../impl/lib</cmn:libPath>
+            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+          </cmn:managedLibrary>
+        </library> 
+      </libraryDependencies>
+
+      <providesSingleThreadedContext>Never</providesSingleThreadedContext>
+    </context>  
+    
+    <parameters>
+      <allowAny>false</allowAny>
+
+      <parameter>
+        <name>url</name>
+        <description>This parameter specifies the URL of the remote WebSocket server.</description>
+        <optional>false</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>certificateFileName</name>
+        <description>This parameter specifies the full path of the WebSocket client's private key and public certificate holding PEM file name. Default is an empty string. User can override this.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>trustedServerCertificateFileName</name>
+        <description>This parameter specifies the full path of the PEM file name that contains the public certificate of the trusted remote server. This allows for the server authentication. If this parameter is not used or empty, then there will be no server authentication. (Default is an empty string.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>trustedServerX509SubjectIdentifiers</name>
+        <description>This parameter specifies a list of verifiable identifiers present in the subject field of the trusted server's public certificate. It is helpful in performing the server authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: \["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=cppws.streams@ibm.com"\] (Default is an empty list.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>list&lt;rstring></type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>websocketLiveMetricsUpdateNeeded</name>
+        <description>This parameter specifies whether live update for this operator's custom metrics is needed. (Default is true)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>websocketLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed from the WebSocket library. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+ 
+       <parameter>
+        <name>wsConnectionLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed when this operator connects and disconnects to/from the remote server. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+ 
+      <parameter>
+        <name>wsClientSessionLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed when the client session send/receive is in progress with the remote server. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>newDataCpuYieldTimeInSenderThread</name>
+        <description>This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that is just about to send a new data item to the remote server. It should be >= 0.0 (Default is 0.001 i.e. 1 millisecond)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>float64</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>noDataCpuYieldTimeInSenderThread</name>
+        <description>This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote server. It should be >= 0.0 (Default is 0.001 i.e. 1 millisecond)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>float64</type>
+        <cardinality>1</cardinality>
+      </parameter> 
+
+      <parameter>
+        <name>reconnectionInterval</name>
+        <description>This parameter specifies the periodic time interval (in partial seconds) at which reconnection to the remote WebSocket server will be attempted. It should be > 0.0 (Default is 60.0 seconds)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>float64</type>
+        <cardinality>1</cardinality>
+      </parameter>      
+    </parameters>
+
+    <inputPorts>
+      <inputPortSet>
+      	<description>
+      	This port brings the data into this operator for sending it to the remote WebSocket server.
+      	
+      	Attributes on this input port:
+		* **strData** (required, rstring) - Any text based data (plain text, JSON or XML) can be sent to the remote WebSocket server via this attribute.
+		* **blobData** (required, blob) - Any binary (blob) data can be sent to the remote WebSocket server via this attribute.
+        
+		All the extra input attributes will be ignored.  	
+      	</description>
+        <tupleMutationAllowed>true</tupleMutationAllowed>
+        <windowingMode>NonWindowed</windowingMode>
+        <windowPunctuationInputMode>Oblivious</windowPunctuationInputMode>
+      	<cardinality>1</cardinality>
+      	<optional>false</optional>
+      </inputPortSet>      
+    </inputPorts>
+
+    <outputPorts>
+      <outputPortSet>
+      	<description>
+      	This port produces the output tuples that carry the text or binary data received from 
+      	the remote WebSocket server. The schema for this port must either have an attribute named 
+      	strData with an rstring data type to hold the received text data or an attribute named
+      	blobData with a blob data type to hold the received binary data or both. This port can also  
+      	have two more uint64 optional attributes to receive the current output tuple count and the
+      	total number of data bytes received thus far from the remote server.  
+		Please refer to the custom output functions provided by this operator to query the current tuple count 
+		and the total data bytes received and assign such values to the optional tuple attributes in this
+		output port. 
+      	
+        **There are multiple available output functions**, and output attributes can also be 
+        assigned values with any SPL expression that evaluates to the proper type.      	
+      	</description>
+        <expressionMode>Expression</expressionMode> 
+        <autoAssignment>false</autoAssignment>
+        <completeAssignment>false</completeAssignment>
+        <rewriteAllowed>true</rewriteAllowed>
+        <outputFunctions>
+            <default>AsIs</default>
+            <type>WebSocketSendReceiveFunctions</type>
+        </outputFunctions> 
+        <windowPunctuationOutputMode>Free</windowPunctuationOutputMode>
+        <tupleMutationAllowed>false</tupleMutationAllowed>
+        <cardinality>1</cardinality>
+        <optional>false</optional>
+      </outputPortSet> 
+      
+      <outputPortSet>
+      	<description>
+      	This port returns the result about whether a given input tuple consumed by this 
+      	operator was successfully sent to the remote WebSocket server or not. The schema 
+      	for this port must have two attributes: int32 sendResultCode, rstring sendResultMessage.
+      	sendResultCode will carry a value of  0 on a successful send to the remote server and a
+      	non-zero result in case of an error in sending the data. sendResultMessage will
+      	carry a descriptive message about the send result. Application logic can check these 
+      	output tuple attributes and have additional logic to retransmit a given 
+      	input tuple if it was not sent to the remote server due to an error (e-g: broken connection).
+      	</description>
+        <expressionMode>Expression</expressionMode> 
+        <autoAssignment>false</autoAssignment>
+        <completeAssignment>false</completeAssignment>
+        <rewriteAllowed>true</rewriteAllowed>
+        <windowPunctuationOutputMode>Free</windowPunctuationOutputMode>
+        <tupleMutationAllowed>false</tupleMutationAllowed>
+        <cardinality>1</cardinality>
+        <optional>false</optional>
+      </outputPortSet>          
+    </outputPorts>
+   </cppOperatorModel>
+</operatorModel>

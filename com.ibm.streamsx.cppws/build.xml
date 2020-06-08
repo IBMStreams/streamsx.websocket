@@ -48,7 +48,7 @@
 
 	<path id="cp.manifest">
 			<fileset dir="opt">
-				<include name="HTTPClient-4.3.6/lib/*.jar"/>
+				<include name="HTTPClient-4.5.12/lib/*.jar"/>
 			</fileset>
 	</path>
 	

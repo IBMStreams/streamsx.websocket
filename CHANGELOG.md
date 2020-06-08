@@ -1,5 +1,19 @@
 Changes
 =======
+## v1.0.4:
+* Jun/07/2020
+* This version is upgraded to use the C++ Boost v1.73.0 and websocketpp v0.8.2.
+* Server-based WebSocketSource operator can now receive both text and binary data from the HTTP clients.
+* WebSocketSource allows a new optional roundtripping feature using which text or binary responses can be sent back to the WebSocket and HTTP clients after processing/analyzing the text or binary data received from those clients.
+* A new client-based WebSocketSendReceive operator introduced in this version can be used for establishing a connection to a remote WebSocket server and then start exchanging text or binary data in both directions i.e. send data to the remote server as well as receive data from the remote server.
+* A new server-based WebSocketSink operator introduced in this version can be used to accept connection(s) from one or more remote WebSocket clients and then one-way text or binary messages can be sent (broadcast) from this operator to all the connected clients.
+* Server-based WebSocketSource and WebSocketSink operators allow an optional parameter to provide a client whitelist to accept connections only from certain client IP addresses.
+* Server-based WebSocketSource and WebSocketSink operators allow an optional input port to dynamically update the client whitelist after those operators have already been started and began processing tuples.
+* HttpPost operator is redesigned to post/send text or binary data.
+* All the four operators available in this toolkit can now accept their own TLS private certificate file as well as the remote party's TLS public certificate and optionally perform two-way (mutual) client or server TLS certificate verification/authentication.
+* New comprehensive examples are introduced in this version where each example showcases the full power and features of all the four operators available in this toolkit.
+* Many new operator metrics and output functions for all the four operators are added in this version.
+
 ## v1.0.3:
 * Apr/01/2020
 * Changed the boost asio server to use tlsv1.2.

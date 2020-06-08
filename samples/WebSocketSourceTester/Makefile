@@ -22,7 +22,8 @@ else
     TOOLKIT_PATH = $(STREAMS_CPPWS_TOOLKIT)
 endif
 
-SPL_MAIN_COMPOSITE = com.ibm.streamsx.cppws.sample::WebSocketSourceTester
+SPL_MAIN_COMPOSITE1 = com.ibm.streamsx.cppws.sample::WebSocketSourceTester
+SPL_MAIN_COMPOSITE2 = com.ibm.streamsx.cppws.sample::HttpBinarySendToWebSocketSource
 SPLC_FLAGS = -a --c++std=c++11 -x '-I $(STREAMS_CPPWS_TOOLKIT)/impl/include'
 SPL_CMD_ARGS ?=
 
@@ -31,8 +32,10 @@ build: distributed
 all: clean build
 
 distributed:
-	$(SPLC) $(SPLC_FLAGS) -M $(SPL_MAIN_COMPOSITE) -t ${TOOLKIT_PATH} --data-dir $(DATA_DIR) --output-dir $(OUTPUT_DIR) $(SPL_CMD_ARGS)
+	$(SPLC) $(SPLC_FLAGS) -M $(SPL_MAIN_COMPOSITE1) -t ${TOOLKIT_PATH} --data-dir $(DATA_DIR) --output-dir $(OUTPUT_DIR) $(SPL_CMD_ARGS)
+	$(SPLC) $(SPLC_FLAGS) -M $(SPL_MAIN_COMPOSITE2) -t ${TOOLKIT_PATH} --data-dir $(DATA_DIR) --output-dir $(OUTPUT_DIR) $(SPL_CMD_ARGS)
 
 clean:
-	$(SPLC) $(SPLC_FLAGS) -M $(SPL_MAIN_COMPOSITE) -t ${TOOLKIT_PATH} --data-dir $(DATA_DIR) --output-dir $(OUTPUT_DIR) -C $(SPL_CMD_ARGS)
+	$(SPLC) $(SPLC_FLAGS) -M $(SPL_MAIN_COMPOSITE1) -t ${TOOLKIT_PATH} --data-dir $(DATA_DIR) --output-dir $(OUTPUT_DIR) -C $(SPL_CMD_ARGS)
+	$(SPLC) $(SPLC_FLAGS) -M $(SPL_MAIN_COMPOSITE2) -t ${TOOLKIT_PATH} --data-dir $(DATA_DIR) --output-dir $(OUTPUT_DIR) -C $(SPL_CMD_ARGS)
 	rm -rf output

@@ -9,50 +9,76 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Mar/26/2020
+Last modified on: Jun/07/2020
 
 This Java operator is an utility operator available in the
 streamsx.cppws toolkit. It can be used to do HTTP(S) post of
-the plain text, JSON and XML formatted data. It can be used
-to test the HTTP/HTTPS data reception feature of the 
-streamsx.cppws::WebSocketSource operator. If you see sit,
-you can also use it for use in your applications.
+plain text or JSON or XML data or binary data. 
+It can be used to test the HTTP/HTTPS text/binary data send/receive  
+feature of the streamsx.cppws::WebSocketSource operator. If you 
+see a fit, you can also use it for similar needs in your applications.
 
+This is a very simple implementation without too many
+bells and whistles so that it is easier to use in SPL applications.
 This operator can do the HTTPS (SSL) POST at a faster rate 
 (200 posts per second). For the HTTP (non-SSL) POST, this utility 
 Java operator can give a post rate of 1500 per second. 
 
-The same tests done with the streamsx.inet toolkit's deprecated 
-HTTPPost operator resulted in 28 HTTPS (SSL) and 350 HTTP (non-SSL)
-posts per second.
+If you observe either a missing or an empty 
+streamsx.cppws/com.ibm.streamsx.cppws/impl/java/bin directory, 
+then you should run `ant all` from the 
+streamsx.cppws/com.ibm.streamsx.cppws directory. 
+That will compile this HttpPost Java operator.
+
+In the absence of a real web server, you can direct your 
+(non-confidential) test data traffic from this operator to this 
+site to check your HTTP POST headers and content (webhook.site). 
+You can learn more about it at this URL: https://simonfredsted.com/1583
+
+TLS trust store and keystore creation (Java related) links:
+https://docs.oracle.com/cd/E19509-01/820-3503/ggfgo/index.html
 ==================================================================
 */
 package com.ibm.streamsx.cppws.op;
 
-
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
+import java.io.File;
+import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
+import java.security.cert.CertificateException;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import org.apache.http.conn.ssl.NoopHostnameVerifier;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.conn.ssl.TrustAllStrategy;
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.ssl.SSLContextBuilder;
+import org.apache.http.ssl.SSLContexts;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
 import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.HttpClient;
+import org.apache.http.Header;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.*;
-import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.entity.mime.HttpMultipartMode;
 import org.apache.http.util.EntityUtils;
 import org.apache.log4j.Logger;
 
 import com.ibm.streams.operator.AbstractOperator;
 import com.ibm.streams.operator.OperatorContext;
+import com.ibm.streams.operator.OperatorContext.ContextCheck;
 import com.ibm.streams.operator.OutputTuple;
 import com.ibm.streams.operator.StreamSchema;
 import com.ibm.streams.operator.Attribute;
@@ -60,6 +86,7 @@ import com.ibm.streams.operator.StreamingData.Punctuation;
 import com.ibm.streams.operator.StreamingInput;
 import com.ibm.streams.operator.StreamingOutput;
 import com.ibm.streams.operator.Tuple;
+import com.ibm.streams.operator.compile.OperatorContextChecker;
 import com.ibm.streams.operator.model.InputPortSet;
 import com.ibm.streams.operator.model.InputPortSet.WindowMode;
 import com.ibm.streams.operator.model.InputPortSet.WindowPunctuationInputMode;
@@ -70,7 +97,11 @@ import com.ibm.streams.operator.model.OutputPortSet.WindowPunctuationOutputMode;
 import com.ibm.streams.operator.model.OutputPorts;
 import com.ibm.streams.operator.model.Parameter;
 import com.ibm.streams.operator.model.PrimitiveOperator;
-
+import com.ibm.streams.operator.types.RString;
+import com.ibm.streams.operator.types.ValueFactory;
+import com.ibm.streams.operator.metrics.Metric;
+import com.ibm.streams.operator.metrics.Metric.Kind;
+import com.ibm.streams.operator.model.CustomMetric;
 
 /**
  * Class for an operator that receives a tuple and then optionally submits a tuple. 
@@ -93,19 +124,50 @@ import com.ibm.streams.operator.model.PrimitiveOperator;
  */
 @PrimitiveOperator(name="HttpPost", namespace="com.ibm.streamsx.cppws.op",
 description=HttpPost.DESC)
-@InputPorts({@InputPortSet(description="Receives tuples whose first string based attribute's content will be sent as the HTTP(S) POST content.", 
+@InputPorts({@InputPortSet(description=
+"Receives tuples whose first string based attribute's content or the second " +
+"blob based attribute's content will be sent as the HTTP(S) POST payload. " +
+"So, the input tuple's first attribute should be of type rstring carrying the text payload to be sent, " +
+"the second attribute should be of type blob carrying the binary payload to be sent and the third " +
+"attribute should be of type map<rstring, rstring> populated with any application-specific custom " +
+"HTTP request headers to be sent to the remote web server.", 
 cardinality=1, optional=false, windowingMode=WindowMode.NonWindowed, windowPunctuationInputMode=WindowPunctuationInputMode.Oblivious), @InputPortSet(description="Optional input ports", optional=true, windowingMode=WindowMode.NonWindowed, windowPunctuationInputMode=WindowPunctuationInputMode.Oblivious)})
-@OutputPorts({@OutputPortSet(description="Emits a tuple containing the HTTP POST status code, status message and the response from " +
-"the remote web server. This tuple's schema should be tuple<int32 statusCode, rstring statusMessage, rstring responseMessage>. " +
+@OutputPorts({@OutputPortSet(description="Emits a tuple containing the HTTP POST status code, status message, response headers " + 
+"and text or binary response received from the remote web server. "  +
+"This tuple's schema should be tuple<int32 statusCode, rstring statusMessage, map<rstring, rstring> responseHeaders, rstring strData, blob blobData>. " +
 "Any other matching attributes from the incoming tuple will be forwarded via the output tuple.", 
 cardinality=1, optional=false, windowPunctuationOutputMode=WindowPunctuationOutputMode.Generating), @OutputPortSet(description="Optional output ports", optional=true, windowPunctuationOutputMode=WindowPunctuationOutputMode.Generating)})
-@Libraries("opt/HTTPClient-4.3.6/lib/*")
+@Libraries("opt/HTTPClient-4.5.12/lib/*")
 public class HttpPost extends AbstractOperator {
-	private HttpClient httpClient = null;
+	private CloseableHttpClient httpClient = null;
 	private String url = null;
 	private String contentType = "text/plain";
 	private boolean logHttpPostActions  = false;
+	// Impose a tiny delay in milliseconds between continously happening non-stop 
+	// HTTP POSTs at a faster pace. HTTP POST in general is not 
+	// meant for that kind of high speed data exchanges. This minor delay 
+	// between consecutive posts will avoid opening too many quick 
+	// connections to the remote Web Server. That helps in not getting 
+	// connection refused errors. You may use it as needed.
+	private int delayBetweenConsecutiveHttpPosts = 0;
+	private int httpTimeout = 30;
+	private boolean tlsAcceptAllCertificates = false;
+	private String tlsKeyStoreFile = "";
+	private String tlsKeyStorePassword = "";
+	private String tlsKeyPassword = "";
+	private String tlsTrustStoreFile = "";
+	private String tlsTrustStorePassword = "";
+	
 	private long httpPostCnt = 0;
+	
+	private Metric nDataItemsSent;
+	private Metric nDataBytesSent;
+	private Metric nDataItemsReceived;
+	private Metric nDataBytesReceived;
+	private Metric nHttpPostFailed;
+	
+	private long dataBytesSent = 0;
+	private long dataBytesReceived = 0;
 	
     /**
      * Initialize this operator. Called once before any tuples are processed.
@@ -124,7 +186,9 @@ public class HttpPost extends AbstractOperator {
         // The configuration information for this may come from parameters supplied to the operator invocation, 
         // or external configuration files or a combination of the two.
         // Get our HTTP Client that will work with SSL connections.
-        httpClient = getHttpClient(url);
+        httpClient = getHttpClient(url, httpTimeout, tlsAcceptAllCertificates,
+        	tlsKeyStoreFile, tlsKeyStorePassword, tlsKeyPassword,
+        	tlsTrustStoreFile, tlsTrustStorePassword);
         
     	if (httpClient == null) {
     		System.out.println("We have no valid HTTP client. Incoming tuples arriving for HTTP POST will be ignored.");
@@ -144,46 +208,104 @@ public class HttpPost extends AbstractOperator {
         Logger.getLogger(this.getClass()).trace("Operator " + context.getName() + " all ports are ready in PE: " + context.getPE().getPEId() + " in Job: " + context.getPE().getJobId() );
     }
 
-    private static HttpClient getHttpClient(String myUrl) {
+	private static CloseableHttpClient getHttpClient(String myUrl, 
+		int httpTimeout, boolean tlsAcceptAllCertificates,
+		String tlsKeyStoreFile, String tlsKeyStorePassword, String tlsKeyPassword,
+    	String tlsTrustStoreFile, String tlsTrustStorePassword) 
+    	throws NoSuchAlgorithmException, KeyManagementException, 
+    	KeyStoreException, CertificateException, IOException, 
+    	UnrecoverableKeyException {
+        // Let us customize these three settings seconds for our HTTP POST client.
+    	// This will be used for these three settings,
+    	// connect timeout: When a connection is established.
+    	// connection request timeout: When requesting a connection from the connection manager.
+    	// socket timeout: timeout for waiting for data or put differently, 
+		// a maximum period inactivity between two consecutive data packets.
+		// You can read more about it from here.
+		// https://www.baeldung.com/httpclient-timeout
+    	RequestConfig requestConfig = RequestConfig.custom().
+			setConnectTimeout(httpTimeout * 1000).
+			setConnectionRequestTimeout(httpTimeout * 1000).
+			setSocketTimeout(httpTimeout * 1000).build(); 
+
     	// Get either a plain or secure HTTP client for a given URL.
-        try {
-            SSLContext sslContext = SSLContext.getInstance("SSL");
-
-            sslContext.init(null,
-                    new TrustManager[]{new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() {
-
-                            return null;
-                        }
-
-                        public void checkClientTrusted(
-                                X509Certificate[] certs, String authType) {
-
-                        }
-
-                        public void checkServerTrusted(
-                                X509Certificate[] certs, String authType) {
-
-                        }
-                    }}, new SecureRandom());
-
-            SSLConnectionSocketFactory socketFactory = new SSLConnectionSocketFactory(sslContext,SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-
-            // We will create a HTTP client with SSL only if the URL has https: at the beginning.
-            if (myUrl.indexOf("https:") == 0) {
-            	HttpClient myHttpClient = HttpClientBuilder.create().setSSLSocketFactory(socketFactory).build();
-            	return myHttpClient;
-            } else {
-            	// URL doesn't start with https: and we can create a plain HTTP client with no SSL support.
-            	HttpClient myHttpClient = HttpClientBuilder.create().build();
-            	return myHttpClient;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            HttpClient myHttpClient = HttpClientBuilder.create().build();
-            return myHttpClient;
+        // We will create a plain HTTP client if the URL has no https: at the beginning.
+        if (myUrl.indexOf("https:") != 0) {
+        	System.out.println("getHttpClient-->non-TLS: Configuring now for a non-TLS HTTP client."); 
+        	// URL doesn't start with https: and we can create a plain HTTP client with no SSL support.
+        	CloseableHttpClient myHttpClient = HttpClientBuilder.create().setDefaultRequestConfig(requestConfig).build();
+        	return myHttpClient;
         }
-    }      
+
+        // We have an https: URL which needs a TLS connection to the server.
+    	// Get the SSL default context and the default protocols.
+        SSLContext sslDefaultContext = SSLContext.getDefault();
+        String[] sslDefaultProtocols = sslDefaultContext.getDefaultSSLParameters().getProtocols();  
+        SSLConnectionSocketFactory socketFactory = null;        
+    	
+        if(tlsAcceptAllCertificates == true) {
+        	// If user configured to accept all certificates, configure the SSL socket factory for that.
+        	System.out.println("getHttpClient-->TLS: Configuring now to accept all server certificates.");
+            SSLContextBuilder sslContextBuilder = SSLContextBuilder.create();
+            sslContextBuilder = sslContextBuilder.loadTrustMaterial(null, TrustAllStrategy.INSTANCE);
+            SSLContext sslContext = sslContextBuilder.build();
+            // This URL has basic details:
+            // https://hc.apache.org/httpcomponents-client-ga/httpclient/apidocs/org/apache/http/conn/ssl/SSLConnectionSocketFactory.html
+            socketFactory = new SSLConnectionSocketFactory(sslContext, 
+            	sslDefaultProtocols, null, NoopHostnameVerifier.INSTANCE);
+        } else if ((tlsTrustStoreFile.equalsIgnoreCase("") == false) || 
+        	(tlsKeyStoreFile.equalsIgnoreCase("") == false)) {
+        	System.out.println("getHttpClient-->TLS: Configuring now to authenticate either server or client or both.");
+        	// Set up trust store for server authentication.
+            SSLContextBuilder sslContextBuilder = SSLContexts.custom();
+            // Trust own CA and all self-signed certs
+            if (tlsTrustStoreFile.equalsIgnoreCase("") == false) {
+            	System.out.println("getHttpClient-->TLS: tlsTrustStoreFile=" + tlsTrustStoreFile);
+            	
+                if (tlsTrustStorePassword.equalsIgnoreCase("") == true) { 
+                	// No trust store password configured.
+                    sslContextBuilder = sslContextBuilder.loadTrustMaterial(
+                		new File(tlsTrustStoreFile), null, new TrustSelfSignedStrategy());
+                } else {
+                    sslContextBuilder = sslContextBuilder.loadTrustMaterial(
+                		new File(tlsTrustStoreFile), tlsTrustStorePassword.toCharArray(), 
+                		new TrustSelfSignedStrategy());
+                }
+            }
+            
+            // Set up key store needed for client authentication.
+            if (tlsKeyStoreFile.equalsIgnoreCase("") == false) {
+            	System.out.println("getHttpClient-->TLS: tlsKeyStoreFile=" + tlsKeyStoreFile);
+            	
+                if (tlsKeyStorePassword.equalsIgnoreCase("") == true) { 
+                    sslContextBuilder = sslContextBuilder.loadKeyMaterial(
+                    	// No key store password configured.
+                		new File(tlsKeyStoreFile), null, tlsKeyPassword.toCharArray());
+                } else {
+                    sslContextBuilder = sslContextBuilder.loadKeyMaterial(
+                		new File(tlsKeyStoreFile), tlsKeyStorePassword.toCharArray(), 
+                		tlsKeyPassword.toCharArray());
+                }
+            }
+            
+            SSLContext sslcontext = sslContextBuilder.build();
+            socketFactory = new SSLConnectionSocketFactory(sslcontext, 
+            	sslDefaultProtocols, null, NoopHostnameVerifier.INSTANCE);
+        } else {
+        	// Accept server certificates signed by well known certificate authorities.
+        	System.out.println("getHttpClient-->TLS: Configuring now to accept server certificates " +
+        		"signed by the well known certificate authorities");
+        	SSLContextBuilder sslContextBuilder = SSLContexts.custom();
+            SSLContext sslcontext = sslContextBuilder.build();
+            socketFactory = new SSLConnectionSocketFactory(sslcontext, 
+            	sslDefaultProtocols, null, 
+            	SSLConnectionSocketFactory.getDefaultHostnameVerifier());
+        } 
+        
+        CloseableHttpClient myHttpClient = HttpClientBuilder.create().
+        	setDefaultRequestConfig(requestConfig).setSSLSocketFactory(socketFactory).build();
+    	return myHttpClient;
+    } // End of getHttpClient. 
     
     /**
      * Process an incoming tuple that arrived on the specified port.
@@ -195,9 +317,21 @@ public class HttpPost extends AbstractOperator {
      * @throws Exception Operator failure, will cause the enclosing PE to terminate.
      */
     @Override
-    public final void process(StreamingInput<Tuple> inputStream, Tuple tuple)
-            throws Exception {
-
+    public final void process(StreamingInput<Tuple> inputStream, Tuple tuple) throws Exception {
+        // Without a valid http client, we have nothing much to do here.
+    	if (httpClient == null) {
+    		return;
+    	}
+    	
+    	// If the user configured delayBetweenConsecutiveHttpPosts, let us impose that delay now.
+    	if (delayBetweenConsecutiveHttpPosts > 0) {
+    		try {
+    			Thread.sleep(delayBetweenConsecutiveHttpPosts);
+    		} catch(Exception  ex) {
+    			// We can ignore any exception for this tiny sleep.
+    		}
+    	}
+    	
     	// Create a new tuple for output port 0
         StreamingOutput<OutputTuple> outStream = getOutput(0);
         OutputTuple outTuple = outStream.newTuple();
@@ -205,18 +339,11 @@ public class HttpPost extends AbstractOperator {
         // Copy across all matching attributes.
         outTuple.assign(tuple);
 
-        // TODO: Insert code to perform transformation on output tuple as needed:
-        // outTuple.setString("AttributeName", "AttributeValue");
-
-    	if (httpClient == null) {
-    		return;
-    	}
-
         // Create a HTTP post object.
-    	// As of Mar/19/2020, this operator supports posting of 
-    	// text based data and not binary data.
+    	// As of May/24/2020, this operator supports the posting of 
+    	// both text data and binary data.
     	org.apache.http.client.methods.HttpPost httpPost = 
-    		new org.apache.http.client.methods.HttpPost(url);
+    		new org.apache.http.client.methods.HttpPost(url);  
     	// At this time, the incoming tuple must have its string based
     	// POST content in its first attribute. In a future release,
     	// this operator will support blob content to be posted.
@@ -233,27 +360,79 @@ public class HttpPost extends AbstractOperator {
             return;
     	}
     	
-        // if the content-type is set to application/x-www-form-urlencoded, then we will
-        // conform to the normal practice of having the request body's format as the query string.
-        // e-g: param1=value
         if (contentType.equalsIgnoreCase("application/x-www-form-urlencoded") == true) {
-        	// This technique is explained in this URL: 
+            // If the content-type is set to application/x-www-form-urlencoded, then we will
+            // conform to the normal practice of having the request body's format as the query string.
+            // e-g: param1=value
+        	//
+        	// This particular technique about posting as query string is explained in this URL: 
         	// https://stackoverflow.com/questions/8120220/how-to-use-parameters-with-httppost
         	ArrayList<NameValuePair> postParameters;
         	postParameters = new ArrayList<NameValuePair>();
         	StreamSchema ss = tuple.getStreamSchema();
+        	// The first input tuple attribute must be rstring strData.
         	Attribute a1 = ss.getAttribute(0);
         	String a1Name = a1.getName();
         	postParameters.add(new BasicNameValuePair(a1Name, tuple.getString(a1Name)));
         	UrlEncodedFormEntity ue = new UrlEncodedFormEntity(postParameters, "UTF-8");
         	httpPost.setEntity(ue);
+        } else if (contentType.equalsIgnoreCase("application/octet-stream") == true) {
+        	// If the content-type is set to application/octet-stream, then we will
+        	// make this operator post raw binary data passed via the second 
+        	// attribute in the input tuple.
+        	// Some useful links that explain the use of application/octet-stream to send
+        	// any arbitrary piece of binary data:
+        	// https://www.iana.org/assignments/media-types/application/octet-stream
+        	// https://stackoverflow.com/questions/20508788/do-i-need-content-type-application-octet-stream-for-file-download
+        	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+        	StreamSchema ss = tuple.getStreamSchema();
+        	// The second input tuple attribute must be blob blobData.
+        	Attribute a2 = ss.getAttribute(1);
+        	String a2Name = a2.getName();
+        	// This particular technique about posting binary data is explained in this URL:
+        	// https://www.baeldung.com/httpclient-multipart-upload 
+        	MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+        	builder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
+        	builder.addBinaryBody("blobData", tuple.getBlob(a2Name).getData());
+        	HttpEntity entity = builder.build();
+        	httpPost.setEntity(entity);
+        	dataBytesSent += tuple.getBlob(a2Name).getLength();
         } else  {
+        	// Any other content type that the user specified must be
+        	// related to posting text data.
         	StringEntity se = new StringEntity(tuple.getString(0), ct);
         	httpPost.setEntity(se);
+        	dataBytesSent += tuple.getString(0).length();
         }
         
-        // Set the connection keep-alive request header.
-        httpPost.setHeader("connection", "keep-alive");
+        // Set the connection close request header.
+        // We must do this for the Apache HttpClient versions greater than 4.3.6.
+        // If we don't have this header in those versions of the HttpClient, 
+        // it will give the following exception when trying to do a burst of
+        // POST data with a very little time gap between them (say 50 msecs spacing
+        // between each HTTP POST).
+        //
+        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
+        //
+        // You can learn more about this fix from these URLs.
+        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
+        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
+        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
+        //
+        httpPost.setHeader("connection", "close");
+        
+        // We will now set the application-specific custom HTTP request headers if any sent via
+        // the second attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
+        // This map iteration technique is explained in the following URL. 
+        // https://www.geeksforgeeks.org/map-interface-java-examples/
+        Map<RString, RString> requestHeadersMap = (Map<RString, RString>) tuple.getMap(2);
+        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
+        
+        // Set the customer HTTP request headers.
+        for(Map.Entry<RString, RString> mapEntry : setView) {
+        	httpPost.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
+        }
+        
         httpPostCnt++;
         
         if(logHttpPostActions == true) {
@@ -261,16 +440,82 @@ public class HttpPost extends AbstractOperator {
     			") Executing request " + httpPost.getRequestLine());
         }
 
-        HttpResponse response = httpClient.execute(httpPost);
+        // Do the HTTP POST now.
+        CloseableHttpResponse response = null;
+        
+        try {
+        	response = httpClient.execute(httpPost);
+        } catch (Exception ex) {
+    		OperatorContext context = getOperatorContext();
+            Logger.getLogger(this.getClass()).error("Operator " + 
+            	context.getName() + ", HTTP POST " + httpPostCnt + 
+            	" failed to " + httpPost.getURI() + ". Exception=" + 
+            	ex.getMessage() + ". PE " + context.getPE().getPEId() + 
+            	" in Job: " + context.getPE().getJobId());
+            // Release the HTTP connection which is a must after 
+            // consuming the response from the remote web server.
+            // If we don't do this, it will start hanging when doing the 
+            // next HTTP POST for the next incoming  tuple.
+            httpPost.releaseConnection();
+            // Update the operator metrics.
+            nHttpPostFailed.increment();
+            return;
+        }
                 
         int responseStatusCode = response.getStatusLine().getStatusCode();
-        String responseStatusReason = response.getStatusLine().getReasonPhrase();
-        HttpEntity resEntity = response.getEntity();
-        String responseMessage = "";
         
+        // Update the operator metrics.
+        if (responseStatusCode < 200 || responseStatusCode > 299) {
+        	nHttpPostFailed.increment();
+        } else {
+        	nDataItemsSent.increment();
+        	nDataBytesSent.setValue(dataBytesSent);
+        }
+        
+        String responseStatusReason = response.getStatusLine().getReasonPhrase();
+        // Let us now parse all the response headers and populate them in
+        // a map to be sent in the output tuple later in the code below.
+        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
+        Header[] responseHeaders = response.getAllHeaders();
+        
+        // Store the response headers in a map for later use.
+        for (Header header : responseHeaders) {
+        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
+        }
+        
+        HttpEntity resEntity = response.getEntity();
+        String responseStrData = "";
+        byte[] responseBlobData = null;
+        
+        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
+        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
         if (resEntity != null) {
-        	// System.out.println("HTTP response JSON=" + EntityUtils.toString(resEntity));
-        	responseMessage = EntityUtils.toString(resEntity);
+        	// This technique is explained well in this URL:
+        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+        	org.apache.http.entity.ContentType contentType = 
+        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
+            String mimeType = contentType.getMimeType();
+            
+            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
+            	// It is binary based response sent by the remote web server.
+            	responseBlobData = EntityUtils.toByteArray(resEntity);
+            	dataBytesReceived += responseBlobData.length;
+            } else {
+            	// It is text based response sent by the remote web server.
+            	responseStrData = EntityUtils.toString(resEntity);
+            	dataBytesReceived += responseStrData.length();
+            	// This is string based response. So, we can safely 
+            	// clear the blobData attribute.
+            	byte[] emptyBytes = new byte[0];
+            	outTuple.setBlob("blobData", 
+                	ValueFactory.newBlob(emptyBytes, 0, 0));
+            }
+            
+            if (responseStatusCode >= 200 && responseStatusCode < 300) {
+            	// Update the metrics if it is a successful response code.
+            	nDataItemsReceived.increment();
+            	nDataBytesReceived.setValue(dataBytesReceived);
+            }
         }
         
         if (resEntity != null) {
@@ -279,24 +524,47 @@ public class HttpPost extends AbstractOperator {
         
         if(logHttpPostActions == true) {
         	System.out.println((httpPostCnt) + ") Response=" + 
-        		response.getStatusLine() + " " + responseMessage);
+        		response.getStatusLine() + " " + responseStrData);
         }
+      
+        // We can close this response object now.
+        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
+        response.close();
         
         // Release the HTTP connection which is a must after 
         // consuming the response from the remote web server.
         // If we don't do this, it will start hanging when doing the 
-        // next HTTP POST for the next incoming  tuple.
+        // next HTTP POST for the next incoming tuple.
         httpPost.releaseConnection();
+        httpPost = null;
         
         outTuple.setInt("statusCode", responseStatusCode);
         outTuple.setString("statusMessage", responseStatusReason);
-        outTuple.setString("responseMessage", responseMessage);
-        // Submit new tuple to output port 0
-        outStream.submit(outTuple);
+        outTuple.setMap("responseHeaders", responseHeadersMap);
+        outTuple.setString("strData", responseStrData);
         
+        if(responseBlobData != null) {
+        	outTuple.setBlob("blobData", 
+        		ValueFactory.newBlob(responseBlobData, 0,
+        		responseBlobData.length));
+        }
+        
+        // If the response status code is not 200, clear the blob output attribute.
+        // Because, in case of an HTTP POST error, we want only the strData attribute to
+        // carry the error reason. In that case, we don't want any blobData auto assigned 
+        // from the input tuple. So, we can safely empty the contents if any in the 
+        // blobData attribute. This may be a redundant exercise since there is similar
+        // logic performed above when any kind of text response is received from HTTP POST.
+        // Since it is such a minimal logic here, that redundancy is something we can live with.
+        if(responseStatusCode != 200) {
+        	byte[] emptyBytes = new byte[0];
+        	outTuple.setBlob("blobData", 
+            	ValueFactory.newBlob(emptyBytes, 0, 0));
+        }
+
         // Submit new tuple to output port 0
         outStream.submit(outTuple);
-    }
+    } // End of process method.
     
     /**
      * Process an incoming punctuation that arrived on the specified port.
@@ -320,18 +588,19 @@ public class HttpPost extends AbstractOperator {
         Logger.getLogger(this.getClass()).trace("Operator " + context.getName() + " shutting down in PE: " + context.getPE().getPEId() + " in Job: " + context.getPE().getJobId() );
         
         // TODO: If needed, close connections or release resources related to any external system or data store.
-        // Close the HTTP client connection before shutting down this operator.
-        if (httpClient != null) {
-        	httpClient.getConnectionManager().shutdown();
+        // We can safely close the HTTP client.
+        if(httpClient != null) {
+        	// https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
+        	httpClient.close();
         }
-                
+        
         // Must call super.shutdown()
         super.shutdown();
         // Must call super.shutdown()
         super.shutdown();
     }
     
-    @Parameter (name="url", description="Specify the URL where HTTP POSTs will be made to.", optional=false)
+    @Parameter (name="url", description="Specify the URL to which HTTP POSTs will be sent.", optional=false)
     public void setUrl(String _url) {
     	url = _url;
     }
@@ -342,16 +611,164 @@ public class HttpPost extends AbstractOperator {
     }
     
     @Parameter (name="logHttpPostActions", description="Do you want to log HTTP POST actions to the screen? (Default: false)", optional=true)
-    public void setLogOnScreen(boolean val) {
+    public void setLogHttpPostActions(boolean val) {
     	logHttpPostActions = val;
     }
     
-    public static final String DESC = "This operator sends the incoming tuple's contents to the " +
-    		"specified HTTP or HTTPS endpoint via the operator parameter named url. The incoming tuple " +
-    		"must have its first attribute with a data type rstring and it must carry " + 
-    		"string based content that needs be posted to the remote web server. " +
-    		"Support for blob data will be added in a future version. This operator is " + 
-    		"mainly used to test the HTTP(S) feature available in the WebSocketSource " +
-    		"operator from  the streamsx.cppws toolkit. If this operator can be useful " +
-    		"in other application scenarios, developers can use it as they see fit.";
+    @Parameter (name="delayBetweenConsecutiveHttpPosts", 
+		description="Do you want to have a tiny delay in millseconds between consecutive HTTP Posts? (Default: 0 milliseconds i.e. no delay)", optional=true)
+    public void setDelayBetweenConsecutiveHttpPosts(int val) {
+    	delayBetweenConsecutiveHttpPosts = val;
+    }
+    
+    @Parameter (name="httpTimeout", 
+		description="This parameter can be used to configure the three commonly used " +
+			"HTTP timeout settings namely connect, connection request and " + 
+			"socket timeout all with one value. (Default: 30 seconds)", optional=true)
+    public void setHttpTimeout(int val) {
+    	// This will be used for these three settings,
+    	// connect timeout: When a connection is established.
+    	// connection request timeout: When requesting a connection from the connection manager.
+    	// socket timeout: timeout for waiting for data or put differently, a maximum period inactivity between two consecutive data packets
+    	httpTimeout = val;
+    }
+    
+    @Parameter (name="tlsAcceptAllCertificates", 
+		description="This parameter can be used to configure whether all TLS " +
+			"certificates can be accepted with a possibility for an insecure " +
+			"connection. If this parameter is set, the other two parameters " +
+			"`tlsTrustStoreFile` and `tlsKeyStoreFile` are not allowed. " +
+			"(Default: false)", optional=true)
+    public void setTlsAcceptAllCertificates(boolean val) {
+    	tlsAcceptAllCertificates = val;
+    }
+    
+    @Parameter (name="tlsKeyStoreFile", 
+		description="This parameter if present should point to a key store file in JKS format which will be " +
+			"used for client authentication. This store should have client's certificate to " +
+			"prove its identity. When this parameter is present, then the tlsKeyPassword " +
+			"parameter must be present and the tlsKeyStorePassword can be optional.", 
+			optional=true)
+    public void setTlsKeyStoreFile(String val) {
+    	tlsKeyStoreFile = val;
+    }
+    
+    @Parameter (name="tlsKeyStorePassword", 
+		description="This parameter specifies the password for the key store.", optional=true)
+    public void setTlsKeyStorePassword(String val) {
+    	tlsKeyStorePassword = val;
+    }
+
+    @Parameter (name="tlsKeyPassword", 
+		description="This parameter specifies the password for the keys stored in the store.",
+			optional=true)
+    public void setTlsKeyPassword(String val) {
+    	tlsKeyPassword = val;
+    }
+
+    @Parameter (name="tlsTrustStoreFile", 
+		description="This parameter if present should point to a trust store file in JKS format which will be " +
+			"used for authenticating the remote web server. This store should have server's " +
+			"public certificate to verify its identity. When this parameter is present, " + 
+			"then the tlsTrustStorePassword can be optional.", 
+			optional=true)
+    public void setTlsTrustStoreFile(String val) {
+    	tlsTrustStoreFile = val;
+    }
+    
+    @Parameter (name="tlsTrustStorePassword", 
+		description="This parameter specifies the password for the trust store.", optional=true)
+    public void setTlsTrustStorePassword(String val) {
+    	tlsTrustStorePassword = val;
+    }
+    
+    public static final String DESC = "This operator sends the incoming tuple's text or binary content to a " +
+    		"HTTP or HTTPS endpoint specified in the operator parameter named url. Every incoming tuple " +
+    		"must have its first attribute with a data type rstring to carry any " + 
+    		"text based content that needs be posted to the remote web server. The second attribute must have " +
+    		"a data type blob to carry any binary based content that needs to be posted to the remote web server. " +
+    		"The third attribute in the incoming tuple should be of type map<rstring, rstring> and it " +
+    		"can carry any application-specific custom HTTP request headers to be sent to the remote web server. " +  
+    		"Even though, a given incoming tuple must have both the rstring and blob typed data attributes, only one of them " +
+    		"at a time can carry the data to be sent to the remote server during a given HTTP POST. " +
+    		"On its output port, this operator emits a tuple containing the " + 
+    		"HTTP POST status code, status message, response headers, " + 
+    		"text based response and binary based response received from the remote web server. "  +
+    		"This output tuple's schema should be tuple<int32 statusCode, rstring statusMessage, " +
+    		"map<rstring, rstring> responseHeaders, rstring strData, blob blobData>. " +
+    		"To send text based data, users can set this operator's contentType parameter to text/plain or " + 
+    		"application/xml or application/json or application/x-www-form-urlencoded. To send binary based data, " +
+    		"it should be set to application/octet-stream which tells this operator to use a web standard based " + 
+    		"mechanism available for including multipart MIME content. This operator is mainly used to test the " + 
+    		"HTTP(S) feature available in the WebSocketSource operator from the streamsx.cppws toolkit. If this " + 
+    		"operator can be useful in other application scenarios, developers can use it as they see fit. " +
+    		"If you observe either a missing or an empty streamsx.cppws/com.ibm.streamsx.cppws/impl/java/bin directory, " +
+    		"then you should run `ant all` from the streamsx.cppws/com.ibm.streamsx.cppws directory. " + 
+    		"That will compile this HttpPost Java operator.";    
+
+    // Define the metrics for this operator.
+    @CustomMetric(kind = Kind.COUNTER, description ="Number of data items sent to the remote web server.")
+    public void setnDataItemsSent(Metric nDataItemsSent) {
+        this.nDataItemsSent = nDataItemsSent;
+    }
+    
+	@CustomMetric(kind = Kind.COUNTER, description ="Total number of data bytes sent to the remote remote web server.")
+    public void setnDataBytesSent(Metric nDataBytesSent) {
+        this.nDataBytesSent = nDataBytesSent;
+    }
+    
+    @CustomMetric(kind = Kind.COUNTER, description ="Number of data items received from the remote web server.")
+    public void setnDataItemsReceived(Metric nDataItemsReceived) {
+        this.nDataItemsReceived = nDataItemsReceived;
+    }
+
+	@CustomMetric(kind = Kind.COUNTER, description ="Total number of data bytes received from the remote remote web server.")
+    public void setnDataBytesReceived(Metric nDataBytesReceived) {
+        this.nDataBytesReceived = nDataBytesReceived;
+    }    
+    
+    @CustomMetric(kind = Kind.COUNTER, description ="Number of failed HTTP POSTs to the remote web server.")
+    public void setnHttpPostFailed(Metric nHttpPostFailed) {
+        this.nHttpPostFailed = nHttpPostFailed;
+    }    
+
+    // This method does a compile time validation for the presence of certain
+    // combinations of the operator parameters.
+    @ContextCheck(compile = true)
+    public static void checkMethodParams(OperatorContextChecker occ) {
+    	String OPER_NAME="HttpPost";
+    	// We will ensure that certain combination of operator parameters are specified correctly.
+        Set<String> parameterNames = occ.getOperatorContext().getParameterNames();
+        
+        // If accept all certificates is configured, then we can't have the other two.
+        occ.checkExcludedParameters("tlsAcceptAllCertificates", "tlsTrustStoreFile", "tlsKeyStoreFile");
+        
+        // Check if trust store file and trust store password parameters are present.
+        boolean hasTrustStoreFile = parameterNames.contains("tlsTrustStoreFile");
+        boolean hasTrustStorePassword = parameterNames.contains("tlsTrustStorePassword");
+        
+        // If trust store password is there without a trust store file, that is not allowed.
+        if(hasTrustStorePassword && ! hasTrustStoreFile) {
+            occ.setInvalidContext("{0} operator: You cannot give a trust store password without giving a trust store filename.", 
+        		new String[] {OPER_NAME});
+        }
+        
+        // Check if key store file and key store password parameters are present.
+        boolean hasKeyStoreFile = parameterNames.contains("tlsKeyStoreFile");
+        boolean hasKeyStorePassword = parameterNames.contains("tlsKeyStorePassword");
+        
+        // If key store password is there without a key store file, that is not allowed.
+        if(hasKeyStorePassword && ! hasKeyStoreFile) {
+            occ.setInvalidContext("{0} operator: You cannot give a key store password without giving a key store filename.",
+            	new String[] {OPER_NAME});
+        }
+        
+        // These two parameters are optional, we either need both to be present or neither of them
+        boolean hasKeyPassword = parameterNames.contains("tlsKeyPassword");
+        if(hasKeyPassword ^ hasKeyStoreFile) {
+            occ.setInvalidContext("{0} operator: You can either give both key store filename and key password or " + 
+            	"none of them. But, never only one of them.", new String[] {OPER_NAME});
+        }
+    }
+
 }
