@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Feb/13/2020
-Last modified on: Mar/26/2020
+Last modified on: Jun/01/2020
 
 This main composite file contains the logic to send
 a payload (plain text, JSON or XML) to a given HTTP(S) endpoint.
@@ -18,11 +18,30 @@ HTTP(S) POST. In order to send the data, it also uses another
 utility operator named HttpPost available in that same 
 streamsx.cppws toolkit.
 
+In May/2020, I added a feature to send/receive binary data
+via HTTP POST to/from the WebSocketSource operator.
+So, I extended this example application to showcase the 
+binary data sending using the HttpPost client operator. 
+
+[
+In this example, we also show how to do mutual authentication
+i.e. client and server authentication. In the Java based HttpPost 
+client operator, we show the use of Java client side
+trust store and key store. In a C++ WebSocketSource operator,
+we show how it uses the client's public certificate to do the peer verification.
+]
+
 This test application can be built using the Makefile available
 in this example directory.
 
 make clean
 make
+
+NOTE: There is a run-http-post-test.sh script available in the etc sub-directory of this
+example project. That convenience script can be modified to suit your needs and run
+this application along with a WebSocket server application running on a different
+IBM Streams instance. That will test the HttpPost operator's capabilities to send and
+receive text/binary data to/from the WebSocketSource.
 ==================================================================
 */
 namespace com.ibm.streamsx.cppws.sample;
@@ -63,9 +82,44 @@ composite HttpPostTester {
 		// User must provide the URL for the HTTP endpoint.
 		expression<rstring> $url : getSubmissionTimeValue("Url");
 		
-		// Do we want HttpsPost to display the status of its POST steps/actions.
-		expression<boolean> $logHttpPostActions : (boolean)getSubmissionTimeValue("LogHttpPostActions", "false");
+		// Do we want to accept all the TLS server certificates (an insecure option)?
+		expression<boolean> $tlsAcceptAllCertificates :
+			(boolean)getSubmissionTimeValue("tlsAcceptAllCertificates", "false");
+
+		// Do you want to point to a TLS trust store that has the certificates for
+		// the servers that we can trust?
+		expression<rstring> $tlsTrustStoreFileOnClientSide : 
+			getSubmissionTimeValue("tlsTrustStoreFileOnClientSide", "");
+			
+		// Do you have a TLS trust store password?
+		expression<rstring> $tlsTrustStorePasswordOnClientSide : 
+			getSubmissionTimeValue("tlsTrustStorePasswordOnClientSide", "");
 		
+		// Do you want to point to a TLS key store that has the 
+		// certificate and private key for the client?
+		expression<rstring> $tlsKeyStoreFileOnClientSide :
+			getSubmissionTimeValue("tlsKeyStoreFileOnClientSide", "");
+			
+		// Do you have a TLS key store password?
+		expression<rstring> $tlsKeyStorePasswordOnClientSide :
+			getSubmissionTimeValue("tlsKeyStorePasswordOnClientSide", "");
+			
+		// Do you have a TLS key password?
+		expression<rstring> $tlsKeyPasswordOnClientSide :
+			getSubmissionTimeValue("tlsKeyPasswordOnClientSide", "");
+		
+		// Do we want HttpsPost to display the status of its POST steps/actions.
+		expression<boolean> $logHttpPostActions : 
+			(boolean)getSubmissionTimeValue("LogHttpPostActions", "false");
+
+		// Do you want to change the HTTP connection timeout value in seconds?
+		expression<int32> $httpTimeout :
+			(int32)getSubmissionTimeValue("httpTimeout", "30");
+
+		// Do we want to impose a tiny delay in milliseconds between consecutive HTTP Posts?
+		expression<int32> $delayBetweenConsecutiveHttpPosts : 
+			(int32)getSubmissionTimeValue("delayBetweenConsecutiveHttpPosts", "0");
+			
 		// What is the desired message rate we want to test with.
 		expression<float64> $maxMessageRate : 
 			(float64)getSubmissionTimeValue("MaxMessageRate", "500.00");
@@ -74,17 +128,49 @@ composite HttpPostTester {
 		// incoming payload (XML or JSON) messages and then send it via HTTP POST.
 		expression<float64> $messageBatchingTime : 
 			(float64)getSubmissionTimeValue("MessageBatchingTime", "5.0");
+			
+		// How many data items we want to send to the remote server?
+		expression<uint32> $numberOfDataItemsToBeSent :
+			(uint32)getSubmissionTimeValue("numberOfDataItemsToBeSent", "10000");
+			
+	type
+		// Schema for the input stream of the HttpPost operator.
+		HttpPostInput_t = rstring strData, blob blobData, 
+			map<rstring, rstring> requestHeaders;
+			
+		// Schema for the input stream of the HttpPost operator.
+		HttpPostOutput_t = int32 statusCode, rstring statusMessage,
+			map<rstring, rstring> responseHeaders, rstring strData, blob blobData;
 					
 	graph
-		// Keep generating infinite number of tuples as fast as 
-		// possible carrying the XML payload.
-		(stream<rstring payload> Payload) = Beacon() {
+		// Keep generating user configured number of tuples as fast as 
+		// possible carrying binary payload.
+		(stream<HttpPostInput_t> BinaryPayload as BP) = Beacon() {
 			param
-				initDelay: 5.0;
-				// iterations: 1;
+				initDelay: 10.0;
+				iterations: $numberOfDataItemsToBeSent;
 				
 			output
-				Payload: payload = $XML_PAYLOAD;
+				BP: blobData = convertToBlob("0123456789" +
+					"ABCDEFGHIJKLMNOPQRSTUVWXYZ" + 
+					"abcdefghijklmnopqrstuvwxyz" +
+					"~!@#$%^&*()_+`-=,.?/;:" +
+					"IT IS TIME FOR ALL THE GOOD MEN AND WOMEN TO COME TO THE AID OF OUR NATION" +
+					"QUICK BROWN FOX JUMPS OVER THE LAZY DOG" +
+					"TIME BRINGS EVERYTHING" +
+					"TIME KEEPS EVERYTHING" +
+					"TIME TAKES AWAY EVERYTHING");
+		}
+	
+		// Keep generating user configured number of tuples as fast as 
+		// possible carrying the XML payload.
+		(stream<rstring strData> Payload) = Beacon() {
+			param
+				initDelay: 10.0;
+				iterations: $numberOfDataItemsToBeSent;
+				
+			output
+				Payload: strData = $XML_PAYLOAD;
 		}
 		
 		// This operator sends a periodic timer signal to 
@@ -103,7 +189,7 @@ composite HttpPostTester {
 		// This operator collects the incoming tuples for a specific 
 		// period of time and then sends that collected batch of tuples for
 		// HTTP POST targeted to a remote web server.
-		(stream<Payload> MyPayload as MP) = 
+		(stream<HttpPostInput_t> MyPayload as MP) = 
 			Custom(ThrottledPayload as TP; MessageBatchTimer as MBT) {
 			logic
 				state: {
@@ -121,7 +207,7 @@ composite HttpPostTester {
 					// If you don't want to do batching of messages, you can
 					// change the logic in this operator to send every message on
 					// their own without inserting into a list.
-					appendM(_msgList, TP.payload);
+					appendM(_msgList, TP.strData);
 				}
 				
 				// When this timer signal arrives, we will send a 
@@ -143,7 +229,15 @@ composite HttpPostTester {
 					}
 					
 					// Convert the entire list as a string i.e. "['abc', 'rst', 'xyz']"
-					_oTuple.payload = (rstring)_msgList;
+					// Please refer to the HttpPost operator documentation for
+					// more details about what attributes are acceptable in its input port.
+					_oTuple = (MyPayload){};
+					_oTuple.strData = (rstring)_msgList;
+					// We can also send any application-specific custom HTTP request headers.
+					insertM(_oTuple.requestHeaders, "Streams-Application-Name", "HttpPostTester");
+					insertM(_oTuple.requestHeaders, "Author", "Peter Pan");
+					insertM(_oTuple.requestHeaders, "Organization", "IBM Research");
+					insertM(_oTuple.requestHeaders, "Location", "Yorktown Heights, NY, USA");
 					// Clear the list.
 					clearM(_msgList);
 					submit(_oTuple, MP);
@@ -161,17 +255,26 @@ composite HttpPostTester {
 		// faster rate (200 posts per second). 
 		// For the HTTP (non-SSL) POST, this utility Java operator can 
 		// give a post rate of 1500 per second. 
-		// 
-		// The same tests done with the streamsx.inet toolkit's deprecated 
-		// HTTPPost operator resulted in 28 HTTPS (SSL) and 350 HTTP (non-SSL)
-		// posts per second.
+		// 		
+		// Please refer to the HttpPost operator documentation for
+		// more details about what attributes are acceptable in its input and output ports.
+		//
 		@parallel(width=$numSenders)
-		(stream<int32 statusCode, rstring statusMessage, 
-		 rstring responseMessage> PostResult) = HttpPost(MyPayload as MP) {
+		// If the URL is wrong or not alive, there will be a "Connection timed out" exception.
+		// Let us catch any such exception and continue without crashing this operator.
+		@catch(exception=all)
+		// Please refer to the HttpPost operator documentation for
+		// more details about what attributes are acceptable in its input and output ports.
+		(stream<HttpPostOutput_t> PostResult) as
+			TextPayloadHttpSender = HttpPost(MyPayload as MP) {
 			param
 				url: $url;
 				// text/plain is the default content type for this operator.
-				// It posts only the raw payload.
+				// It posts only the payload.
+				// application/octet-stream is the required content type for 
+				// this operator to post the payload as binary data.
+				// Users can also override it to suit their other needs such as
+				// application/json or application/xml.
 				// Users can override it to suit their needs.
 				contentType: "text/plain";
 				//
@@ -181,17 +284,147 @@ composite HttpPostTester {
 				//
 				// contentType: "application/x-www-form-urlencoded";
 				//
+				// Do you want to accept all the TLS server certificates (an insecure option)?
+				tlsAcceptAllCertificates: $tlsAcceptAllCertificates;
+				//
+				/*
+				// =============== START OF TLS CONFIGURATION ===============
+				// You can enable or disable trust store and key store features of
+				// this operator based on your need. Before doing that, please have a 
+				// thorough reading of the etc/creating-a-self-signed-certificate.txt file.
+				// 
+				// Do you want to point to a TLS trust store that has the certifiactes for
+				// the servers that we can trust?
+				tlsTrustStoreFile: getThisToolkitDir() + "/etc/" + 
+					$tlsTrustStoreFileOnClientSide;
+				//
+				// Do you have a trust store password?
+				tlsTrustStorePassword: $tlsTrustStorePasswordOnClientSide;
+				//
+				// Do you want to point to a TLS key store that has the 
+				// certificate and private key for the client?
+				tlsKeyStoreFile: getThisToolkitDir() + "/etc/" + 
+					$tlsKeyStoreFileOnClientSide;
+				//
+				// Do you have a TLS key store password?
+				tlsKeyStorePassword: $tlsKeyStorePasswordOnClientSide;
+				//
+				// Do you have a TLS key password?
+				tlsKeyPassword: $tlsKeyPasswordOnClientSide;
+				// =============== END OF TLS CONFIGURATION ===============
+				*/
+				//
+				// Do you want to log the individual steps/tasks/actions performed during the HTTP POST?
 				logHttpPostActions: $logHttpPostActions;
+				//
+				// If you get frequent connection timeouts, it is necessary to
+				// increase it to a higher value than the default of 30 seconds.
+				httpTimeout: $httpTimeout;
+				//
+				// Impose a tiny delay in milliseconds between continously happening  
+				// non-stop HTTP POSTs at a faster pace. HTTP POST in general is not 
+				// meant for that kind of high speed message exchanges. This minor delay 
+				// between consecutive posts will avoid opening too many quick 
+				// connections to the remote Web Server. That helps in not getting 
+				// connection refused errors.
+				// A delay of 50 milliseconds between every HTTP POST is a good place to start.
+				delayBetweenConsecutiveHttpPosts: $delayBetweenConsecutiveHttpPosts;
 		}
 
 		// We can write the HTTP response somewhere or nowhere.
-		() as HttpResponseSink = FileSink(PostResult as PR) {
+		() as TextHttpResponseSink = FileSink(PostResult as PR) {
 			param
+				// file: "/dev/stdout";
 				file: "/dev/null";
 				flush: 1u;
 				
 			//config
 				//threadedPort:  queue(PR, Sys.Wait);
+		}
+		
+		// NOTE
+		// ----
+		// HTTP POST to the remote WebSocketSource operator will work only if that 
+		// operator is configured to allow HTTP POST. If it is not configured, then
+		// it will send a HTTP status code of 426 with a status messge of "Upgrade Required" to
+		// upgrade to the WebSocket protocol instead of HTTP. So, it is necessary for that 
+		// remote operator to accept HTTP POST for the following operator to work correctly.
+		//
+		// If the URL is wrong or not alive, there will be a "Connection timed out" exception.
+		// Let us catch any such exception and continue without crashing this operator.
+		@catch(exception=all)
+		// Please refer to the HttpPost operator documentation for
+		// more details about what attributes are acceptable in its input and output ports.
+		(stream<HttpPostOutput_t> BinaryPayloadSendResult) as
+		 	BinaryPayloadSender = HttpPost(BinaryPayload as BP) {
+			param
+				url: $url;
+				// application/octet-stream is the required content type for 
+				// this operator to post the payload as binary data.
+				// Users can also override it to suit their other needs such as
+				// text/plain or application/json or application/xml.
+				contentType: "application/octet-stream";
+				//
+				// For scenarios that will require HTTP POST body to
+				// have the query string format (param=value),
+				// the following contentType can be used.
+				//
+				// contentType: "application/x-www-form-urlencoded";
+				//
+				// Do you want to accept all the TLS server certificates (an insecure option)?
+				tlsAcceptAllCertificates: $tlsAcceptAllCertificates;
+				//
+				/*
+				// =============== START OF TLS CONFIGURATION ===============
+				// You can enable or disable trust store and key store features of
+				// this operator based on your need. Before doing that, please have a 
+				// thorough reading of the etc/creating-a-self-signed-certificate.txt file.
+				// 
+				// Do you want to point to a TLS trust store that has the certifiactes for
+				// the servers that we can trust?
+				tlsTrustStoreFile: getThisToolkitDir() + "/etc/" + 
+					$tlsTrustStoreFileOnClientSide;
+				//
+				// Do you have a trust store password?
+				tlsTrustStorePassword: $tlsTrustStorePasswordOnClientSide;
+				//
+				// Do you want to point to a TLS key store that has the 
+				// certificate and private key for the client?
+				tlsKeyStoreFile: getThisToolkitDir() + "/etc/" + 
+					$tlsKeyStoreFileOnClientSide;
+				//
+				// Do you have a TLS key store password?
+				tlsKeyStorePassword: $tlsKeyStorePasswordOnClientSide;
+				//
+				// Do you have a TLS key password?
+				tlsKeyPassword: $tlsKeyPasswordOnClientSide;
+				// =============== END OF TLS CONFIGURATION ===============
+				*/
+				//
+				// Do you want to log the individual steps/tasks/actions performed during the HTTP POST?
+				logHttpPostActions: $logHttpPostActions;
+				//
+				// If you get frequent connection timeouts, it is necessary to
+				// increase it to a higher value than the default of 30 seconds.
+				httpTimeout: $httpTimeout;
+				//
+				// Impose a tiny delay in milliseconds between continously happening  
+				// non-stop HTTP POSTs at a faster pace. HTTP POST in general is not 
+				// meant for that kind of high speed message exchanges. This minor delay 
+				// between consecutive posts will avoid opening too many quick 
+				// connections to the remote Web Server. That helps in not getting 
+				// connection refused errors.
+				// A delay of 10 milliseconds between every HTTP POST is a good place to start.
+				// Default is 0 for no delay. You may use it as needed.
+				delayBetweenConsecutiveHttpPosts: $delayBetweenConsecutiveHttpPosts;
+		}
+
+		// Let us write the HTTP text based response received from the remote server to a file.
+		() as BinaryHttpResponseSink = FileSink(BinaryPayloadSendResult) {
+			param
+				file: "http-binary-payload-send-result-" + 
+					(rstring)jobID() + "-" + getHostName() + ".txt";
+				flush: 1u;
 		}
 }
 

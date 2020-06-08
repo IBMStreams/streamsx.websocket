@@ -1,0 +1,516 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+==============================================
+First created on: May/28/2020
+Last modified on: Jun/02/2020
+
+This is an example that shows how binary data can be transferred
+from a HTTP client to a WebSocketSource operator. It shows 
+one way data exchange from a client to the WebSocket server. 
+There is another example (WebSocketSourceWithResponseTester) 
+which can be referred to for learning about the bidirectional 
+text and/or binary data excahnge between a WebbSocket/HTTP client 
+and a WebSocket server.
+
+[
+In this example, we also show how to do mutual authentication
+i.e. client and server authentication. In the Java based HttpPost
+client operator, we show the use of the Java client side
+trust store and key store. In a C++ WebSocketSource operator,
+we show how it uses the client's public certificate to do the peer verification.
+]
+ 
+This is a self contained application that includes both the
+HTTP POST client and the WebSocketSource server to demonstrate the
+one way data transfer of binary data from a HTTP Client to a WebSocket endpoint.
+Here, the client side will read the contents of the /usr/bin/tar file and send it
+via HTTP POST to the server side where the WebSocketSource operator will
+receive it and write it to a binary file in the data directory.
+
+You can build this example from command line via the make command by using the
+Makefile available in the top-level directory of this example. Inside that
+Makefile, it will be necessary to export the STREAMS_CPPWS_TOOLKIT 
+environment variable by pointing it to the full path of your 
+streamsx.cppws/com.ibm.streamsx.cppws directory.
+
+If you want to build this example inside the Streams Studio, there are certain
+build configuration settings needed. Please refer to the streamsx.cppws
+toolkit documentation to learn more about those Streams Studio configuration settings.
+
+NOTE: There is a run-ws-source-test.sh script available in the etc sub-directory of this
+example project. That convenience script can be modified to suit your needs and run
+this application on an IBM Streams instance. That will test the HttpPost operator's
+binary data send and the WebSocketSource operator's binary data receive capabilities.
+==============================================
+*/
+namespace com.ibm.streamsx.cppws.sample;
+
+// We will use the WebSocketSource and HttpPost operators from this namespace. 
+// [Inside the IBM Streams Studio, it is necessary to make the
+//  com.ibm.streamsx.cppws as a dependency for this example SPL project.]
+// [If you are building this example outside of Streams Studio, then
+//  you have to do what is necessary inside the Makefile as explained in 
+//  the previous commentary block.]
+use com.ibm.streamsx.cppws.op::*;
+
+// This is the main composite for this application.
+composite HttpBinarySendToWebSocketSource {
+	param
+		// As described above, this example application includes the
+		// logic for both the client side and the server side.
+		// It is done this way purely for simplification. In real-life
+		// scenarios, client side and server side logic will most likely 
+		// be part of two different applications.
+		//
+		// =============================================================
+		// Following are the server side related submission time parameters.
+		//
+		// WebSocket connectivity related submission time values are defined below.
+		// TLS port on which this application will listen for
+		// communicating with the remote WebSocket clients.
+		expression<uint32> $tlsPort : 
+			(uint32)getSubmissionTimeValue("tlsPort", "8443");
+		// User can optionally specify whether they want a non-TLS endpoint.
+		expression<boolean> $nonTlsEndpointNeeded : 
+			(boolean)getSubmissionTimeValue("nonTlsEndpointNeeded", "false");
+		// Non-TLS (Plain) port on which this application will
+		// (optionally) listen for communicating with the remote WebSocket clients.
+		expression<uint32> $nonTlsPort : 
+			(uint32)getSubmissionTimeValue("nonTlsPort", "8080");
+		// Do you want to use a specific URL context path for the WebSocketSource operator?
+        // It can either be a single or a multi-part path (e-g: MyServices/Banking/Deposit).
+        // With that example, WebSocket server URL should be 
+        // https://host:port/MyServices/Banking/Deposit
+        // Default is no url context path.
+		expression<rstring> $urlContextPath : getSubmissionTimeValue("urlContextPath", "");
+		// Server side certificate (.pem) file for the WebSocket server.
+		// It is necessary for the users to create a Root CA signed 
+		// server side certificate file and point to that file at the time of
+		// starting this application. If the user doesn't point to this file
+		// at the time of starting the application, then the application will
+		// look for a default file named ws-server.pem inside the etc sub-directory
+		// of the application. This certificate will be presented to the
+		// remote client for validation when it establishes a WebSocket 
+		// connection with this application. For doing quick tests, you may save
+		// time and effort needed in getting a proper Root CA signed certificate 
+		// by going with a simpler option of creating your own self-signed 
+		// certificate. Please ensure that using a self-signed certificate is 
+		// allowed in your environment. We have provided a set of instructions to
+		// create a self signed certificate. Please refer to the following
+		// file in the etc sub-directory of this application:
+		// etc/creating-a-self-signed-certificate.txt
+		expression<rstring> $certificateFileName :
+			getSubmissionTimeValue("certificateFileName", "");
+		// Do you want to specifiy a file name that contains the public certificates of
+		// the trusted client(s). If this file name is not empty, then the
+		// WebSocketSource operator will perform a client (mutual) authentication.
+		expression<rstring> $trustedClientCertificateFileName :
+			getSubmissionTimeValue("trustedClientCertificateFileName", "");	
+		// Do you want to specify a list of identifiers present in the 
+		// trusted client's X509 certificate's subject line. If that certificate is
+		// self signed, then it will help during the client (mutual) authentication to approve
+		// that client's identity as a known one.
+		// 
+		// Following are some examples of the subject line as it appears in an X509 public certificate.
+		// /C=US/ST=NY/L=Yorktown Heights/O=IBM/OU=AI/CN=cppws.streams/emailAddress=cppws.streams@ibm.com
+		// /C=US/O=Let's Encrypt/CN=Let's Encrypt Authority X3
+		// /C=BE/O=GlobalSign nv-sa/CN=GlobalSign CloudSSL CA - SHA256 - G3
+		// /C=US/O=Google Trust Services/CN=GTS CA 1O1
+		// /C=US/O=DigiCert Inc/OU=www.digicert.com/CN=DigiCert Global Root CA
+		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
+		//
+		// So your value for this submission time parameter can be as shown here.
+		// ["emailAddress=cppws.streams@ibm.com", "CN=www.ibm.com"]
+		expression<list<rstring>> $trustedClientX509SubjectIdentifiers :
+			(list<rstring>)getSubmissionTimeValue("trustedClientX509SubjectIdentifiers", "[]");		
+		// Is live metrics needed for the WebSocketSource operator?
+		expression<boolean> $websocketLiveMetricsUpdateNeeded : 
+			(boolean)getSubmissionTimeValue("websocketLiveMetricsUpdateNeeded", "true");
+		// Is WebSocket library low level logging needed?
+		expression<boolean> $websocketLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("websocketLoggingNeeded", "false");
+		// Is WebSocket client connection logging needed?
+		expression<boolean> $wsConnectionLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("wsConnectionLoggingNeeded", "false");
+		// Is client message exchange logging needed for debugging?
+		expression<boolean> $wsClientSessionLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("wsClientSessionLoggingNeeded", "false");
+		// Time in seconds to wait before starting the WebSocket server inside the source operator.
+		expression<float64> $initDelayBeforeReceivingData :
+			(float64)getSubmissionTimeValue("initDelayBeforeReceivingData", "15.0"); 
+		// Time interval in seconds during which the WebSocket source operator below should
+		// do memory cleanup of any remote client sessions that end abruptly without 
+		// closing the connection. In this application, there is no need to 
+		// purge stale connections as clients will be long running and 
+		// properly disconnect when they go away. 
+		expression<uint32> $websocketStaleConnectionPurgeInterval :(uint32)
+			getSubmissionTimeValue("websocketStaleConnectionPurgeInterval", "0");
+		// Is ipv6 protocol stack available in the Streams machine where the
+		// WebSocketSource operator is going to run?
+		// Most of the Linux machines will have ipv6. In that case,
+		// you can keep the following line as it is.
+		// If you don't have ipv6 in your environment, you can set the
+		// following submission time value to false.
+		expression<boolean> $ipv6Available : (boolean)
+			getSubmissionTimeValue("ipv6Available", "true");
+		// Specify the number of received messages from a given client after which 
+		// an ack should be sent back to that client.
+		// This has no effect if the WebSocketSource operator is configured with a
+		// "result/response to the client" input port.
+		expression<uint32> $numberOfMessagesToReceiveBeforeAnAck :(uint32)
+			getSubmissionTimeValue("numberOfMessagesToReceiveBeforeAnAck", "0");
+		// Specify if we want to allow the client applications to do an HTTP POST.
+		expression<boolean> $allowHttpPost : (boolean)
+			getSubmissionTimeValue("allowHttpPost", "false");
+		// Whitelist to accept connections only from specific
+		// IP addresses belonging to the remote WebSocket clients.
+		// Default is an empty list to indicate all client connections
+		// are accepted without any restrictions. If there is a need to
+		// accept connections only from certain clients, then a list
+		// as shown below can be used  by including wild cards as needed.
+		// e-g: "['172.34.18.212', '10.5.23.17', '172.*.42.*', '10.29.42.*']" 
+		expression<list<rstring>> $clientWhitelist : (list<rstring>)
+			getSubmissionTimeValue("clientWhitelist", "[]");
+		// Specify a maximum number of concurrent client connections to be
+		// allowed by the WebSocket server available inside the WebSocketSource operator.
+		expression<uint32> $maxClientConnectionsAllowed : (uint32)
+			getSubmissionTimeValue('maxClientConnectionsAllowed', "32");	
+		// =============================================================
+		// Following are the client related submission time parameters.
+		//
+		// User must provide the URL for the HTTP endpoint.
+		expression<rstring> $url : getSubmissionTimeValue("Url");
+		
+		// Do we want to accept all the TLS server certificates (an insecure option)?
+		expression<boolean> $tlsAcceptAllCertificates :
+			(boolean)getSubmissionTimeValue("tlsAcceptAllCertificates", "false");
+
+		// Do you want to point to a TLS trust store that has the certificates for
+		// the servers that we can trust?
+		expression<rstring> $tlsTrustStoreFileOnClientSide : 
+			getSubmissionTimeValue("tlsTrustStoreFileOnClientSide", "");
+			
+		// Do you have a TLS trust store password?
+		expression<rstring> $tlsTrustStorePasswordOnClientSide : 
+			getSubmissionTimeValue("tlsTrustStorePasswordOnClientSide", "");
+		
+		// Do you want to point to a TLS key store that has the 
+		// certificate and private key for the client?
+		expression<rstring> $tlsKeyStoreFileOnClientSide :
+			getSubmissionTimeValue("tlsKeyStoreFileOnClientSide", "");
+			
+		// Do you have a TLS key store password?
+		expression<rstring> $tlsKeyStorePasswordOnClientSide :
+			getSubmissionTimeValue("tlsKeyStorePasswordOnClientSide", "");
+			
+		// Do you have a TLS key password?
+		expression<rstring> $tlsKeyPasswordOnClientSide :
+			getSubmissionTimeValue("tlsKeyPasswordOnClientSide", "");
+		
+		// Do we want HttpsPost to display the status of its POST steps/actions.
+		expression<boolean> $logHttpPostActions : 
+			(boolean)getSubmissionTimeValue("LogHttpPostActions", "false");
+
+		// Do you want to change the HTTP connection timeout value in seconds?
+		expression<int32> $httpTimeout :
+			(int32)getSubmissionTimeValue("httpTimeout", "30");
+
+		// Do we want to impose a tiny delay in milliseconds between consecutive HTTP Posts?
+		expression<int32> $delayBetweenConsecutiveHttpPosts : 
+			(int32)getSubmissionTimeValue("delayBetweenConsecutiveHttpPosts", "0");
+		// =============================================================
+
+	type
+		// The following is the schema of the first output stream for the
+		// WebSocketSource operator. The first three attributes are
+		// very important and the other ones are purely optional if some
+		// scenarios really require them.
+		// rstring strData --> String based data (plain text, JSON and XML) received from the remote client.
+		// blob blobData --> Binary based data (audio, video, image etc.) received from the remote client.
+		// uint64 clientSessionId --> Unique identifier of a remote client as assigned by this operator. 
+		// rstring clientIpAddress --> IP address of the remote client from where the data was received.
+		// rstring clientPort --> Port of the remote client from where the data was received.
+		// boolean isWebSocketClient --> True indicates that the remote client holds a WebSocket connection.
+		// boolean isHttpClient --> True indicates that the remote client holds a Http connection.
+		// map<rstring, rstring> httpRequestHeaders --> If HTTP clients are going to send data here, this 
+		//                                              attribute can be there to fetch the HTTP request headers.
+		// uint64 totalDataItemsReceived --> Total data items received so far from a given clientSessionId.
+		// uint64 totalDataBytesReceived --> Number of data bytes received so far from a given clientSessionId.
+		ReceivedData_t = rstring strData, blob blobData, uint64 clientSessionId, 
+			rstring clientIpAddress, rstring clientPort,
+			boolean isWebSocketClient, boolean isHttpClient,
+			map<rstring, rstring> httpRequestHeaders,
+			uint64 totalDataItemsReceived, uint64 totalDataBytesReceived;
+			
+		// The following schema is for the second output stream of the
+		// WebSocketSource operator. It has one attribute indicating
+		// the a given remote client (clientSessionId) which ended the session.
+		EndOfClientSessionSignal_t = uint64 clientSessionId;
+
+		// Schema for the input stream of the HttpPost operator.
+		HttpPostInput_t = rstring strData, blob blobData, 
+			map<rstring, rstring> requestHeaders;
+			
+		// Schema for the input stream of the HttpPost operator.
+		HttpPostOutput_t = int32 statusCode, rstring statusMessage,
+			map<rstring, rstring> responseHeaders, rstring strData, blob blobData;
+
+	graph
+		// =============== START OF CLIENT SIDE LOGIC ===============
+		// We will have a source operator read the contents of the
+		// /usr/bin/tar and send it as a single blob to the downstream
+		// operator which in turn will send it to the remote 
+		// WebSocket server.
+		(stream<blob blobData> BinaryData) as
+			BinaryDataReader = FileSource() {
+			param
+				file: "/usr/bin/tar";
+				format: block;
+				blockSize: 8192u;
+				initDelay: 20.0;	
+		}
+		
+		// This operator normalizes the outgoing tuple to suit what is 
+		// expected by the downstream operator.
+		// It will simply copy the matching blobData attribute from the
+		// incoming tuple to the outgoing tuple.
+		(stream<HttpPostInput_t> NormalizedBinaryData as NBD) as
+			BinaryDataNormalizer = Custom(BinaryData as BD) {
+			logic
+				state: {
+					mutable HttpPostInput_t _oTuple = {};
+					mutable blob _blobData = [];
+				}
+				
+				onTuple BD: {
+					// Keep collecting the binary data blocks until the 
+					// end of file marker arrives.
+					appendM(_blobData, (list<uint8>)BD.blobData);
+				}
+				
+				onPunct BD: {
+					if (currentPunct() == Sys.FinalMarker) {
+						// File content was fully read and sent to this 
+						// operator by the FileSource used above. 		
+						appTrc(Trace.error, "Sent binary data to the " +
+							"remote WebSocketSource operator. Blob size=" + 
+							(rstring)blobSize(_blobData));
+					
+						_oTuple = (HttpPostInput_t){};
+						_oTuple.blobData = _blobData;
+						submit(_oTuple, NBD);
+						clearM(_blobData);
+					}
+					
+					submit(currentPunct(), NBD);
+				}
+		}
+		
+		// NOTE
+		// ----
+		// HTTP POST to the remote WebSocketSource operator will work only if that 
+		// operator is configured to allow HTTP POST. If it is not configured, then
+		// it will send a HTTP status code of 426 with a status messge of "Upgrade Required" to
+		// upgrade to the WebSocket protocol instead of HTTP. So, it is necessary for that 
+		// remote operator to accept HTTP POST for the following operator to work correctly.
+		//
+		// If the URL is wrong or not alive, there will be a "Connection timed out" exception.
+		// Let us catch any such exception and continue without crashing this operator.
+		@catch(exception=all)
+		// Please refer to the HttpPost operator documentation for
+		// more details about what attributes are acceptable in its input and output ports.
+		(stream<HttpPostOutput_t> BinaryDataSendResult) as
+		 	BinaryDataSender = HttpPost(NormalizedBinaryData as NBD) {
+			param
+				url: $url;
+				// application/octet-stream is the required content type for 
+				// this operator to post the payload as binary data.
+				// Users can also override it to suit their other needs such as
+				// text/plain or application/json or application/xml.
+				contentType: "application/octet-stream";
+				//
+				// For scenarios that will require HTTP POST body to
+				// have the query string format (param=value),
+				// the following contentType can be used.
+				//
+				// contentType: "application/x-www-form-urlencoded";
+				//
+				// Do you want to accept all the TLS server certificates (an insecure option)?
+				tlsAcceptAllCertificates: $tlsAcceptAllCertificates;
+				//
+				/*
+				// =============== START OF TLS CONFIGURATION ===============
+				// You can enable or disable trust store and key store features of
+				// this operator based on your need. Before doing that, please have a 
+				// thorough reading of the etc/creating-a-self-signed-certificate.txt file.
+				// 
+				// Do you want to point to a TLS trust store that has the certifiactes for
+				// the servers that we can trust?
+				tlsTrustStoreFile: getThisToolkitDir() + "/etc/" + 
+					$tlsTrustStoreFileOnClientSide;
+				//
+				// Do you have a trust store password?
+				tlsTrustStorePassword: $tlsTrustStorePasswordOnClientSide;
+				//
+				// Do you want to point to a TLS key store that has the 
+				// certificate and private key for the client?
+				tlsKeyStoreFile: getThisToolkitDir() + "/etc/" + 
+					$tlsKeyStoreFileOnClientSide;
+				//
+				// Do you have a TLS key store password?
+				tlsKeyStorePassword: $tlsKeyStorePasswordOnClientSide;
+				//
+				// Do you have a TLS key password?
+				tlsKeyPassword: $tlsKeyPasswordOnClientSide;
+				// =============== END OF TLS CONFIGURATION ===============
+				*/
+				//
+				// Do you want to log the individual steps/tasks/actions performed during the HTTP POST?
+				logHttpPostActions: $logHttpPostActions;
+				//
+				// If you get frequent connection timeouts, it is necessary to
+				// increase it to a higher value than the default of 30 seconds.
+				httpTimeout: $httpTimeout;
+				//
+				// Impose a tiny delay in milliseconds between continously happening  
+				// non-stop HTTP POSTs at a faster pace. HTTP POST in general is not 
+				// meant for that kind of high speed message exchanges. This minor delay 
+				// between consecutive posts will avoid opening too many quick 
+				// connections to the remote Web Server. That helps in not getting 
+				// connection refused errors.
+				// A delay of 10 milliseconds between every HTTP POST is a good place to start.
+				// Default is 0 for no delay. You may use it as needed.
+				delayBetweenConsecutiveHttpPosts: $delayBetweenConsecutiveHttpPosts;
+		}
+
+		// Let us write the text based HTTP response received from the remote server to screen.
+		() as BinaryHttpResponseSink = FileSink(BinaryDataSendResult) {
+			param
+				file: "/dev/stdout";
+				flush: 1u;
+		}
+		// =============== END OF CLIENT SIDE LOGIC ===============
+
+		// =============== START OF SERVER SIDE LOGIC ===============
+		// Receive text data or binary data or both from the
+		// remote WebSocket clients.
+		// [As indicated in the commentary at the top of this file,
+		//  this operator can optionally receive two input ports.
+		//  We are not using them in this application. You can refer to
+		//  two other examples that show how to use the input ports
+		//  in this operator to send a response to a client as well as
+		//  to dynamically update the client whitelist.]
+		(stream<ReceivedData_t> WebSocketRxData as WSRD;
+		 stream<EndOfClientSessionSignal_t> EndOfClientSessionSignal as EOCSS) 
+			as WebSocketDataReceiver = WebSocketSource() {
+			logic
+				state: {
+					// Initialize the default TLS certificate file name if the 
+					// user didn't provide his or her own.
+					rstring _certificateFileName = 
+						($certificateFileName != "") ?
+						$certificateFileName : getThisToolkitDir() + "/etc/ws-server.pem";
+				}
+				
+			param
+				tlsPort: $tlsPort;
+				certificateFileName: _certificateFileName;
+				trustedClientCertificateFileName: $trustedClientCertificateFileName;
+				// Use this only when you have trouble authenticating clients that 
+				// have self signed certificates.
+				trustedClientX509SubjectIdentifiers: $trustedClientX509SubjectIdentifiers;
+				nonTlsEndpointNeeded: $nonTlsEndpointNeeded;
+				nonTlsPort: $nonTlsPort;
+				urlContextPath: $urlContextPath;
+				// Initial delay before generating the very first tuple.
+				// This is a one time delay when this operator starts up.
+				// This delay should give sufficient time for the
+				// downstream operator(s) to come up and be ready to
+				// receive the data tuples sent by this operator.
+				initDelay: $initDelayBeforeReceivingData;
+				websocketLiveMetricsUpdateNeeded: $websocketLiveMetricsUpdateNeeded;
+				websocketLoggingNeeded: $websocketLoggingNeeded;
+				wsConnectionLoggingNeeded: $wsConnectionLoggingNeeded;
+				wsClientSessionLoggingNeeded: $wsClientSessionLoggingNeeded;
+				websocketStaleConnectionPurgeInterval: $websocketStaleConnectionPurgeInterval;
+				ipv6Available: $ipv6Available;
+				numberOfMessagesToReceiveBeforeAnAck: $numberOfMessagesToReceiveBeforeAnAck;
+				// Are we going to allow client applications to send their 
+				// text based data (plain text, JSON, XML etc.) via HTTP/HTTPS POST?
+				allowHttpPost: $allowHttpPost;
+				clientWhitelist: $clientWhitelist;
+				maxClientConnectionsAllowed: $maxClientConnectionsAllowed;
+			
+			// Get these values via custom output functions	provided by this operator.
+			output
+			    // strData and/or blobData attributes will be automatically
+			    // assigned with values by the operator logic.
+			    // Other attributes can be assigned manually as done below.
+				WSRD: clientSessionId = getClientSessionId(),
+					clientIpAddress = getClientIpAddress(),
+					clientPort = getClientPort(),
+					isWebSocketClient = isWebSocketClient(),
+					isHttpClient = isHttpClient(),
+					httpRequestHeaders = getHttpRequestHeaders(),
+					totalDataItemsReceived = getTotalDataItemsReceived(),
+					totalDataBytesReceived = getTotalDataBytesReceived(); 
+		}
+
+		// This operator receives the content sent by the remote
+		// WebSocket/HTTP client and sends only the received binary data 
+		// to a downstream operator to be written to a file.
+		(stream<blob blobData> BinaryDataReceived as BDR) as 
+			BinaryDataFilter = Custom(WebSocketRxData as WSRD; 
+			EndOfClientSessionSignal as EOCSS) {
+			logic
+				state: {
+					// Some state variables needed for this example.
+					mutable BinaryDataReceived _oTuple = {};
+					mutable int32 _tupleCnt = 0;
+				}
+				
+				onTuple WSRD: {
+					_tupleCnt++;
+					int32 blobDataLength = size(blobData);
+					
+					// HTTP client logic above will read the /usr/bin/tar file and
+					// send it in a single blob here. So, we only need the very first
+					// tuple carrying the contents of /usr/bin/tar. If there are any
+					// subsequent tuples, we can ignore them.
+					if (_tupleCnt == 1 && blobDataLength > 0) {
+						appTrc(Trace.error, "Received binary data from the " +
+						"remote HttpPost operator. Blob size=" + 
+						(rstring)blobDataLength);
+						assignFrom(_oTuple, WSRD);
+						submit(_oTuple, BDR);
+					}
+				}
+				
+				onTuple EOCSS: {
+					// This is an End Of Client Session Signal.
+					// You can use this signal arriving on the second incoming port to
+					// identify the end of a given remote client. In your own application logic,
+					// you may want to add other logic here as you please. 
+					appTrc(Trace.debug, "WebSocket session ended for a remote client: " + (rstring)EOCSS);
+				}
+		} // End of Custom operator,
+
+		// We will write the received blob (binary) content to a file in our
+		// data directory. You can check if the size and content of this file
+		// match the /usr/bin/tar. You can simply diff this file and /usr/bin/tar.
+		// After stopping this application, you can also do a chmod u+x for this file, 
+		// and then run ./my-tar --help or ./my-tar --usage
+		() as MySink1 = FileSink(BinaryDataReceived) {
+			param
+				file: "my-tar";
+				format: block;
+				flush: 1u;
+		}
+		// =============== END OF SERVER SIDE LOGIC ===============
+}

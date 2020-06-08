@@ -1,41 +1,54 @@
 ============================================================
 First created on: February/22/2020
-Last modified on: April/01/2020
+Last modified on: June/07/2020
 
 Purpose of this toolkit
 -----------------------
-The streamsx.cppws toolkit provides the following C++ based 
-operators that can help you to ingest text or binary data from
-the remote client applications via WebSocket (OR) send text or
-binary data from your IBM Streams applications to external
-server based applications via WebSocket.
+The streamsx.cppws toolkit provides the following C++ and Java
+based operators that can help you to receive text or binary data
+from the remote client and server-based applications via 
+WebSocket and HTTP (OR) send text or binary data from your 
+IBM Streams applications to external client and server-based 
+applications via WebSocket and HTTP.
 
-1) WebSocketSource
-2) WebSocketSendReceive    [Will be available in 2Q2020]
-3) WebSocketSink           [Will be available in 2Q2020]
+1) WebSocketSource (server-based)
+2) WebSocketSendReceive (client-based)
+3) WebSocketSink (server-based)
+4) HttpPost (client-based) [To send/post text and binary data via HTTP(S)]
 
-WebSocketSource is a source operator that can be used to receive text or 
-binary data from multiple client applications. This operator supports
-message reception via both WebSocket and HTTP on plain as well as 
-secure endpoints. Users will get a two-in-one benefit from this operator.
-It can be configured to start a plain or secure WebSocket endpoint for 
-the remote clients to connect and start sending data. 
-This is Receive-only from multiple clients.
+WebSocketSource by default is a source operator that can be used 
+to receive text or binary data from multiple client applications.
+This operator supports message reception via both WebSocket and HTTP 
+on plain as well as secure TLS endpoints. This source operator can 
+optionally be turned into an analytic operator to process/analyze
+the text or binary data received from the remote clients and then
+send back a text or binary response back to that same WebSocket or
+HTTP-based client. Thus, users will get a five-in-one benefit
+(WebSocket, HTTP, plain, secure and response-ready) from this operator.
+It can be configured to start a plain or secure WebSocket or HTTP
+endpoint for the remote clients to connect and start sending and
+(optionally) receiving data. This is Receive-only with an option to 
+make it a Receive-and-Send operator. This operator promotes the 
+Many-To-One data access pattern.
 
-WebSocketSendReceive (when released in 2Q2020) is an analytic operator
-that can be used to initiate a connection to an external WebSocket server based
-application in order to send and receive text or binary data via that connection.
-This is Send-and-Receive to/from a single server based remote WebSocket application.
+WebSocketSendReceive is an analytic operator that can be used to
+initiate a connection to an external WebSocket server-based
+application in order to send and receive text or binary data via that 
+connection. This is Send-and-Receive to/from a single server-based
+remote WebSocket application. This operator promotes the One-To-One
+data access pattern.
 
-WebSocketSink (when released in 2Q2020) is a sink operator that can be
-used to send text or binary data to multiple clients. It can be 
-configured to start a plain or secure WebSocket endpoint for the
-remote clients to connect and start receiving data. This is Send-only to
-multiple clients.
+WebSocketSink is a sink operator that can be used to send (broadcast)
+text or binary data to multiple clients. It can be configured to start
+a plain or secure WebSocket endpoint for the remote clients to connect 
+in order to start receiving data from this operator. This is Send-only 
+to multiple clients. This operator promotes the One-To-Many data access pattern.
 
-This toolkit also provides an utility operator (HttpPost) to test the 
-optional HTTP(S) message reception feature available in the WebSocketSource 
-operator. If other application scenarios see a fit for this utility operator, 
+HttpPost is a utility operator provided by this toolkit to test the 
+optional HTTP(S) text or binary data reception feature available in 
+the WebSocketSource operator. This utility operator can send text or 
+binary data and receive text or binary data in response from the remote server.
+If other application scenarios see a fit for this utility operator, 
 they can also use it as needed. If you clone this toolkit from the 
 IBMStreams GitHub, then you must build this utility operator by running 
 "ant clean" and "ant all" from the com.ibm.streamsx.cppws directory. 
@@ -49,7 +62,7 @@ WebSocket, a computer communication protocol has been in commercial use since
 2012 after it became an official IETF standard. It enables two-way (full duplex)
 communication between a client and a remote server over TCP with low overhead when 
 compared to the other Web protocols such as HTTP or HTTPS. Another superb
-benefit of WebSocket is that it can be overlayed on top of HTTP or HTTPS by making
+benefit of WebSocket is that it can be overlaid on top of HTTP or HTTPS by making
 the initial connection using HTTP or HTTPS and then upgrading that connection
 to a full duplex TCP connection to the standard port 80 or port 443 thereby
 being able to flow through the firewall.
@@ -58,9 +71,9 @@ At a very high level, this toolkit shares the same design goal as two other
 operators available in a different IBM Streams toolkit named 
 com.ibm.streamsx.inetserver which provides two similar operators written 
 in Java using a built-in Jetty web server. The com.ibm.streamsx.cppws 
-provided operators are written using C++ by employing the Boost ASIO 
-facility which is expected to use less CPU and memory and provide a 
-better overall throughput.
+provided operators are written using C++ by employing the most highly 
+regarded C++ Boost library, which is expected to use less CPU, memory and
+provide a better overall throughput with a good cost performance advantage.
  
 Requirements for this toolkit
 -----------------------------
@@ -68,42 +81,51 @@ There are certain important requirements that need to be satisfied in order to
 use the IBM Streams cppws toolkit in Streams applications. 
 Such requirements are explained below.
 
-1. This toolkit uses Websocket to communicate with the remote client and/or
+1. This toolkit uses WebSocket, HTTP to communicate with the remote client and/or
 server applications. 
 
 2. On the IBM Streams application development machine (where the application code is 
 compiled to create the application bundle), it is necessary to download and install 
-the boost_1_69_0 as well as the websocketpp version 0.8.1. 
+the boost_1_73_0 as well as the websocketpp version 0.8.2. 
 Please note that this is not needed on the Streams application execution machines.
 For the essential steps to meet this requirement, please refer to the above-mentioned 
-documentation URL or a file named cppws-tech-brief.txt available at this 
-tooolkit's top-level directory.
+documentation URL or a section below in this file.
 
-3. It is necessary to create a self signed or Root CA signed TLS/SSL certificate 
+3. It is necessary to create a self-signed or Root CA signed TLS/SSL certificate 
 in PEM format and point to that certificate file at the time of starting the 
-IBM Streams application that invokes the WebSocketSource operator present 
-in this toolkit. If you don't want to keep pointing to your TLS/SSL certificate 
+IBM Streams application that invokes the WebSocketSource and WebSocketSink operators 
+present in this toolkit. If you don't want to keep pointing to your TLS/SSL certificate 
 file every time you start the IBM Streams application, you can also copy the full 
 certificate file to your Streams application's etc directory as ws-server.pem 
-and compile your application which will then be used by default.
+and compile your application which will then be used by default. The other two
+client-based operators WebSocketSendReceive and HttpPost can optionally be pointed to
+their own TLS/SSL certificate at the time of getting invoked mainly for the purpose of
+performing client (mutual) authentication. All the four operators in this toolkit can also
+be pointed with the public certificate of their remote party in order to do trusted
+server or client TLS certificate verification/authentication.
 
-If you are comfortable with using a self signed TLS/SSL certificate file in 
+If you are comfortable with using a self-signed TLS/SSL certificate file in 
 your environment, you can follow the instructions given in the following file 
-that is shipped with this toolkit to create your own self signed SSL certificate.
+that is shipped with this toolkit to create your own self-signed TLS/SSL certificate.
 
 <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSourceTester/etc/creating-a-self-signed-certificate.txt
 
+A copy of the text file mentioned above is available in the etc directory of every
+example shipped with this toolkit. This file explains different procedures to create 
+client/server-side private certificate as well as the public certificate to share
+with the remote party that is getting connected to or connected from.
+
 Major external dependency for this toolkit
 ------------------------------------------
-Bulk of the Websocket logic in this toolkit's operator relies on the
-following open source C++ Websocket header only library.
+Bulk of the WebSocket logic in this toolkit's operator relies on the
+following open source C++ WebSocket header only library.
 https://github.com/zaphoyd/websocketpp
 
-Much of the Websocket logic here also follows the
-Websocket client and server usage techniques explained in the
+Much of the WebSocket logic here also follows the
+WebSocket client and server usage techniques explained in the
 sample code snippets from the above mentioned websocketpp URL.
 
-A great source of learning for Websocket++ is here:
+A great source of learning for WebSocket++ is here:
 https://docs.websocketpp.org/index.html
 
 This toolkit requires the following two open source packages that are
@@ -115,16 +137,16 @@ done only on the Linux machine(s) where the Streams application development
 i.e. coding, compiling and packaging is done. Only after doing that,
 users can use this toolkit in their Streams applications.
 
-1) boost_1_69_0
-   --> Obtain the official boost version boost_1_69_0 from here:
-           https://www.boost.org/users/history/version_1_69_0.html
+1) boost_1_73_0
+   --> Obtain the official boost version boost_1_73_0 from here:
+           https://www.boost.org/users/history/version_1_73_0.html
    
-   --> A few .so files from the boost_1_69_0/lib directory are
+   --> A few .so files from the boost_1_73_0/lib directory are
        copied into the impl/lib directory of this toolkit.
        (It is needed for the dynamic loading of these .so files
         when the Streams application using this toolkit is launched.)
        
-   --> The entire boost_1_69_0/include directory is copied into
+   --> The entire boost_1_73_0/include directory is copied into
        the impl/include directory of this toolkit. [Around 200 MB in size]
        (It is needed for a successful compilation of the 
        Streams application that uses this toolkit. Please note that
@@ -132,7 +154,7 @@ users can use this toolkit in their Streams applications.
        application's SAB file since the impl/include directory will not be
        part of the SAB file.)
        
-2) websocketpp v0.8.1
+2) websocketpp v0.8.2
    --> The entire websocketpp directory is copied into
        the impl/include directory of this toolkit. [Around 1.5 MB in size]
        (It is needed for a successful compilation of the 
@@ -141,33 +163,33 @@ users can use this toolkit in their Streams applications.
        application's SAB file  since the impl/include directory will not be
        part of the SAB file.)
 
-Downloading and building boost_1_69_0
+Downloading and building boost_1_73_0
 ----------------------------------
-a) Download and build boost 1_69_0 in the user's home directory by using the --prefix option as shown below:
+a) Download and build boost 1_73_0 in the user's Linux home directory by using the --prefix option as shown below:
 
-Download boost_1_69_0 from this URL into your home directory: 
+Download boost_1_73_0 from this URL into your Linux home directory: 
 mkdir <YOUR_HOME_DIRECTORY>/boost-install-files
 cd <YOUR_HOME_DIRECTORY>/boost-install-files
-wget https://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.gz   [Approximately 1 minute]
+wget https://dl.bintray.com/boostorg/release/1.73.0/source/boost_1_73_0.tar.gz [Approximately 1 minute]
 
-Extract boost_1_69_0 in <YOUR_HOME_DIRECTORY>/boost-install-files:
+Extract boost_1_73_0 in <YOUR_HOME_DIRECTORY>/boost-install-files:
 cd <YOUR_HOME_DIRECTORY>/boost-install-files
-tar -xvzf <YOUR_HOME_DIRECTORY>/boost-install-files/boost_1_69_0.tar.gz    [Approximately 5 minutes]
+tar -xvzf <YOUR_HOME_DIRECTORY>/boost-install-files/boost_1_73_0.tar.gz    [Approximately 5 minutes]
 
-Bootstrap boost_1_69_0 and install it in your home directory using the --prefix option:
-cd <YOUR_HOME_DIRECTORY>/boost-install-files/boost_1_69_0
-./bootstrap.sh --prefix=<YOUR_HOME_DIRECTORY>/boost_1_69_0             [Approximately 1 minute]
-./b2 install --prefix=<YOUR_HOME_DIRECTORY>/boost_1_69_0 --with=all    [Approximately 25 minutes]
+Bootstrap boost_1_73_0 and install it in your home directory using the --prefix option:
+cd <YOUR_HOME_DIRECTORY>/boost-install-files/boost_1_73_0
+./bootstrap.sh --prefix=<YOUR_HOME_DIRECTORY>/boost_1_73_0             [Approximately 1 minute]
+./b2 install --prefix=<YOUR_HOME_DIRECTORY>/boost_1_73_0 --with=all    [Approximately 5 minutes]
 cd <YOUR_HOME_DIRECTORY>
 rm -rf <YOUR_HOME_DIRECTORY>/boost-install-files         [Approximately 2 minutes]
 
 Instructions shown above are from this URL:
 https://gist.github.com/1duo/2d1d851f76f8297be264b52c1f31a2ab
 
-b) After that, copy a few .so files from the <YOUR_HOME_DIRECTORY>/boost_1_69_0/lib
+b) After that, copy a few .so files from the <YOUR_HOME_DIRECTORY>/boost_1_73_0/lib
    directory into the impl/lib directory of this toolkit.
-   (libboost_chrono.so.1.69.0, libboost_random.so.1.69.0, 
-    libboost_system.so.1.69.0, libboost_thread.so.1.69.0)
+   (libboost_chrono.so.1.73.0, libboost_random.so.1.73.0, 
+    libboost_system.so.1.73.0, libboost_thread.so.1.73.0)
     
    For all those .so files you copied, you must also create a 
    symbolic link within the impl/lib directory of this toolkit.
@@ -175,22 +197,23 @@ b) After that, copy a few .so files from the <YOUR_HOME_DIRECTORY>/boost_1_69_0/
    execute the Linux symbolic link command as shown below for every
    .so file you copied into that directory.
    
-   e-g: ln -s libboost_chrono.so.1.69.0 libboost_chrono.so
+   e-g: ln -s libboost_chrono.so.1.73.0 libboost_chrono.so
 
-c) Move the entire <YOUR_HOME_DIRECTORY>/boost_1_69_0/include/boost directory into the
+c) Move the entire <YOUR_HOME_DIRECTORY>/boost_1_73_0/include/boost directory into the
    impl/include directory of this toolkit.
    
-d) At this time, you may delete the <YOUR_HOME_DIRECTORY>/boost_1_69_0 directory.
+d) At this time, you may delete the <YOUR_HOME_DIRECTORY>/boost_1_73_0 directory.
 
-Downloading websocketpp 0.8.1
+Downloading websocketpp 0.8.2
 -----------------------------
-a) Download websocketpp v0.8.1 from https://github.com/zaphoyd/websocketpp/releases and 
-   extract it in your home directory first. Then move the ~/websocket-0.8.1/websocketpp directory 
-   into the impl/include directory of this toolkit.
+a) Download websocketpp v0.8.2 from https://github.com/zaphoyd/websocketpp/releases and 
+   extract it in your home directory first. Then move the ~/websocket-0.8.2/websocketpp directory into the impl/include directory of this toolkit.
    (websocket++ is a header only C++ library which has no .so files of its own.
     In that way, it is very convenient.)
 
-b) At this time, you may delete the ~/websocket-0.8.1 directory.
+b) At this time, you may delete the ~/websocket-0.8.2 directory.
+
+c) If you observe either a missing or an empty streamsx.cppws/com.ibm.streamsx.cppws/impl/java/bin directory, then you should run 'ant all' from the streamsx.cppws/com.ibm.streamsx.cppws directory. That will compile the HttpPost Java operator available in this toolkit.
 
 A must do in the Streams applications that will use this toolkit
 ----------------------------------------------------------------
@@ -219,28 +242,38 @@ b) --> In Streams studio, you must double click on the BuildConfig of
        --c++std=c++11
        
    --> If you are building your application from the command line, please refer to the
-       Makefile provided in the WebSocketSourceTester example shipped with
-       this toolkit. Before using that Makefile, you must set the 
-       STREAMS_CPPWS_TOOLKIT environment variable to point to the full path of   
-       your streamsx.cppws/com.ibm.streamsx.cppws directory.
+       Makefile provided in every example shipped with this toolkit. Before using 
+       that Makefile, you must set the STREAMS_CPPWS_TOOLKIT environment variable to 
+       point to the full path of your streamsx.cppws/com.ibm.streamsx.cppws directory.
        To build your own applications, you can do the same as done in that Makefile.
        
-
 Examples that showcase this toolkit's features
 ----------------------------------------------
-This toolkit ships with the following examples that can be used as reference applications. 
-These examples showcase the full feature set of the WebSocketSource, WebSocketSendReceive
-and the WebSocketSink operators that are available within this toolkit. More details about 
-these examples can be obtained from the official documentation for this toolkit.
+This toolkit ships with the following examples that can be used as reference applications.
+These examples showcase the full feature set of the WebSocketSource, WebSocketSendReceive,
+WebSocketSink and the HttpPost operators that are available within this toolkit. 
+Every example below will have the client and server-side application needed to test it.
+All the examples went through extensive testing in the IBM Streams lab in New York and
+they include excellent code documentation in the source files to guide the
+application/solution development engineers. More details about these examples can be
+obtained from the official documentation for this toolkit.
 
 1) <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSourceTester
-2) <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSendReceiveTester
-3) <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSinkTester
-4) <YOUR_CPPWS_TOOLKIT_HOME>/samples/HttpPostTester
+2) <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSourceWithResponseTester
+3) <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSendReceiveTester
+4) <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSinkTester
+5) <YOUR_CPPWS_TOOLKIT_HOME>/samples/HttpPostTester
 
-There is also an example WebSocket based client application that can be run from a 
-RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketTester 
-application. That example client application is available in the 
+In the etc sub-directory of every example shown above, there is a shell script that 
+can be used to run a given example with synthetic data and then verify the 
+application behavior and the result. That shell script was originally written for 
+running a given example in the IBM Streams lab in New York. It is easy to make 
+minor changes in that shell script and use it in any other IBM Streams environment 
+for running a given example.
+
+There is also an example WebSocket-based C++ client application that can be run from a 
+RHEL7 or CentOS7 machine to simulate high volume data traffic to be sent to the
+WebSocketSourceTester application. That example client application is available in the 
 streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.
 
 Official documentation for this toolkit

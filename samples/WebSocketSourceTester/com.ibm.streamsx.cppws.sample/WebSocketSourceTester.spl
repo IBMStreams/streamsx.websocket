@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2018, 2020
+# Copyright IBM Corp. 2020
 ==============================================
 */
 
 /*
 ==============================================
 First created on: Feb/23/2020
-Last modified on: Mar/24/2020
+Last modified on: Jun/02/2020
 
 This example demonstrates the ingestion of text or binary data
 from one or more remote WebSocket clients. It also shows how to
@@ -19,6 +19,37 @@ client applications.
 message reception via both WebSocket and HTTP on plain as well as secure endpoints.
 Users will get a two-in-one benefit from this operator.]
 
+Even though it is labeled as a source operator, WebSocketSource can be 
+configured to perform like an analytic operator to receive data from the  
+clients (WS or HTTP or both), process that data and send result/response back to a given client.
+This particular example here only focuses on showcasing the pure source feature of
+the WebSocketSource operator only to receive data from WebSocket or HTTP or both kinds of
+remote clients. To test this particular example, you can use either of the 
+following two client applications or both of them to generate test data to be 
+sent to the WebSocketSource operator. These two client applications are available
+in the samples sub-directory of the streamsx.cppws toolkit.
+
+1) samples/WebSocketSourceTester/WSClientDataSimulator
+2) samples/HttpPostTester
+
+Please read the decent amount of commentary included in both of those client 
+applications to learn about how to send test data using them.
+
+[
+In this example, we also show how to do mutual authentication
+i.e. client and server authentication. In the Java based HttpPost
+client operator, we show the use of the Java client side
+trust store and key store. In a C++ WebSocketSource operator,
+we show how it uses the client's public certificate to do the peer verification.
+]
+
+To use the WebSocketSource operator to receive data, do processing/analytics on that data  
+and send a response back to the client (a combined source and analytic feature), there is 
+a separate example project available in the streamsx.cppws toolkit showcasing that idea. 
+Please refer to that example if you have an interest in that topic of the 
+client/server request/response round-tripping with the WebSocketSource operator.
+That example is called WebSocketSourceWithResponseTester.
+
 You can build this example from command line via the make command by using the
 Makefile available in the top-level directory of this example. Inside that
 Makefile, it will be necessary to export the STREAMS_CPPWS_TOOLKIT 
@@ -28,16 +59,21 @@ streamsx.cppws/com.ibm.streamsx.cppws directory.
 If you want to build this example inside the Streams Studio, there are certain
 build configuration settings needed. Please refer to the streamsx.cppws
 toolkit documentation to learn more about those Streams Studio configuration settings.
+
+NOTE: There is a run-ws-source-test.sh script available in the etc sub-directory of this
+example project. That convenience script can be modified to suit your needs and run
+this application along with 3 other test client applications running on different
+IBM Streams instances. That will test the WebSocketSource operator's capabilities.
 ==============================================
 */
 namespace com.ibm.streamsx.cppws.sample;
 
-// We will use the WebSocketSource operator from this namepsace. 
+// We will use the WebSocketSource operator from this namespace. 
 // [Inside the IBM Streams Studio, it is necessary to make the
 //  com.ibm.streamsx.cppws as a dependency for this example SPL project.]
 // [If you are building this example outside of Streams Studio, then
 //  you have to do what is necessary inside the Makefile as explained in 
-//  the previous commentary line.]
+//  the previous commentary block.]
 use com.ibm.streamsx.cppws.op::*;
 
 // This is the main composite for this application.
@@ -47,14 +83,20 @@ composite WebSocketSourceTester {
 		// TLS port on which this application will listen for
 		// communicating with the remote WebSocket clients.
 		expression<uint32> $tlsPort : 
-			(uint32)getSubmissionTimeValue("tlsPort", "443");
+			(uint32)getSubmissionTimeValue("tlsPort", "8443");
 		// User can optionally specify whether they want a non-TLS endpoint.
 		expression<boolean> $nonTlsEndpointNeeded : 
 			(boolean)getSubmissionTimeValue("nonTlsEndpointNeeded", "false");
 		// Non-TLS (Plain) port on which this application will
 		// (optionally) listen for communicating with the remote WebSocket clients.
 		expression<uint32> $nonTlsPort : 
-			(uint32)getSubmissionTimeValue("nonTlsPort", "80");
+			(uint32)getSubmissionTimeValue("nonTlsPort", "8080");
+		// Do you want to use a specific URL context path for the WebSocketSource operator?
+        // It can either be a single or a multi-part path (e-g: MyServices/Banking/Deposit).
+        // With that example, WebSocket server URL should be 
+        // https://host:port/MyServices/Banking/Deposit
+        // Default is no url context path.
+		expression<rstring> $urlContextPath : getSubmissionTimeValue("urlContextPath", "");
 		// Server side certificate (.pem) file for the WebSocket server.
 		// It is necessary for the users to create a Root CA signed 
 		// server side certificate file and point to that file at the time of
@@ -73,23 +115,50 @@ composite WebSocketSourceTester {
 		// etc/creating-a-self-signed-certificate.txt
 		expression<rstring> $certificateFileName :
 			getSubmissionTimeValue("certificateFileName", "");
+		// Do you want to specifiy a file name that contains the public certificates of
+		// the trusted client(s). If this file name is not empty, then the
+		// WebSocketSource operator will perform a client (mutual) authentication.
+		expression<rstring> $trustedClientCertificateFileName :
+			getSubmissionTimeValue("trustedClientCertificateFileName", "");	
+		// Do you want to specify a list of identifiers present in the 
+		// trusted client's X509 certificate's subject line. If that certificate is
+		// self signed, then it will help during the client (mutual) authentication to approve
+		// that client's identity as a known one.
+		// 
+		// Following are some examples of the subject line as it appears in an X509 public certificate.
+		// /C=US/ST=NY/L=Yorktown Heights/O=IBM/OU=AI/CN=cppws.streams/emailAddress=cppws.streams@ibm.com
+		// /C=US/O=Let's Encrypt/CN=Let's Encrypt Authority X3
+		// /C=BE/O=GlobalSign nv-sa/CN=GlobalSign CloudSSL CA - SHA256 - G3
+		// /C=US/O=Google Trust Services/CN=GTS CA 1O1
+		// /C=US/O=DigiCert Inc/OU=www.digicert.com/CN=DigiCert Global Root CA
+		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
+		//
+		// So your value for this submission time parameter can be as shown here.
+		// ["emailAddress=cppws.streams@ibm.com", "CN=www.ibm.com"]
+		expression<list<rstring>> $trustedClientX509SubjectIdentifiers :
+			(list<rstring>)getSubmissionTimeValue("trustedClientX509SubjectIdentifiers", "[]");	
 		// Is live metrics needed for the WebSocketSource operator?
 		expression<boolean> $websocketLiveMetricsUpdateNeeded : 
 			(boolean)getSubmissionTimeValue("websocketLiveMetricsUpdateNeeded", "true");
 		// Is WebSocket library low level logging needed?
 		expression<boolean> $websocketLoggingNeeded : 
 			(boolean)getSubmissionTimeValue("websocketLoggingNeeded", "false");
+		// Is WebSocket client connection logging needed?
+		expression<boolean> $wsConnectionLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("wsConnectionLoggingNeeded", "false");
 		// Is client message exchange logging needed for debugging?
 		expression<boolean> $wsClientSessionLoggingNeeded : 
 			(boolean)getSubmissionTimeValue("wsClientSessionLoggingNeeded", "false");
-		// Time in seconds to wait before sending data to the STT engines.
+		// Time in seconds to wait before starting the WebSocket server inside the source operator.
 		expression<float64> $initDelayBeforeReceivingData :
 			(float64)getSubmissionTimeValue("initDelayBeforeReceivingData", "15.0"); 
 		// Time interval in seconds during which the WebSocket source operator below should
 		// do memory cleanup of any remote client sessions that end abruptly without 
-		// closing the connection.
+		// closing the connection. In this application, there is no need to 
+		// purge stale connections as clients will be long running and 
+		// properly disconnect when they go away. 
 		expression<uint32> $websocketStaleConnectionPurgeInterval :(uint32)
-			getSubmissionTimeValue("websocketStaleConnectionPurgeInterval", "10800");
+			getSubmissionTimeValue("websocketStaleConnectionPurgeInterval", "0");
 		// Is ipv6 protocol stack available in the Streams machine where the
 		// WebSocketSource operator is going to run?
 		// Most of the Linux machines will have ipv6. In that case,
@@ -100,11 +169,26 @@ composite WebSocketSourceTester {
 			getSubmissionTimeValue("ipv6Available", "true");
 		// Specify the number of received messages from a given client after which 
 		// an ack should be sent back to that client.
+		// This has no effect if the WebSocketSource operator is configured with a
+		// "result/response to the client" input port.
 		expression<uint32> $numberOfMessagesToReceiveBeforeAnAck :(uint32)
 			getSubmissionTimeValue("numberOfMessagesToReceiveBeforeAnAck", "0");
 		// Specify if we want to allow the client applications to do an HTTP POST.
 		expression<boolean> $allowHttpPost : (boolean)
 			getSubmissionTimeValue("allowHttpPost", "false");
+		// Whitelist to accept connections only from specific
+		// IP addresses belonging to the remote WebSocket clients.
+		// Default is an empty list to indicate all client connections
+		// are accepted without any restrictions. If there is a need to
+		// accept connections only from certain clients, then a list
+		// as shown below can be used  by including wild cards as needed.
+		// e-g: "['172.34.18.212', '10.5.23.17', '172.*.42.*', '10.29.42.*']" 
+		expression<list<rstring>> $clientWhitelist : (list<rstring>)
+			getSubmissionTimeValue("clientWhitelist", "[]");
+		// Specify a maximum number of concurrent client connections to be
+		// allowed by the WebSocket server available inside the WebSocketSource operator.
+		expression<uint32> $maxClientConnectionsAllowed : (uint32)
+			getSubmissionTimeValue('maxClientConnectionsAllowed', "32");	
 
 	type
 		// The following is the schema of the first output stream for the
@@ -114,10 +198,20 @@ composite WebSocketSourceTester {
 		// rstring strData --> String based data (plain text, JSON and XML) received from the remote client.
 		// blob blobData --> Binary based data (audio, video, image etc.) received from the remote client.
 		// uint64 clientSessionId --> Unique identifier of a remote client as assigned by this operator. 
-		// int32 totalDataBytesReceived --> Number of data bytes received so far from a given clientSessionId.
-		// int32 totalTuplesSent --> Total output tuples emitted so far for a given clientSessionId.
+		// rstring clientIpAddress --> IP address of the remote client from where the data was received.
+		// rstring clientPort --> Port of the remote client from where the data was received.
+		// boolean isWebSocketClient --> True indicates that the remote client holds a WebSocket connection.
+		// boolean isHttpClient --> True indicates that the remote client holds a Http connection.
+		// map<rstring, rstring> httpRequestHeaders --> If HTTP clients are going to send data here, this 
+		//                                              attribute can be there to fetch the HTTP request headers.
+		// uint64 totalDataItemsReceived --> Total data items received so far from a given clientSessionId.
+		// uint64 totalDataBytesReceived --> Number of data bytes received so far from a given clientSessionId.
 		ReceivedData_t = rstring strData, blob blobData, uint64 clientSessionId, 
-			int32 totalDataBytesReceived, int32 totalTuplesSent;
+			rstring clientIpAddress, rstring clientPort,
+			boolean isWebSocketClient, boolean isHttpClient,
+			map<rstring, rstring> httpRequestHeaders,
+			uint64 totalDataItemsReceived, uint64 totalDataBytesReceived;
+			
 		// The following schema is for the second output stream of the
 		// WebSocketSource operator. It has one attribute indicating
 		// the a given remote client (clientSessionId) which ended the session.
@@ -126,6 +220,12 @@ composite WebSocketSourceTester {
 	graph
 		// Receive text data or binary data or both from the
 		// remote WebSocket clients.
+		// [As indicated in the commentary at the top of this file,
+		//  this operator can optionally receive two input ports.
+		//  We are not using them in this application. You can refer to
+		//  two other examples that show how to use the input ports
+		//  in this operator to send a response to a client as well as
+		//  to dynamically update the client whitelist.]
 		(stream<ReceivedData_t> WebSocketRxData as WSRD;
 		 stream<EndOfClientSessionSignal_t> EndOfClientSessionSignal as EOCSS) 
 			as WebSocketDataReceiver = WebSocketSource() {
@@ -141,8 +241,13 @@ composite WebSocketSourceTester {
 			param
 				tlsPort: $tlsPort;
 				certificateFileName: _certificateFileName;
+				trustedClientCertificateFileName: $trustedClientCertificateFileName;
+				// Use this only when you have trouble authenticating clients that 
+				// have self signed certificates.
+				trustedClientX509SubjectIdentifiers: $trustedClientX509SubjectIdentifiers;
 				nonTlsEndpointNeeded: $nonTlsEndpointNeeded;
 				nonTlsPort: $nonTlsPort;
+				urlContextPath: $urlContextPath;
 				// Initial delay before generating the very first tuple.
 				// This is a one time delay when this operator starts up.
 				// This delay should give sufficient time for the
@@ -151,6 +256,7 @@ composite WebSocketSourceTester {
 				initDelay: $initDelayBeforeReceivingData;
 				websocketLiveMetricsUpdateNeeded: $websocketLiveMetricsUpdateNeeded;
 				websocketLoggingNeeded: $websocketLoggingNeeded;
+				wsConnectionLoggingNeeded: $wsConnectionLoggingNeeded;
 				wsClientSessionLoggingNeeded: $wsClientSessionLoggingNeeded;
 				websocketStaleConnectionPurgeInterval: $websocketStaleConnectionPurgeInterval;
 				ipv6Available: $ipv6Available;
@@ -158,6 +264,8 @@ composite WebSocketSourceTester {
 				// Are we going to allow client applications to send their 
 				// text based data (plain text, JSON, XML etc.) via HTTP/HTTPS POST?
 				allowHttpPost: $allowHttpPost;
+				clientWhitelist: $clientWhitelist;
+				maxClientConnectionsAllowed: $maxClientConnectionsAllowed;
 			
 			// Get these values via custom output functions	provided by this operator.
 			output
@@ -165,8 +273,13 @@ composite WebSocketSourceTester {
 			    // assigned with values by the operator logic.
 			    // Other attributes can be assigned manually as done below.
 				WSRD: clientSessionId = getClientSessionId(),
-					totalDataBytesReceived = getTotalDataBytesReceived(), 
-					totalTuplesSent = getTupleCnt();
+					clientIpAddress = getClientIpAddress(),
+					clientPort = getClientPort(),
+					isWebSocketClient = isWebSocketClient(),
+					isHttpClient = isHttpClient(),
+					httpRequestHeaders = getHttpRequestHeaders(),
+					totalDataItemsReceived = getTotalDataItemsReceived(),
+					totalDataBytesReceived = getTotalDataBytesReceived(); 
 		}
 	
 		// Send a signal for every second to measure the payload ingest rate.
@@ -176,7 +289,7 @@ composite WebSocketSourceTester {
 		}
 		
 		// This operator receives the content sent by the remote
-		// WebSocket client and maintains a tuple counter. 
+		// WebSocket/HTTP client and maintains a tuple counter. 
 		// On receiving a timer signal, it computes the number of tuples 
 		// received in that time duration.
 		// It reports the data ingest rate to the stdout console.

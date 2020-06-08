@@ -6,9 +6,9 @@
 # we will need the OpenSSL crypto libraries in the compiler command used below.
 
 # Please point this to your correct C++ boost lib directory.
-LD_LIBRARY_PATH=$(HOME)/boost_1_69_0/lib
+LD_LIBRARY_PATH=$(HOME)/boost_1_73_0/lib
 # Please point this to your websocketpp install direcctory
-WEBSOCKETPP_INSTALL_DIR=$(HOME)/websocketpp-0.8.1
+WEBSOCKETPP_INSTALL_DIR=$(HOME)/websocketpp-0.8.2
 
 CPP_FLAGS = -std=c++11
 
