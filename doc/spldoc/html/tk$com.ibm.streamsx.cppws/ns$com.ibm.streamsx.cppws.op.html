@@ -22,17 +22,23 @@
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">C++ based WebSocket toolkit</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.cppws.html">com.ibm.streamsx.cppws 1.0.3</a> &gt; com.ibm.streamsx.cppws.op</p>
+<a class="xref" href="../toolkits/toolkits.html">C++ based WebSocket toolkit</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.cppws.html">com.ibm.streamsx.cppws 1.0.4</a> &gt; com.ibm.streamsx.cppws.op</p>
 
 </div>
 
 <div class="section"><h2 class="title sectiontitle splhead-1">Operators</h2>
   
 <ul class="sl simple">
-<li class="sli"><strong class="ph b"><a class="xref" href="op$com.ibm.streamsx.cppws.op$HttpPost.html">HttpPost</a></strong>: This operator sends the incoming tuple's contents to the specified HTTP or HTTPS endpoint via the operator parameter named url.
+<li class="sli"><strong class="ph b"><a class="xref" href="op$com.ibm.streamsx.cppws.op$HttpPost.html">HttpPost</a></strong>: This operator sends the incoming tuple's text or binary content to a HTTP or HTTPS endpoint specified in the operator parameter named url.
 </li>
 
-<li class="sli"><strong class="ph b"><a class="xref" href="op$com.ibm.streamsx.cppws.op$WebSocketSource.html">WebSocketSource</a></strong>:       The WebSocketSource operator is designed to ingest        text (plain text, JSON or XML) or binary data from the remote Websocket clients.
+<li class="sli"><strong class="ph b"><a class="xref" href="op$com.ibm.streamsx.cppws.op$WebSocketSendReceive.html">WebSocketSendReceive</a></strong>:       The client-based WebSocketSendReceive operator is designed to serve a dual purpose of       simultaneously sending data to and receiving data from a remote WebSocket server.
+</li>
+
+<li class="sli"><strong class="ph b"><a class="xref" href="op$com.ibm.streamsx.cppws.op$WebSocketSink.html">WebSocketSink</a></strong>:       The server-based WebSocketSink operator is designed to send data to the remote        WebSocket clients that are connected at any given time to the WebSocket       server running inside of this operator.
+</li>
+
+<li class="sli"><strong class="ph b"><a class="xref" href="op$com.ibm.streamsx.cppws.op$WebSocketSource.html">WebSocketSource</a></strong>:       The server-based WebSocketSource operator is designed to receive        text (plain text, JSON or XML) or binary data from the remote WebSocket and HTTP clients.
 </li>
 
 </ul>

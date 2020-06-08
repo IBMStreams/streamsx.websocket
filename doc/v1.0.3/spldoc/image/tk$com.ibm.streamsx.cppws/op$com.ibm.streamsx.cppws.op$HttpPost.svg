@@ -76,15 +76,9 @@
       ><set attributeName="visibility" from="hidden" end="sdt0.mouseout" to="visible" begin="sdt0.mouseover"
     /></g
     ><g visibility="hidden" style="stroke:none;font-style:italic;font-size:12px;font-family:&apos;Helvetica&apos;,&apos;SansSerif&apos;;"
-    ><rect x="47.65" y="49.0" width="432.36" style="fill:rgb(230,230,255);stroke:rgb(0,0,80);" rx="2.0" ry="2.0" height="54.0"
-      /><text x="48.65" y="60.0"
-      >Required: url / Optional: contentType, delayBetweenConsecutiveHttpPosts, </text
-      ><text x="48.65" y="73.0"
-      >httpTimeout, logHttpPostActions, tlsAcceptAllCertificates, </text
-      ><text x="48.65" y="86.0"
-      >tlsKeyPassword, tlsKeyStoreFile, tlsKeyStorePassword, </text
-      ><text x="48.65" y="99.0"
-      >tlsTrustStoreFile, tlsTrustStorePassword</text
+    ><rect x="47.65" y="88.0" width="327.41998" style="fill:rgb(230,230,255);stroke:rgb(0,0,80);" rx="2.0" ry="2.0" height="15.0"
+      /><text x="48.65" y="99.0"
+      >Required: url / Optional: contentType, logHttpPostActions</text
       ><set attributeName="visibility" from="hidden" end="sdt1.mouseout" to="visible" begin="sdt1.mouseover"
     /></g
     ><g visibility="hidden" style="stroke:none;font-style:italic;font-size:12px;font-family:&apos;Helvetica&apos;,&apos;SansSerif&apos;;"
