@@ -8,37 +8,39 @@
 <!-- Build file to compile the Java artifacts such as the Java operators in impl/java/src -->
 <project name="com.ibm.streamsx.cppws" basedir="." default="all">
 	<description>
-	    Build file for the streamsx.cppws project to compile its Java operator(s).
-		Users can run "ant clean" and "ant all" to compile the Java operator(s).
+		Build file for the streamsx.cppws project to compile its Java operator(s) and make the toolkit.xml.
+		Users can run "ant toolit" or "ant all" to compile the Java operator(s).
+		Ant clean cleans all generated artifacts
 	</description>
 	
 	<property environment="env" />
 	<property name="streams.install" value="${env.STREAMS_INSTALL}" />
 
-	<property name="src.dir" value="impl/java/src" />
-	<property name="build.dir" value="impl/java/bin" />
-	<property name="lib.dir" value="lib" />
+	<property name="src.dir"    value="impl/java/src" />
+	<property name="build.dir"  value="impl/java/bin" />
+	<property name="lib.dir"    value="impl/lib" />
 	<property name="gensrc.dir" value="${basedir}/impl/java/src-gen" />
+	
 	<property name="spl-mt" value="${streams.install}/bin/spl-make-toolkit" />
 	<property name="spl-sc" value="${streams.install}/bin/sc" />
-	<property name="app.name" value="com.acme.test::Main" />
 
 
-	<target name="all" depends="compile-java,make-toolkit"/>
-	<target name="init">
-			<mkdir dir="${build.dir}" />
-			<mkdir dir="${lib.dir}" />
-			<mkdir dir="${gensrc.dir}" />
-		<mkdir dir="data" />
-
-		</target>
-	<target name="clean" depends="make-toolkit-clean">
+	<!-- compatibility target -->
+	<target name="all" depends="make-toolkit" description="Compile Java operator(s) and make the toolkit.xml"/>
+	
+	<target name="toolkit" depends="make-toolkit" description="Compile Java operator(s) and make the toolkit.xml"/>
+	
+	<target name="clean" depends="make-toolkit-clean" description="Clean all generated artifacts">
 		<delete dir="${build.dir}" />
-		<delete dir="${impl.lib.dir}" />
-		<delete dir="impl/java/bin"/>
 		<delete dir="${gensrc.dir}"/>
 	</target>
 
+	<target name="init">
+			<mkdir dir="${build.dir}" />
+			<!-- <mkdir dir="${lib.dir}" /> -->
+			<mkdir dir="${gensrc.dir}" />
+		<mkdir dir="data" />
+	</target>
 
 	<path id="cp.streams">
 			<pathelement path="${streams.install}/lib/com.ibm.streams.operator.jar"/>
@@ -51,18 +53,18 @@
 				<include name="HTTPClient-4.5.12/lib/*.jar"/>
 			</fileset>
 	</path>
-	
+
 	<path id="cp.compile">
 		<path refid="cp.streams" />
 		<path refid="cp.manifest" />
 	</path>
-	
-	
-	<target name="make-toolkit">
+
+	<target name="make-toolkit" depends="compile-java">
 		<exec executable="${spl-mt}" failonerror="true">
 			<arg value="-i"/>
 			<arg value="."/>
-	    </exec>
+			<arg value="-m"/>
+		</exec>
 	</target>
 
 	<target name="make-toolkit-clean">
@@ -70,7 +72,7 @@
 			<arg value="-c"/>
 			<arg value="-i"/>
 			<arg value="."/>
-    </exec>
+		</exec>
 	</target>
 
 
