@@ -47,13 +47,17 @@
 	<property name="boost.str"          value="boost"/>
 	<property name="websocket.str"      value="websocketpp"/>
 	
+	<!-- Note: some properties are values and some are locations.
+	This is due to that some command arguments must not be a full path -->
 	<property name="toolkit.dir"        value="com.ibm.streamsx.cppws"/>
 	<property name="impl.dir"           location="${toolkit.dir}/impl" />
 	<!-- Directories for external libs -->
-	<property name="prefix.dir"         location="${impl.dir}"/>
-	<property name="lib.dir"            location="${impl.dir}/lib" />
-	<property name="inc.dir"            location="${impl.dir}/include"/>
+	<property name="prefix.dir"         location="${toolkit.dir}"/>
+	<property name="lib.dir"            location="${prefix.dir}/lib" />
+	<property name="inc.dir"            location="${prefix.dir}/include"/>
 	<property name="ext.dir"            location="ext"/>
+	<property name="lib.dir.old"        location="${impl.dir}/lib" />
+	<property name="inc.dir.old"        location="${impl.dir}/include"/>
 	<!-- streams studio bin dir / used only on clean target -->
 	<property name="out.dir"            location="${toolkit.dir}/output"/>
 
@@ -84,6 +88,7 @@
 		<property name="tkversion" value="${tkinfo.info:identity.info:version}"/>
 		<echo message="Toolkit Version: ${tkversion} boost.version: ${boost.version} websocket.version: ${websocket.version}"/>
 		<mkdir dir="${lib.dir}"/>
+		<mkdir dir="${inc.dir}"/>
 		<mkdir dir="${ext.dir}/boost-install-files"/>
 	</target>
 
@@ -192,6 +197,8 @@
 		description="Remove the required libraries from toolkit directory">
 		<delete dir="${lib.dir}"/>
 		<delete dir="${inc.dir}"/>
+		<delete dir="${lib.dir.old}"/>
+		<delete dir="${inc.dir.old}"/>
 	</target>
 
 	<target name="spldoc" depends="toolkit"
@@ -329,8 +336,8 @@
 			<arg value="HEAD" />
 		</exec>
 		<property name="tkversion" value="${tkinfo.info:identity.info:version}"/>
-		<echo message="Make releasefile Toolkit Version: ${tkversion} ${commithash}"/>
 		<property name="releasefilename" value="${release.dir}/${ant.project.name}-${tkversion}-${commithash}-${DSTAMP}-${TSTAMP}.tgz"/>
+		<echo message="Make releasefile Toolkit Version: ${tkversion} ${commithash}: ${releasefilename}"/>
 		<!-- must use the tar command because the tar target handles symbolic links incorrect -->
 		<!-- <tar compression="gzip" longfile="gnu"
 			destfile="${releasefilename}"

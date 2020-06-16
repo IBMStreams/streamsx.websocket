@@ -106,37 +106,20 @@
           <cmn:description>Boost Library</cmn:description>
           <cmn:managedLibrary>
             <cmn:lib>boost_system</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+            <cmn:lib>boost_chrono</cmn:lib>
+            <cmn:lib>boost_random</cmn:lib>
+            <cmn:lib>boost_thread</cmn:lib>
+            <cmn:libPath>../../lib</cmn:libPath>
+            <cmn:includePath>../../include</cmn:includePath>
           </cmn:managedLibrary>
         </library>
          
         <library>
-          <cmn:description>Boost Library</cmn:description>
+          <cmn:description>Websocketpp Library</cmn:description>
           <cmn:managedLibrary>
-            <cmn:lib>boost_chrono</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+            <cmn:includePath>../../include</cmn:includePath>
           </cmn:managedLibrary>
         </library>
-                
-        <library>
-          <cmn:description>Boost Library</cmn:description>
-          <cmn:managedLibrary>
-            <cmn:lib>boost_random</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
-          </cmn:managedLibrary>
-        </library>       
-
-         <library>
-          <cmn:description>Boost Library</cmn:description>
-          <cmn:managedLibrary>
-            <cmn:lib>boost_thread</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
-          </cmn:managedLibrary>
-        </library> 
       </libraryDependencies>
 
       <providesSingleThreadedContext>Never</providesSingleThreadedContext>

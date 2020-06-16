@@ -22,8 +22,8 @@ com.ibm.streamsx.cppws/com.ibm.streamsx.cppws.op/HttpPost/HttpPost.xml
 # ignore these toolkit specific external dependency files and directories
 com.ibm.streamsx.cppws/impl/java/bin/
 com.ibm.streamsx.cppws/impl/java/src-gen/
-com.ibm.streamsx.cppws/impl/include/
-com.ibm.streamsx.cppws/impl/lib/
+com.ibm.streamsx.cppws/include/
+com.ibm.streamsx.cppws/lib/
 
 # ignore the toolkit documentation directory.
 doc/
