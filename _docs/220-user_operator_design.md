@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the Cpp WS toolkit operators."
-last_modified_at: 2020-06-07T07:02:48+01:00
+last_modified_at: 2020-06-22T23:12:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -11,7 +11,7 @@ sidebar:
 {% include toc %}
 {%include editme %}
 
-This IBM Streams C++ based WebSocket toolkit contains the following operators to enable data exchange with external applications via WebSocket and/or HTTP. Data can be in text format (plain text, JSON or XML) or in binary format.
+This IBM Streams C++ WebSocket toolkit contains the following operators to enable data exchange with external applications via WebSocket and/or HTTP. Data can be in text format (plain text, JSON or XML) or in binary format.
 
 1. WebSocketSource (server-based)
 2. WebSocketSendReceive (client-based)
@@ -30,9 +30,11 @@ Main goal of this operator is to receive data from one or more client applicatio
 
 The data received from the client applications can be in text or binary format. This operator is capable of receiving data from multiple clients that can all send data at the very same time. When a given client application closes its connection, this operator will send a tuple on its second output port to give an indication about the end of data reception from that client identified by its client session id. Downstream operators can make use of this "End Of Client Session" signal as they see fit.
 
-This operator allows client applications to send data via both WebSocket and HTTP POST. By default, HTTP data reception is not enabled and it can be enabled by via the `allowHttpPost` operator parameter.
+This operator allows client applications to send data via both WebSocket and HTTP GET/PUT/POST. By default, HTTP data reception is not enabled and it can be enabled by via the `allowHttpPost` operator parameter.
 
 Even though it is labeled as a source operator, WebSocketSource can be configured to perform like an analytic operator to receive data from the clients (WS or HTTP or both), process that data and send result/response back to a given client. This is easily accomplished by adding an optional input port in this operator to feed the response tuples. When receiving and sending data from/to a HTTP client, this operator also gives a way to get all the HTTP request headers as well as send any application-specific custom response headers. A thorough example shipped in this toolkit named WebSocketSourceWithResponseTester shows the code logic combined with a very detailed commentary to understand this feature much better than any words here can explain.
+
+The WebSocket server running in this operator supports having multiple URL context paths for a given endpoint listening on a particular port. By using this feature, remote clients can connect to different URL context paths thereby letting the IBM Streams applications to tailor the data processing logic based on which group(s) of remote clients sent the data.
 
 Finally, this operator allows another optional input port to dynamically update the client whitelist for instructing this operator to accept connections only from certain client IP addresses. This helps to restrict data exchange only with known/trusted clients.
  
@@ -47,7 +49,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=cppws.streams@ibm.com"] |
 | nonTlsEndpointNeeded | `boolean` | `false` | This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. |
 | nonTlsPort | `uint32` | `80` | This parameter specifies the WebSocket (plain) non-TLS port number. |
-| urlContextPath | `rstring` | `An empty string` | This parameter specifies the WebSocket server URL context path that is user configurable to either a single or a multi-part path (e-g: MyServices/Banking/Deposit). With that example, WebSocket server URL should be https://host:port/MyServices/Banking/Deposit. |
+| urlContextPath | `list<rstring>` | `An empty list` | This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path. e-g: Orders (OR) MyServices/Banking/Deposit. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. |
 | initDelay | `float64` | `0.0` | This parameter specifies a one time delay in seconds for which this source operator should wait before start generating its first tuple. |
 | websocketLiveMetricsUpdateNeeded | `boolean` | `true` | This parameter specifies whether live update for this operator's custom metrics is needed. |
 | websocketLoggingNeeded | `boolean` | `false` | This parameter specifies whether logging is needed from the WebSocket library. |
@@ -56,7 +58,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | websocketStaleSessionPurgeInterval | `uint32` | `0` | This parameter specifies periodic time interval in seconds during which any stale client sessions should be purged to free up memory usage. |
 | ipv6Available | `boolean` | `true` | This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSource operator is running. |
 | numberOfMessagesToReceiveBeforeAnAck | `uint32` | `23456` | This parameter indicates how many messages are to be received before sending an ack to the remote client. |
-| allowHttpPost | `boolean` | `false` | This parameter specifies whether this operator will allow message reception via HTTP(S) POST. |
+| allowHttpPost | `boolean` | `false` | This parameter specifies whether this operator will allow message reception via HTTP(S) GET/PUT/POST. |
 | newDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that is just about to send a new data item to the remote clients. It should be >= 0.0. |
 | noDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote clients. It should be >= 0.0. |
 | clientWhitelist | `list<rstring>` | `An empty list` | This parameter specifies a list of client IP addresses to accept connections only from those clients. Default is an empty list to have no client connection restrictions. |
@@ -75,9 +77,12 @@ Following are the custom output functions supported by the WebSocketSource opera
 | `uint64 getTotalDataBytesSent()` | Returns an uint64 value indicating the total number of data bytes sent so far to a remote client. |
 | `rstring getClientIpAddress()` | Returns a string indicating the IP address of a remote client. |
 | `rstring getClientPort()` | Returns a string indicating the port of a remote client. |
+| `rstring getUrlContextPath()` | Returns a string indicating the context path present in the URL being accessed by the client. |
 | `boolean isWebSocketClient()` | Returns a boolean indicating whether a remote client holds a WebSocket connection. |
 | `boolean isHttpClient()` | Returns a boolean indicating whether a remote client holds a Http connection. |
-| `map<rstring, rstring> getHttpRequestHeaders()` | Returns an SPL map holding the HTTP headers that were part of a client's HTTP POST request. |
+| `map<rstring, rstring> getHttpRequestHeaders()` | Returns an SPL map holding the HTTP headers that were part of a client's HTTP GET/PUT/POST request. |
+| `rstring getHttpRequestMethodName()` | Returns a string indicating the method name (GET, PUT or POST) found in the client's HTTP request. |
+| `map<rstring, rstring> getUrlQueryStringKeyValuePairs()` | Returns an SPL map holding the key/value pairs found in the URL query string of a client's HTTP GET request. |
 
 *******************************
 
@@ -118,6 +123,8 @@ Following are the custom output functions supported by the WebSocketSendReceive 
 
 * **WebSocketSink** - this is a WebSocket server-based C++ sink operator designed to send data to the remote WebSocket clients that are connected at any given time to the WebSocket server running inside of this operator. This operator can be used to send text (plain text, JSON or XML) and/or binary data. This operator will accept a client connection either via plain WebSocket (ws or http) or via TLS WebSocket (wss or https). Since any given WebSocket connection is bidirectional (full duplex) in nature, this sink operator will focus only on sending data to the connected remote clients and will simply ignore any data received from them. In addition, this operator can be configured to allow a certain maximum number of concurrent connections from the remote clients depending on the needs of the application and based on the capacity of the underlying OS and hardware configuration such as networking, CPU cores and memory limits.
 
+The WebSocket server running in this operator supports having multiple URL context paths for a given endpoint listening on a particular port. By using this feature, remote clients can connect to different URL context paths thereby letting the IBM Streams application logic to tailor which data items get sent to which group(s) of the remote clients.
+
 Since it is a server-based operator, many of the points we discussed for the other server-based WebSocketSource operator are also applicable here (client whitelist, client authentication etc.) as shown below in the common parameters between them.
  
 ### WebSocketSink operator parameters
@@ -131,7 +138,7 @@ Following are the parameters accepted by the WebSocketSink operator. Some parame
 | trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=cppws.streams@ibm.com"] |
 | nonTlsEndpointNeeded | `boolean` | `false` | This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. |
 | nonTlsPort | `uint32` | `80` | This parameter specifies the WebSocket (plain) non-TLS port number. |
-| urlContextPath | `rstring` | `An empty string` | This parameter specifies the WebSocket server URL context path that is user configurable to either a single or a multi-part path (e-g: MyServices/Banking/Deposit). With that example, WebSocket server URL should be https://host:port/MyServices/Banking/Deposit. |
+| urlContextPath | `list<rstring>` | `An empty list` | This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path. e-g: Orders (OR) MyServices/Banking/Deposit. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. |
 | websocketLiveMetricsUpdateNeeded | `boolean` | `true` | This parameter specifies whether live update for this operator's custom metrics is needed. |
 | websocketLoggingNeeded | `boolean` | `false` | This parameter specifies whether logging is needed from the WebSocket library. |
 | wsConnectionLoggingNeeded | `boolean` | `false` | This parameter specifies whether logging is needed when the remote clients connect and disconnect. |
@@ -145,7 +152,7 @@ Following are the parameters accepted by the WebSocketSink operator. Some parame
 
 *******************************
 
-* **HttpPost** - This is a client-based Java analytic operator that can be used to send text or binary content to the specified HTTP or HTTPS endpoint and then wait to receive text or binary data as response for that HTTP POST request from the remote server. It was originally built to test the WebSocketSource operator discussed above for sending and receiving binary data to/from it. This operator can be used in other real-world application scenarios as well if it fits the needs. 
+* **HttpPost** - This is a client-based Java analytic operator that can be used to send text or binary content to the specified HTTP or HTTPS endpoint and then wait to receive text or binary data as response for that HTTP POST request from the remote server. This operator allows clients to send data via HTTP GET, PUT and POST. It was originally built to test the WebSocketSource operator discussed above for sending and receiving binary data to/from it. This operator can be used in other real-world application scenarios as well if it fits the needs. 
  
 ### HttpPost operator parameters
 Following are the parameters accepted by the HttpPost operator. Some parameters are mandatory with user-provided values and others are optional with default values assigned within the Java operator logic.

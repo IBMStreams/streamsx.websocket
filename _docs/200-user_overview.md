@@ -2,7 +2,7 @@
 title: "Toolkit Usage Overview"
 permalink: /docs/user/overview/
 excerpt: "How to use this toolkit."
-last_modified_at: 2020-06-06T08:28:48+01:00
+last_modified_at: 2020-06-22T08:28:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -12,12 +12,12 @@ sidebar:
 {%include editme %}
 
 ## Satisfying the toolkit requirements
-As explained in the "Toolkit Overview [Technical]" section, this toolkit requires network connectivity to connect to the external applications with whom it will help us to do data exchange. In addition, it also requires you to download and install the boost_1_73_0 as well as the websocketpp version 0.8.2 on the IBM Streams application development machine where the application code is compiled to create the application bundle. These two C++ libraries form the major external dependency for this toolkit. 
+As explained in the "Toolkit Overview [Technical]" section, this toolkit requires network connectivity to connect to the external applications with whom it will help us to do data exchange. In addition, it also requires you to download and install the boost_1_73_0 as well as the websocketpp version 0.8.2 on the IBM Streams application development machine where the application code is compiled to create the application bundle (SAB). These two C++ libraries form the major external dependency for this toolkit. 
 
-Bulk of the WebSocket logic in this toolkit's operator relies on the following open source C++ WebSocket header only library.
+Bulk of the WebSocket logic in this toolkit's operators relies on the following open source C++ WebSocket header only library.
 [websocket++](https://github.com/zaphoyd/websocketpp)
 
-This toolkit requires the following two open source packages that are not shipped with this toolkit due to the open source code distribution policies. Users of this toolkit must first understand the usage clauses stipulated by these two packages and then bring these open source packages on their own inside of this toolkit as explained below. This needs to be done only on the Linux machine(s) where the Streams application development i.e. coding, compiling and packaging is done. Only after doing that, users can use this toolkit in their Streams applications.
+This toolkit requires the following two open source packages that are not shipped with this toolkit due to the open source code distribution policies. Users of this toolkit must first understand the usage clauses stipulated by these two packages and then bring these open source packages on their own inside of this toolkit as explained below. This needs to be done only on the Linux machine(s) where the Streams application development i.e. coding, compiling and SAB packaging is done. Only after doing that, users can use this toolkit in their Streams applications.
 
 1. boost_1_73_0
    - Obtain the official boost version boost_1_73_0 from here:
@@ -33,45 +33,17 @@ This toolkit requires the following two open source packages that are not shippe
    - The entire websocketpp directory is copied into the `impl/include` directory of this toolkit. [Around 1.5 MB in size]
        - (It is needed for a successful compilation of the Streams application that uses this toolkit. Please note that these include files will not bloat the size of that application's SAB file  since the `impl/include` directory will not be part of the SAB file.)
 
-## Downloading and building boost_1_73_0 or a higher version
-i. Download and build boost 1_73_0 or a higher version in the user's Linux home directory by using the --prefix option as shown below:
+3. Open SSL libraries in Linux
+On all your IBM Streams application machines, you have to ensure that the openssl-devel-1.0.2k-12 and openssl-libs-1.0.2k-12 (or a higher version) are installed. This can be verified via this command: `rpm -qa | grep -i openssl`
 
-   - Download boost_1_73_0 into your Linux home directory: 
-      - `mkdir <YOUR_HOME_DIRECTORY>/boost-install-files`
-      - `cd <YOUR_HOME_DIRECTORY>/boost-install-files`
-      - `wget https://dl.bintray.com/boostorg/release/1.73.0/source/boost_1_73_0.tar.gz` [Approximately 1 minute]
+## Downloading the dependencies and building the toolkit
+This toolkit is packaged with a comprehensive build.xml automation file that will help the users in downloading and building the toolkit in order to make it ready for use. Users will need network connectivity to the Internet from their Linux Streams application development machine(s) along with the open source ant tool. All that a user needs to do is to download and extract an official release version of this toolkit from the [IBMStreams GitHub](https://github.com/IBMStreams/streamsx.cppws/releases) and then run the following commands in sequence from the top-level directory (e-g: streamsx.cppws) of this toolkit.
 
-   - Extract boost_1_73_0 in `<YOUR_HOME_DIRECTORY>/boost-install-files`:
-      - `cd <YOUR_HOME_DIRECTORY>/boost-install-files`
-      - `tar -xvzf <YOUR_HOME_DIRECTORY>/boost-install-files/boost_1_73_0.tar.gz` [Approximately 5 minutes]
+`ant clean-total`           [Approximately 2 minutes]
+`ant all`                   [Approximately 8 minutes]
+`ant download-clean`        [Approximately 2 minutes]
 
-   - Bootstrap boost_1_73_0 and install it in your home directory using the --prefix option:
-      - `cd <YOUR_HOME_DIRECTORY>/boost-install-files/boost_1_73_0`
-      - `./bootstrap.sh --prefix=<YOUR_HOME_DIRECTORY>/boost_1_73_0` [Approximately 1 minute]
-      - `./b2 install --prefix=<YOUR_HOME_DIRECTORY>/boost_1_73_0 --with=all` [Approximately 5 minutes]
-      - `cd <YOUR_HOME_DIRECTORY>`
-      - `rm -rf <YOUR_HOME_DIRECTORY>/boost-install-files` [Approximately 2 minutes]
-
-   - Instructions shown above are from this URL:
-      - [C++ boost install instructions](https://gist.github.com/1duo/2d1d851f76f8297be264b52c1f31a2ab)
-
-ii. After that, copy a few .so files from the `<YOUR_HOME_DIRECTORY>/boost_1_73_0/lib` directory into the `impl/lib` directory of this toolkit.
-   - (libboost_chrono.so.1.73.0, libboost_random.so.1.73.0, libboost_system.so.1.73.0, libboost_thread.so.1.73.0)
-    
-   - For all those .so files you copied, you must also create a symbolic link within the `impl/lib` directory of this toolkit.
-      - e-g: ln   -s    libboost_chrono.so.1.73.0    libboost_chrono.so
-
-iii. Move the entire `<YOUR_HOME_DIRECTORY>/boost_1_73_0/include/boost` directory into the `impl/include` directory of this toolkit.
-   
-iv. At this time, you may delete the `<YOUR_HOME_DIRECTORY>/boost_1_73_0` directory.
-
-## Downloading websocketpp 0.8.2
-i. Download websocketpp v0.8.2 from [here](https://github.com/zaphoyd/websocketpp/releases) and extract it in your home directory first. Then move the `~/websocket-0.8.2/websocketpp` directory into the `impl/include` directory of this toolkit.
-   - (websocket++ is a header only C++ library which has no .so files of its own. In that way, it is very convenient.)
-
-ii. At this time, you may delete the `~/websocket-0.8.2` directory.
-
-iii. If you observe either a missing or an empty streamsx.cppws/com.ibm.streamsx.cppws/impl/java/bin directory, then you should run `ant all` from the streamsx.cppws/com.ibm.streamsx.cppws directory. That will compile the HttpPost Java operator available in this toolkit.
+If all those commands ran successfully, this toolkit is ready for use.
 
 ## A must do in the Streams applications that will use this toolkit
 i. You must add this toolkit as a dependency in your application.
@@ -79,14 +51,11 @@ i. You must add this toolkit as a dependency in your application.
        
    - In a command line compile mode, simply add the -t option to point to this toolkit's top-level or its parent directory.
        
-ii. In Streams studio, you must double click on the BuildConfig of your application's main composite and then select "Other" in the dialog that is opened. In the "C++ compiler options", you must add the following.
-   - `-I <Full path to your com.ibm.streamsx.cppws toolkit>/impl/include`
-      - (e-g): `-I /home/xyz/streamsx.cppws/com.ibm.streamsx.cppws/impl/include`
-       
-   - In Streams studio, you must double click on the BuildConfig of your application's main composite and then select "Other" in the dialog that is opened. In the "Additional SPL compiler options", you must add the following.
+ii. In Streams studio, you must double click on the BuildConfig of your application's main composite and then select "Other" in the dialog that is opened. In the "Additional SPL compiler options", you must add the following. Please note that there is nothing that needs to be entered in the other two C++ compiler and linker options in that same dialog box.
+
       - `--c++std=c++11`
        
-   - If you are building your application from the command line, please refer to the Makefile provided in the WebSocketSourceTester example shipped with this toolkit. Before using that Makefile, you must set the STREAMS_CPPWS_TOOLKIT environment variable to point to the full path of your streamsx.cppws/com.ibm.streamsx.cppws directory. To build your own applications, you can do the same as done in that Makefile.
+iii. If you are building your application from the command line, please refer to the Makefile provided in the WebSocketSourceTester example shipped with this toolkit. Before using that Makefile, you must set the STREAMS_CPPWS_TOOLKIT environment variable to point to the full path of your streamsx.cppws/com.ibm.streamsx.cppws directory. To build your own applications, you can do the same as done in that Makefile.
 
 ## Example usage of this toolkit inside a Streams application:
 Here is a code snippet that shows how to invoke the **WebSocketSource** operator available in this toolkit with a subset of supported features:
@@ -150,4 +119,4 @@ This toolkit ships with the following examples that can be used as reference app
 
 In the `etc` sub-directory of every example shown above, there is a shell script that can be used to run a given example with synthetic data and then verify the application behavior and the result. That shell script was originally written for running a given example in the IBM Streams lab in New York. It is easy to make minor changes in that shell script and use it in any other IBM Streams environment for running a given example.
 
-There is also an example WebSocket-based client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketSourceTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.
+There is also an example WebSocket C++ client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketSourceTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.

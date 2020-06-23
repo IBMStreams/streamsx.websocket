@@ -22,7 +22,7 @@
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.cppws.html">com.ibm.streamsx.cppws 1.0.5</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.cppws.op.html">com.ibm.streamsx.cppws.op</a> &gt; WebSocketSink</p>
+<a class="xref" href="../toolkits/toolkits.html">C++ based WebSocket toolkit</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.cppws.html">com.ibm.streamsx.cppws 1.0.4</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.cppws.op.html">com.ibm.streamsx.cppws.op</a> &gt; WebSocketSink</p>
 
 </div>
 
@@ -44,7 +44,7 @@
 <p class="p">      clientWhitelist: ["172.34.18.212", "10.5.23.17", "172.<em class="ph i">.42.</em>", "10.29.42.*"];
 </p>
 
-<p class="p">      This operator provides two input ports. First input port is used for an application to       send data to the remote WebSocket clients. This input port must have either        rstring strData or blob blobData or both of them and        list&lt;rstring&gt; sendToUrlContextPaths as the incoming tuple attribute(s).       The input attribute sendToUrlContextPaths can be used to send a given data item       to one or more remote clients that accessed a particular url context path by including       such context paths as elements in the list. If this attribute has an empty list, then a       given data item will be sent to all the connected clients irrespective of the       url context paths they accessed.       Second input port is optional and it is used to send a new client whitelist into this       operator to accept client connections only from the specified IP addresses. This input       port must have only one attribute named clientWhitelist that is of type list&lt;rstring&gt;.        This can be an empty list for accepting connections from any client with no restrictions or        a list with one or more remote client IP addresses that are allowed to receive data       from this operator.
+<p class="p">      This operator provides two input ports. First input port is used for an application to       send data to the remote WebSocket clients. This input port must have either        rstring strData or blob blobData or both of them as the incoming tuple attribute(s).       Second input port is optional and it is used to send a new client whitelist into this       operator to accept client connections only from the specified IP addresses. This input       port must have only one attribute named clientWhitelist that is of type list&lt;rstring&gt;.        This can be an empty list for accepting connections from any client with no restrictions or        a list with one or more remote client IP addresses that are allowed to receive data       from this operator.
 </p>
 
 <p class="p">      This being a sink operator, it has no output ports.
@@ -138,8 +138,6 @@
 <li class="li"> <strong class="ph b">strData</strong> (required, rstring) - Any text based data (plain text, JSON or XML) can be sent to the remote WebSocket clients via this attribute.</li>
 
 <li class="li"> <strong class="ph b">blobData</strong> (required, blob) - Any binary (blob) data can be sent to the remote WebSocket clients via this attribute.</li>
-
-<li class="li"> <strong class="ph b">sendToUrlContextPaths</strong> (required, list&lt;rstring&gt;) - This input attribute can be used to send a given data item to one or more remote clients that accessed a particular url context path by including such context paths as elements in the list. If this attribute has an empty list, then a given data item will be sent to all the connected clients irrespective of the url context paths they accessed.        </li>
 
 </ul>
 
@@ -633,7 +631,7 @@ This operator supports 17 parameters.
      <dt class="dt dlterm"><a name="spldoc_operator__parameter__urlContextPath"><!-- --></a><tt class="ph tt">urlContextPath</tt></dt>
 
      <dd class="dd">
-<p class="p">This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path [e-g: Orders (OR) MyServices/Banking/Deposit]. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. Default is an empty list to indicate no url context path.
+<p class="p">This parameter specifies the WebSocket server URL context path that is user configurable to either a single or a multi-part path (e-g: MyServices/Banking/Deposit). With that example, WebSocket server URL should be https://host:port/MyServices/Banking/Deposit. Default is no url context path.
 </p>
 
   <dl class="dl">
@@ -641,7 +639,7 @@ This operator supports 17 parameters.
      <dt class="dt dlterm">Properties</dt>
 
      <dd class="dd">   <ul class="sl simple">
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: list&lt;rstring&gt;
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
      </li>
 
      <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
@@ -935,18 +933,36 @@ This operator supports 17 parameters.
   <dt class="dt dlterm"><tt class="ph tt">Boost Library</tt>  </dt>
 
 <dd class="dd"/>
-  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__lib">Library Name</a>: <tt class="ph tt">boost_system, boost_chrono, boost_random, boost_thread</tt></dd>
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__lib">Library Name</a>: <tt class="ph tt">boost_system</tt></dd>
 
-  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__libpath">Library Path</a>: <tt class="ph tt">../../lib</tt></dd>
-
-  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__includepath">Include Path</a>: <tt class="ph tt">../../include</tt></dd>
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__libpath">Library Path</a>: <tt class="ph tt">../../impl/lib</tt></dd>
 
  
  
-  <dt class="dt dlterm"><tt class="ph tt">Websocketpp Library</tt>  </dt>
+  <dt class="dt dlterm"><tt class="ph tt">Boost Library</tt>  </dt>
 
 <dd class="dd"/>
-  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__includepath">Include Path</a>: <tt class="ph tt">../../include</tt></dd>
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__lib">Library Name</a>: <tt class="ph tt">boost_chrono</tt></dd>
+
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__libpath">Library Path</a>: <tt class="ph tt">../../impl/lib</tt></dd>
+
+ 
+ 
+  <dt class="dt dlterm"><tt class="ph tt">Boost Library</tt>  </dt>
+
+<dd class="dd"/>
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__lib">Library Name</a>: <tt class="ph tt">boost_random</tt></dd>
+
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__libpath">Library Path</a>: <tt class="ph tt">../../impl/lib</tt></dd>
+
+ 
+ 
+  <dt class="dt dlterm"><tt class="ph tt">Boost Library</tt>  </dt>
+
+<dd class="dd"/>
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__lib">Library Name</a>: <tt class="ph tt">boost_thread</tt></dd>
+
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__libpath">Library Path</a>: <tt class="ph tt">../../impl/lib</tt></dd>
 
  
 </dl>

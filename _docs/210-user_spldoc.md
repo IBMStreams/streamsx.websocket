@@ -2,7 +2,7 @@
 title: "SPL Documentation"
 permalink: /docs/user/SPLDoc/
 excerpt: "SPL documentation."
-last_modified_at: 2020-06-06T22:15:48+02:00
+last_modified_at: 2020-06-22T23:10:48+02:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -11,11 +11,15 @@ sidebar:
 {% include toc %}
 {%include editme %}
 
-### v1.0.4 (Latest)
+### v1.0.5 (Latest)
 
 [Toolkit Documentation (SPLDoc)](/streamsx.cppws/doc/spldoc/html/)
 
 ### Toolkit documentation for previous versions
+
+#### v1.0.4
+
+[Toolkit Documentation (SPLDoc)](/streamsx.cppws/doc/v1.0.4/spldoc/html/)
 
 #### v1.0.3
 

@@ -2,7 +2,7 @@
 title: "Operator Usage Patterns"
 permalink: /docs/user/CppWSUsagePatterns/
 excerpt: "Describes the CppWS toolkit usage patterns."
-last_modified_at: 2020-06-06T15:53:48+01:00
+last_modified_at: 2020-06-22T23:40:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -12,7 +12,7 @@ sidebar:
 {%include editme %}
 
 ## Details for using the server-based operators
-The WebSocketSource and WebSocketSink operators use the WebSocket server to accept multiple concurrent client connections. Single connection per client is opened and kept alive for the entire lifetime of that client. Please refer to a chapter titled "Toolkit Overview [Technical]" and focus on step 3 of one of its sections titled "Requirements for this toolkit". It is important to note that this operator will optionally allow data reception via HTTP(S) POST if needed.
+The WebSocketSource and WebSocketSink operators use the WebSocket server to accept multiple concurrent client connections. Single connection per client is opened and kept alive for the entire lifetime of that client. Please refer to a chapter titled "Toolkit Overview [Technical]" and focus on step 3 of one of its sections titled "Requirements for this toolkit". It is important to note that this source operator will optionally allow data reception via HTTP(S) GET/PUT/POST if needed.
 
 In order to use this operator in your Streams application, the following values must be with you at the time of launching the Streams application.
 
