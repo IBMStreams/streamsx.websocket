@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: Apr/30/2020
-Last modified on: Jun/02/2020
+Last modified on: Jun/19/2020
 
 This example demonstrates the use of the WebSocketSink operator available
 in the streamsx.cppws toolkit. This sink  operator internally runs a WebSocket server 
@@ -75,12 +75,18 @@ composite WebSocketSinkTester {
 		// (optionally) listen for communicating with the remote WebSocket clients.
 		expression<uint32> $nonTlsPort : 
 			(uint32)getSubmissionTimeValue("nonTlsPort", "8080");
-		// Do you want to use a specific URL context path for the WebSocketSource operator?
-        // It can either be a single or a multi-part path (e-g: MyServices/Banking/Deposit).
-        // With that example, WebSocket server URL should be 
+		// Do you want to use a specific URL context path for the WebSocketSink operator?
+        // It can either be a single or a multi-part path.
+        // e-g: Orders (OR) MyServices/Banking/Deposit
+        // With that example, WebSocket server URL should either be 
+        // https://host:port/Orders   (OR)
         // https://host:port/MyServices/Banking/Deposit
-        // Default is no url context path.
-		expression<rstring> $urlContextPath : getSubmissionTimeValue("urlContextPath", "");
+        // Default is an empty list to indicate no url context path.
+        // You can expose any number of context paths for the 
+        // remote clients to access this WebSocket server endpoint. 
+        // e-g: []    (OR)    ["Orders", "", "MyServices/Banking/Deposit"]
+		expression<list<rstring>> $urlContextPath : (list<rstring>)
+			getSubmissionTimeValue("urlContextPath", "[]");
 		// Server side certificate (.pem) file for the WebSocket server.
 		// It is necessary for the users to create a Root CA signed 
 		// server side certificate file and point to that file at the time of
@@ -101,7 +107,7 @@ composite WebSocketSinkTester {
 			getSubmissionTimeValue("certificateFileName", "");
 		// Do you want to specifiy a file name that contains the public certificates of
 		// the trusted client(s). If this file name is not empty, then the
-		// WebSocketSource operator will perform a client (mutual) authentication.
+		// WebSocketSink operator will perform a client (mutual) authentication.
 		expression<rstring> $trustedClientCertificateFileName :
 			getSubmissionTimeValue("trustedClientCertificateFileName", "");	
 		// Do you want to specify a list of identifiers present in the 
@@ -165,7 +171,16 @@ composite WebSocketSinkTester {
 		// The following schema defines the required attributes for the 
 		// first input stream of the WebSocketSink operator. You can have 
 		// either one or both of these attributes depending on your needs.
-		SendData_t = rstring strData, blob blobData;
+		// It should also have one more attribute list<rstring> sendToUrlContextPaths.
+	    // This sendToUrlContextPaths attribute can be used to send a given data item to 
+      	// one or more remote clients that accessed a particular url context path by including
+      	// such context paths as elements in the list. If this attribute has an empty list, 
+      	// then a given data item will be sent to all the connected clients irrespective of 
+      	// the url context paths they accessed. 
+      	// e-g: It can be [] to send to all (OR) 
+      	// ["Orders", "", "MyServices/Banking/Deposit"] to send to those 
+      	// clients who accessed a particular URL context.
+		SendData_t = rstring strData, blob blobData, list<rstring> sendToUrlContextPaths; 
 		
 		// The following schema defines the required attribute for the optional
 		// second input stream of the WebSocketSink operator. This input stream
@@ -185,8 +200,11 @@ composite WebSocketSinkTester {
 				initDelay: 70.0;
 			
 			output
+				// Read more about the sendToUrlContextPaths attribute in the
+				// commentary section of the schema definition above.
 				BD: blobData = convertToBlob("This data item " + 
-					(rstring)(IterationCount() + 1ul) + " is sent as a blob.");
+					(rstring)(IterationCount() + 1ul) + " is sent as a blob."),
+					sendToUrlContextPaths = (list<rstring>)[];
 		}
 		
 		// Let us generate text data for the testing need of this application.
@@ -200,8 +218,11 @@ composite WebSocketSinkTester {
 				initDelay: 70.0;
 			
 			output
+				// Read more about the sendToUrlContextPaths attribute in the
+				// commentary section of the schema definition above.
 				TD: strData = "This data item " + 
-					(rstring)(IterationCount() + 1ul) + " is sent as a text.";
+					(rstring)(IterationCount() + 1ul) + " is sent as a text.",
+					sendToUrlContextPaths = (list<rstring>)[];
 		}		
 
 		// This operator reads a hot file to fetch any user provided

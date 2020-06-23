@@ -64,7 +64,7 @@
 	<property name="doc.string"         value="doc"/>
 	<property name="doc.dir"            value="${doc.string}/spldoc"/>
 	<property name="doc.dir.old"        value="${toolkit.dir}/${doc.string}"/>
-	<property name="tktitle"            value="Streams Websocket Toolkit" />
+	<property name="tktitle"            value="C++ WebSocket toolkit for IBM Streams" />
 	<property name="tkauthor"           value="Senthil Nathan" />
 
 	<property name="samples.dir"        value="samples"/>

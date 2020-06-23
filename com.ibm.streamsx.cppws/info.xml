@@ -3,8 +3,8 @@
  xmlns:info="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo">
  <info:identity>
    <info:name>com.ibm.streamsx.cppws</info:name>
-   <info:description>Provides C++ based WebSocket source, analytic and sink operators</info:description>
-   <info:version>1.0.4</info:version>
+   <info:description>Provides C++ WebSocket source, analytic and sink operators</info:description>
+   <info:version>1.0.5</info:version>
    <info:requiredProductVersion>4.2.1.0</info:requiredProductVersion>
  </info:identity>
  <info:dependencies/>

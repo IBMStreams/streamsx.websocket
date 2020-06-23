@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: May/20/2020
-Last modified on: Jun/02/2020
+Last modified on: Jun/15/2020
 
 This application is a companion application that must be used while
 demonstrating the "result/response to the remote WS/HTTP clients"
@@ -174,7 +174,13 @@ composite WebSocketHttpClientApp {
 		
 		// The following schema is for sending a text or binary based 
 		// calculation HTTP request with headers.
-		CalcRequestHttp_t =  rstring strData, blob blobData, map<rstring, rstring> requestHeaders;
+		// This schema is for the input stream of the HttpPost operator.
+		// These attributes can appear in any positional order.
+		// The first three attributes are mandatory. The other two are
+		// optional. Please refer to the HttpPost operator documentation for more details.
+		CalcRequestHttp_t =  rstring strData, blob blobData, 
+			map<rstring, rstring> requestHeaders,
+			rstring httpMethod, rstring urlQueryString;
 		
 		// The following schema is for the output stream of the HttpPost operator.
 		HttpPostOutput_t = int32 statusCode, rstring statusMessage,

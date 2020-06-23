@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Apr/28/2020
- Last modified on: Jun/02/2020
+ Last modified on: Jun/14/2020
 
  This particular operator (WebSocketSink) is used to
  send text (plain text, JSON, XML) and/or binary data to
@@ -74,17 +74,23 @@ my $inputTupleName1 = $inputPort1->getCppTupleName();
 my $inputAttrs1 = $inputPort1->getAttributes();
 my $strDataInputAttributeFound = 0;
 my $blobDataInputAttributeFound = 0;
+my $sendToUrlContextPathsInputAttributeFound = 0;
 my $dataInputAsRString = undef;
 my $dataInputAsBlob = undef;
+my $sendToUrlContextPathsAsListOfRstring = undef;
 
 foreach my $inputAttr (@$inputAttrs1) {
 	my $inAttrName = $inputAttr->getName();
 	my $inAttrType = $inputAttr->getSPLType();
 
 	# This sink operator will accept an input stream with either an attribute named
-	# rstring strData or an attribute named blob blobData.
+	# rstring strData or an attribute named blob blobData and an attribute named
+	# list<rstring> sendToUrlContextPaths.
 	# Users can either use just one of those two attributes or both depending on
-	# whether the remote clients can receive only string based data or only blob based data or both.	
+	# whether the remote clients can receive only string based data or only blob based data or both.
+    # sendToUrlContextPaths attribute can be an empty list or filled with one or more
+	# URL context paths accessed by those clients to whom a given data item should be sent to.
+	# If it is an empty list, then a given data item will be sent to all the connected clients.
 	if ($inAttrName eq "strData") {
 		$strDataInputAttributeFound = 1;
 		
@@ -102,6 +108,15 @@ foreach my $inputAttr (@$inputAttrs1) {
 			$dataInputAsBlob = 1;
 		}
 	}	
+	
+	if ($inAttrName eq "sendToUrlContextPaths") {
+		$sendToUrlContextPathsInputAttributeFound = 1;
+		
+		if ($inAttrType eq "list<rstring>") {
+			# This tuple attribute will carry a list with zero or more string elements.
+			$sendToUrlContextPathsAsListOfRstring = 1;
+		}
+	}	
 }
 
 if ($strDataInputAttributeFound == 0 and $blobDataInputAttributeFound == 0) {
@@ -114,6 +129,14 @@ if ($strDataInputAttributeFound == 1 and !(defined($dataInputAsRString))) {
 
 if ($blobDataInputAttributeFound == 1 and !(defined($dataInputAsBlob))) {
 	SPL::CodeGen::exitln("WebSocketSink_cpp.cgt: The required input tuple attribute 'blobData' is not of type 'blob' in the first input port.");
+}
+
+if ($sendToUrlContextPathsInputAttributeFound == 0) {
+	SPL::CodeGen::exitln("WebSocketSink_cpp.cgt: The required input tuple attribute 'sendToUrlContextPaths' is missing in the first input port.");
+}
+
+if ($sendToUrlContextPathsInputAttributeFound == 1 and !(defined($sendToUrlContextPathsAsListOfRstring))) {
+	SPL::CodeGen::exitln("WebSocketSink_cpp.cgt: The required input tuple attribute 'sendToUrlContextPaths' is not of type 'list<rstring>' in the first input port.");
 }
 
 # This operator can have an optional second input port to dynamically update the clientWhitelist.
@@ -185,8 +208,12 @@ my $nonTlsPort = $model->getParameterByName("nonTlsPort");
 $nonTlsPort = $nonTlsPort ? $nonTlsPort->getValueAt(0)->getCppExpression() : 80;
 
 my $urlContextPath = $model->getParameterByName("urlContextPath");
-# Default: Default is an empty URL context path.
-$urlContextPath = $urlContextPath ? $urlContextPath->getValueAt(0)->getCppExpression() : "";
+# Default: Default is an empty list to indicate no URL context path.
+# If this parameter is defined, we will use the value of 
+# this parameter in the C++ class constructor below. 
+if (defined $urlContextPath) {
+	$urlContextPath = $urlContextPath->getValueAt(0)->getCppExpression();
+}
 
 my $websocketLiveMetricsUpdateNeeded = $model->getParameterByName("websocketLiveMetricsUpdateNeeded");
 # Default: 1
@@ -271,34 +298,33 @@ MY_OPERATOR::MY_OPERATOR() {
 	nonTlsEndpointNeeded = <%=$nonTlsEndpointNeeded%>;
 	nonTlsPort = <%=$nonTlsPort%>;
 	
-	// For string based assignment using a perl variable, it can't be
-	// assigned directly to the value of that perl variable. If we do that,
-	// such an assignement will result in an empty assignment due to $lit3 and
-	// will lead to a compiler error. So, only for the string based copy from a
-	// perl variable, the following check must be done for an empty string and
-	// then it should be done as shown below.
-	<% if ($urlContextPath eq "") { %>
-	urlContextPath = "";
-	<% } else { %>
+	// This is a list<rstring> that can have zero or more user provided URL context paths.
+	<% if (defined $urlContextPath) { %>
 	urlContextPath = <%=$urlContextPath%>;
-	<%}%>
+	SPL::int32 numberOfContextPaths = SPL::Functions::Collections::size(urlContextPath);
 	
-	// Ensure that the url context path doesn't start with a forward slash.
-	// If it does, that will cause problems with the websocketpp::config::asio library in the
-	// way it always carries a forward slash at the beginning of the return value for
-	// the get_resource() API that we use in the validate_client method later in this file.
-	// Example: https://b0513:8443/MyServices/Banking/Deposit
-	// In this example, user must configure the context path as MyServices/Banking/Deposit
-	// and not as /MyServices/Banking/Deposit
-	if(SPL::Functions::String::findFirst(urlContextPath, "/") == 0) {
-		// First character of the URL context is a forward slash.
-		// We are not going to allow that.
-		throw std::runtime_error(
-			std::string("WebSocketSink_cpp.cgt: URL context path starts with a forward slash character: ") +
-			urlContextPath + 
-			std::string(" It is not valid. Please reconfigure it with a new value that doesn't start with ") +
-			std::string("a forward slash character. "));		
-	}
+	// We can now loop through the URL context path list and validate the
+	// syntex of every given context path.
+	for(SPL::int32 cnt = 0; cnt < numberOfContextPaths; cnt++) {
+		// Ensure that the url context path doesn't start with a forward slash.
+		// If it does, that will cause problems with the websocketpp::config::asio library in the
+		// way it always carries a forward slash at the beginning of the return value for
+		// the get_resource() API that we use in the validate_client method later in this file.
+		// Example: https://b0513:8443/MyServices/Banking/Deposit
+		// In this example, user must configure the context path as MyServices/Banking/Deposit
+		// and not as /MyServices/Banking/Deposit
+		//
+		if(SPL::Functions::String::findFirst(urlContextPath[cnt], "/") == 0) {
+			// First character of the URL context is a forward slash.
+			// We are not going to allow that.
+			throw std::runtime_error(
+				std::string("WebSocketSource_cpp.cgt: URL context path starts with a forward slash character: ") +
+				urlContextPath[cnt] + 
+				std::string(" It is not valid. Please reconfigure it with a new value that doesn't start with ") +
+				std::string("a forward slash character. "));		
+		}				
+	} // End of for loop.
+	<%}%>
 	
 	websocketLiveMetricsUpdateNeeded = <%=$websocketLiveMetricsUpdateNeeded%>;
 	websocketLoggingNeeded = <%=$websocketLoggingNeeded%>;
@@ -559,6 +585,18 @@ void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
 			// Push this data to the vector so that we can 
 			// retrieve this data in the sender thread and send it to the remote WebSocket clients.
 			strDataToSend.push_back(strData);
+			
+			// This input tuple also has a mandatory attribute list<rstring> sendToUrlContextPaths.
+			// This list will have zero or more elements to instruct this sink operator about to
+			// which remote clients the data item in this tuple should be sent.
+			// If this list is empty, the given data item should be sent to all the connected
+			// remote clients irrespective of the url context paths they accessed. IF this list is
+			// not empty, then the data item should only be sent to those clients who accessed the 
+			// specified URL context paths.
+			ConstValueHandle handle0 = tuple.getAttributeValue("sendToUrlContextPaths");
+			SPL::list<SPL::rstring> const & urlContextPaths_list = handle0;
+			// Add it to our nested list member variable for use in the sender thread.
+			SPL::Functions::Collections::appendM(sendStrDataToUrlContextPaths, urlContextPaths_list);
 		}
 	}
 	
@@ -580,8 +618,20 @@ void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
 			blobDataToSend.push_back(blobData.releaseData(sizeOfBlobData));
 			// Push the size of the blob data as well for use in the sender thread.
 			blobDataSize.push_back(sizeOfBlobData);
+			
+			// This input tuple also has a mandatory attribute list<rstring> sendToUrlContextPaths.
+			// This list will have zero or more elements to instruct this sink operator about to
+			// which remote clients the data item in this tuple should be sent.
+			// If this list is empty, the given data item should be sent to all the connected
+			// remote clients irrespective of the url context paths they accessed. IF this list is
+			// not empty, then the data item should only be sent to those clients who accessed the 
+			// specified URL context paths.
+			ConstValueHandle handle0 = tuple.getAttributeValue("sendToUrlContextPaths");
+			SPL::list<SPL::rstring> const & urlContextPaths_list = handle0;
+			// Add it to our nested list member variable for use in the sender thread.
+			SPL::Functions::Collections::appendM(sendBlobDataToUrlContextPaths, urlContextPaths_list);
 		}
-	}
+	}	
 } // End of process (mutating ports)
 
 // Tuple processing for non-mutating ports
@@ -970,12 +1020,16 @@ void MY_OPERATOR::ws_data_sender() {
 					
 					blobDataToSend.erase(blobDataToSend.begin() + 0);
 					blobDataSize.erase(blobDataSize.begin() + 0);
+					// Remove the context paths list associated with this data item.
+					SPL::Functions::Collections::removeM(sendBlobDataToUrlContextPaths, 0);
 					blobDataVectorSize--;
 				}  else if (strDataVectorSize > 0) {
 					// We have a string data item available which can't be sent now.
 					// Erase the item pushed into the vector member (cache) earlier in the 
 					// process method for this data item. It is no longer needed.
 					strDataToSend.erase(strDataToSend.begin() + 0);
+					// Remove the context paths list associated with this data item.
+					SPL::Functions::Collections::removeM(sendStrDataToUrlContextPaths, 0);
 					strDataVectorSize--;
 				}
 				
@@ -992,12 +1046,35 @@ void MY_OPERATOR::ws_data_sender() {
 				payloadSize = blobDataSize.at(0);
 				
 				if (buffer !=  NULL && payloadSize > 0) {
-					// Send it to all the connected clients.
+					// Send it to the connected clients.
 					con_map::iterator it = client_connections_map.begin();
 
 					while (it != client_connections_map.end()) {
 						websocketpp::connection_hdl hdl = it->first;
 						connection_metadata & con_metadata = it->second;
+						
+						// We have to send this data item only to one or more or all the
+						// connected clients depending on user provided url context paths.
+						// If the url context paths list is empty, then this data item 
+						// will be sent to all the connected clients.
+						if(SPL::Functions::Collections::size(sendBlobDataToUrlContextPaths[0]) > 0 &&
+						   SPL::Functions::Collections::has(sendBlobDataToUrlContextPaths[0], SPL::rstring(con_metadata.urlContextPath)) == false) {
+						   // This client's url context path doesn't exist in the user provided target sendTo list.
+						   // We can skip sending to this client.
+						   if (wsClientSessionLoggingNeeded == true) {
+								SPLAPPTRC(L_ERROR,
+									"Operator "
+									<< operatorPhysicalName
+									<< "-->Channel " << boost::to_string(udpChannelNumber)
+									<< ". Skip sending a binary data item to " 
+									<< con_metadata.urlContextPath 
+									<< ". Because, it is not specified in the user provided list of URL context paths. " 
+									<< sendBlobDataToUrlContextPaths[0], "ws_data_sender");
+						   }
+							
+						   it++;
+						   continue;
+						}
 						
 						if(con_metadata.isTlsConnection == false) {
 							endpoint_non_tls.send(hdl, buffer, payloadSize, websocketpp::frame::opcode::binary);
@@ -1022,6 +1099,8 @@ void MY_OPERATOR::ws_data_sender() {
 				
 				blobDataToSend.erase(blobDataToSend.begin() + 0);
 				blobDataSize.erase(blobDataSize.begin() + 0);
+				// Remove the context paths list associated with this data item.
+				SPL::Functions::Collections::removeM(sendBlobDataToUrlContextPaths, 0);
 				blobDataVectorSize--;
 			} else if (strDataVectorSize > 0) {
 				// We have a string data item available to send.
@@ -1034,6 +1113,29 @@ void MY_OPERATOR::ws_data_sender() {
 					while (it != client_connections_map.end()) {
 						websocketpp::connection_hdl hdl = it->first;
 						connection_metadata & con_metadata = it->second;						
+
+						// We have to send this data item only to one or more or all the
+						// connected clients depending on user provided url context paths.
+						// If the url context paths list is empty, then this data item 
+						// will be sent to all the connected clients.
+						if(SPL::Functions::Collections::size(sendStrDataToUrlContextPaths[0]) > 0 &&
+						   SPL::Functions::Collections::has(sendStrDataToUrlContextPaths[0], SPL::rstring(con_metadata.urlContextPath)) == false) {
+						   // This client's url context path doesn't exist in the user provided target sendTo list.
+						   // We can skip sending to this client.
+						   if (wsClientSessionLoggingNeeded == true) {
+								SPLAPPTRC(L_ERROR,
+									"Operator "
+									<< operatorPhysicalName
+									<< "-->Channel " << boost::to_string(udpChannelNumber)
+									<< ". Skip sending a text data item to " 
+									<< con_metadata.urlContextPath 
+									<< ". Because, it is not specified in the user provided list of URL context paths. " 
+									<< sendStrDataToUrlContextPaths[0], "ws_data_sender");
+						   }
+						   
+						   it++;
+						   continue;
+						}
 						
 						if(con_metadata.isTlsConnection == false) {
 							endpoint_non_tls.send(hdl, strDataToSend.at(0), websocketpp::frame::opcode::text);
@@ -1053,8 +1155,10 @@ void MY_OPERATOR::ws_data_sender() {
 				// Erase the item pushed into the vector member (cache) earlier in the 
 				// process method for this data item. It is no longer needed.
 				strDataToSend.erase(strDataToSend.begin() + 0);
+				// Remove the context paths list associated with this data item.
+				SPL::Functions::Collections::removeM(sendStrDataToUrlContextPaths, 0);
 				strDataVectorSize--;
-			}			
+			}
 			
 			// Update the operator metric only if the user asked for a live update.
 			if (websocketLiveMetricsUpdateNeeded == true && payloadSize > 0) {
@@ -1269,6 +1373,9 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl, bool isTlsCon
 		myUrlContext = server_tls_con->get_resource();
 	}
 
+	// Let us check the correctness of the context path provided in
+	// the WebSocket server URL being accessed by the remote client.
+	//
 	// Let us first check if this client is using the correct context path in its URL.
 	// If there is no user configured URL context path, then it is an empty string.
 	// When the operator has its context path as an empty string, then the client
@@ -1277,15 +1384,47 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl, bool isTlsCon
 	// return a forward slash i.e. /     So, we will permit that in the following check.
 	// When the user configured url context path is not empty, then we must compare it
 	// with what the client is using to connect here. In this case, note below that we
-	// are adding a forward slash to the user configured url context path.
-	if((urlContextPath == "" && myUrlContext != "/") ||
-		(urlContextPath != "" && myUrlContext != (std::string("/") + urlContextPath))) {
+	// are adding a forward slash in front of the user configured url context path.
+	SPL::boolean validUrlContextPath = false;
+	SPL::int32 numberOfContextPaths = SPL::Functions::Collections::size(urlContextPath);
+	
+	if(numberOfContextPaths <= 0 && myUrlContext == "/") {
+		// Server endpoint has no user configured URL context path.
+		// Client also has used an empty context path in the URL.
+		// So, it is valid.
+		validUrlContextPath = true;
+	}
+	
+	// We can now loop through the URL context path list and do the UCP correctness check.
+	// If there are multiple URL context paths configured by the user for the 
+	// WebSocket server endpoint, then we should find at least one match in order 
+	// for the client provided URL to be valid and passed to the next stage in
+	// this client connection validation callback handler.
+	for(SPL::int32 cnt = 0; cnt < numberOfContextPaths; cnt++) {
+		if(urlContextPath[cnt] == "" && myUrlContext == "/") {
+			// Server context path is empty. 
+			// Client provided context path is simply a forward slash.
+			// So, that is a match and it is valid.
+			validUrlContextPath = true;
+			break;
+		}
+
+		if(urlContextPath[cnt] != "" && myUrlContext == (std::string("/") + urlContextPath[cnt])) {
+			// Server context path is not empty.
+			// Client provided context path is a forward slash + server's context path.
+			// So, that is a match and it is valid.
+			validUrlContextPath = true;
+			break;
+		}	
+	} // End of for loop.
+	
+	if(validUrlContextPath == false) {
 		if (wsConnectionLoggingNeeded == true) {
 			SPLAPPTRC(L_ERROR, 
 				"Operator " <<
 				operatorPhysicalName <<
 				"-->Channel " << boost::to_string(udpChannelNumber) <<
-				". Invalid URL context path is being used by this client. " <<
+				". Invalid URL context path is being accessed by this client. " <<
 				"So, this client can't be allowed to connect at this time. " <<
 				"numberOfClientsConnected=" << numberOfClientsConnected << 
 				", maxClientConnectionsAllowed=" << maxClientConnectionsAllowed <<
@@ -1305,10 +1444,10 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl, bool isTlsCon
 		// But, don't send any clue back to the client about the correct url context path.
 		// Because, that client may be a malware. Let it find out the correct context on its own.
 		std::string body_msg = 
-			std::string("Invalid URL context path is being used by this client: ") +
+			std::string("Invalid URL context path is being accessed by this client: ") +
 			myUrlContext + 
 			std::string(". So, this client can't be allowed to connect at this time.");
-				;
+
 		if (isTlsConnection == false) {
 			try {
 				server_non_tls_con->set_body(body_msg);
@@ -1326,7 +1465,7 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl, bool isTlsCon
 		}
 		
 		return(false);		
-	} // End of if((urlContextPath == "" && myUrlContext != "/") ||
+	} // End of if(validUrlContextPath == false)	
 		
 	// In my tests, I have seen two different forms of values returned for remoteEndpoint. 
 	// We should be prepared to deal with both of those formats.
@@ -1584,6 +1723,7 @@ void MY_OPERATOR::on_open(websocketpp::connection_hdl hdl, bool isTlsConnection)
 	std::string serverPort = "";
 	std::string clientIp = "";
 	std::string clientPort = "";
+	std::string myUrlContext = "";
 
 	if (isTlsConnection == false) {
 		server_non_tls::connection_ptr con = NULL;
@@ -1602,6 +1742,8 @@ void MY_OPERATOR::on_open(websocketpp::connection_hdl hdl, bool isTlsConnection)
 		remoteEndpoint = con->get_remote_endpoint();
 		serverIp = con->get_host();
 		serverPort = boost::to_string(con->get_port());
+		// Get the context path present in the URL being accessed by this client.
+		myUrlContext = con->get_resource();
 	} else {
 		server_tls::connection_ptr con = NULL;
 		con = endpoint_tls.get_con_from_hdl(hdl);
@@ -1618,7 +1760,9 @@ void MY_OPERATOR::on_open(websocketpp::connection_hdl hdl, bool isTlsConnection)
 		
 		remoteEndpoint = con->get_remote_endpoint();
 		serverIp = con->get_host();
-		serverPort = boost::to_string(con->get_port());		
+		serverPort = boost::to_string(con->get_port());	
+		// Get the context path present in the URL being accessed by this client.
+		myUrlContext = con->get_resource();
 	}
 	
 	// In my tests, I have seen two different forms of values returned for remoteEndpoint. 
@@ -1656,6 +1800,9 @@ void MY_OPERATOR::on_open(websocketpp::connection_hdl hdl, bool isTlsConnection)
 		clientPort = tokens[1];
 	}
 
+	// In the url context path, remove the leading forward slash.
+	myUrlContext = SPL::Functions::String::ltrim(myUrlContext, "/");	
+	
 	{
 		// Mutex for the safe shared accessing of the client connections map.
 		SPL::AutoMutex autoMutex3(wsMutex3);
@@ -1663,6 +1810,7 @@ void MY_OPERATOR::on_open(websocketpp::connection_hdl hdl, bool isTlsConnection)
 		con_metadata.remoteEndpoint = remoteEndpoint;
 		con_metadata.clientIpAddress =  clientIp;
 		con_metadata.clientPort = clientPort;
+		con_metadata.urlContextPath = myUrlContext;
 		con_metadata.serverIpAddress =  serverIp;
 		con_metadata.serverPort = serverPort;
 		client_connections_map[hdl] = con_metadata;
@@ -1678,6 +1826,7 @@ void MY_OPERATOR::on_open(websocketpp::connection_hdl hdl, bool isTlsConnection)
 			", remoteEndpoint=" << remoteEndpoint <<
 			", clientIp=" << clientIp <<
 			", clientPort=" << clientPort <<
+			", urlContextPath=" << myUrlContext  << 
 			", isTlsConnection=" << isTlsConnection <<
 			", serverIp=" << serverIp <<
 			", serverPort=" << serverPort <<

@@ -39,7 +39,13 @@
       
       This operator provides two input ports. First input port is used for an application to
       send data to the remote WebSocket clients. This input port must have either 
-      rstring strData or blob blobData or both of them as the incoming tuple attribute(s).
+      rstring strData or blob blobData or both of them and 
+      list&lt;rstring&gt; sendToUrlContextPaths as the incoming tuple attribute(s).
+      The input attribute sendToUrlContextPaths can be used to send a given data item
+      to one or more remote clients that accessed a particular url context path by including
+      such context paths as elements in the list. If this attribute has an empty list, then a
+      given data item will be sent to all the connected clients irrespective of the
+      url context paths they accessed.
       Second input port is optional and it is used to send a new client whitelist into this
       operator to accept client connections only from the specified IP addresses. This input
       port must have only one attribute named clientWhitelist that is of type list&lt;rstring&gt;. 
@@ -190,11 +196,11 @@
 
       <parameter>
         <name>urlContextPath</name>
-        <description>This parameter specifies the WebSocket server URL context path that is user configurable to either a single or a multi-part path (e-g: MyServices/Banking/Deposit). With that example, WebSocket server URL should be https://host:port/MyServices/Banking/Deposit. Default is no url context path.</description>
+        <description>This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path \[e-g: Orders (OR) MyServices/Banking/Deposit\]. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. Default is an empty list to indicate no url context path.</description>
         <optional>true</optional>
         <rewriteAllowed>true</rewriteAllowed>
         <expressionMode>AttributeFree</expressionMode>
-        <type>rstring</type>
+        <type>list&lt;rstring></type>
         <cardinality>1</cardinality>
       </parameter> 
 
@@ -307,6 +313,7 @@
       	Attributes on this input port:
 		* **strData** (required, rstring) - Any text based data (plain text, JSON or XML) can be sent to the remote WebSocket clients via this attribute.
 		* **blobData** (required, blob) - Any binary (blob) data can be sent to the remote WebSocket clients via this attribute.
+		* **sendToUrlContextPaths** (required, list&lt;rstring&gt;) - This input attribute can be used to send a given data item to one or more remote clients that accessed a particular url context path by including such context paths as elements in the list. If this attribute has an empty list, then a given data item will be sent to all the connected clients irrespective of the url context paths they accessed.        
         
 		All the extra input attributes will be ignored.  	
       	</description>

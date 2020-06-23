@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: May/01/2020
-Last modified on: Jun/02/2020
+Last modified on: Jun/19/2020
 
 This application is a companion application that must be used while
 demonstrating the use of the WebSocketSink operator available
@@ -70,7 +70,7 @@ composite WebSocketClientApp {
 			getSubmissionTimeValue("certificateFileName", "");
 		// Do you want to specifiy a file name that contains the public certificate of
 		// the trusted remote server. If this file name is not empty, then the
-		// WebSocketSource operator will perform a server authentication.
+		// WebSocketSink operator will perform a server authentication.
 		expression<rstring> $trustedServerCertificateFileName :
 			getSubmissionTimeValue("trustedServerCertificateFileName", "");	
 		// Do you want to specify a list of identifiers present in the 
@@ -90,7 +90,7 @@ composite WebSocketClientApp {
 		// ["emailAddress=cppws.streams@ibm.com", "CN=www.ibm.com"]
 		expression<list<rstring>> $trustedServerX509SubjectIdentifiers :
 			(list<rstring>)getSubmissionTimeValue("trustedServerX509SubjectIdentifiers", "[]");
-		// Is live metrics needed for the WebSocketSource operator?
+		// Is live metrics needed for the WebSocketSink operator?
 		expression<boolean> $websocketLiveMetricsUpdateNeeded : 
 			(boolean)getSubmissionTimeValue("websocketLiveMetricsUpdateNeeded", "true");
 		// Is WebSocket library low level logging needed?

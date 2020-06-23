@@ -1,20 +1,20 @@
-# C++ based WebSocket toolkit for IBM Streams
+# C++ WebSocket toolkit for IBM Streams
 
 ## Purpose
-The streamsx.cppws toolkit provides the following C++ and Java based operators that can help you to receive text or binary data from the remote client and server-based applications via WebSocket and HTTP (OR) send text or binary data from your IBM Streams applications to external client and server-based applications via WebSocket and HTTP.
+The streamsx.cppws toolkit provides the following C++ and Java operators that can help you to receive text or binary data from the remote client and server-based applications via WebSocket and HTTP (OR) send text or binary data from your IBM Streams applications to external client and server-based applications via WebSocket and HTTP.
 
 1. WebSocketSource (server-based)
 2. WebSocketSendReceive (client-based)
 3. WebSocketSink (server-based)
 4. HttpPost (client-based) [To send/post text and binary data via HTTP(S)]
 
-**WebSocketSource** by default is a source operator that can be used to receive text or binary data from multiple client applications. This operator supports data reception via both WebSocket and HTTP on plain as well as secure TLS endpoints. This source operator can optionally be turned into an analytic operator to process/analyze the text or binary data received from the remote clients and then send back a text or binary response back to that same WebSocket or HTTP client. Thus, users will get a five-in-one benefit (WebSocket, HTTP, plain, secure and roundtripping) from this operator. It can be configured to start a plain or secure WebSocket or HTTP endpoint for the remote clients to connect and start sending and (optionally) receiving data. This is Receive-only from multiple clients with an option to make it a Receive-Process-Send operator. This operator promotes Many-To-One data access pattern.
+**WebSocketSource** by default is a source operator that can be used to receive text or binary data from multiple client applications. This operator supports message reception via both WebSocket and HTTP on plain as well as secure TLS endpoints. This source operator can optionally be turned into an analytic operator to process/analyze the text or binary data received from the remote clients and then send back a text or binary response back to that same WebSocket or HTTP client. The WebSocket server running in this operator supports having multiple URL context paths for a given endpoint listening on a particular port. By using this feature, remote clients can connect to different URL context paths thereby letting the IBM Streams applications to tailor the data processing logic based on which group(s) of remote clients sent the data. Thus, users will get a five-in-one benefit (WebSocket, HTTP, plain, secure and response-ready) from this operator. It can be configured to start a plain or secure WebSocket or HTTP endpoint for the remote clients to connect and start sending and (optionally) receiving data. This is Receive-only with an option to make it a Receive-and-Send operator. This operator promotes the Many-To-One data access pattern.
 
 **WebSocketSendReceive** is an analytic operator that can be used to initiate a connection to an external WebSocket server-based application in order to send and receive text or binary data via that connection. This is Send-and-Receive to/from a single server-based remote WebSocket application. This operator promotes One-To-One data access pattern.
 
-**WebSocketSink** is a sink operator that can be used to send (broadcast) text or binary data to multiple clients. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect in order to start receiving data from this operator. This is Send-only to multiple clients. This operator promotes One-To-Many data access pattern.
+**WebSocketSink** is a sink operator that can be used to send (broadcast) text or binary data to multiple clients. It can be configured to start a plain or secure WebSocket endpoint for the remote clients to connect in order to start receiving data from this operator. The WebSocket server running in this operator supports having multiple URL context paths for a given endpoint listening on a particular port. By using this feature, remote clients can connect to different URL context paths thereby letting the IBM Streams application logic to tailor which data items get sent to which group(s) of the remote clients. This is Send-only to multiple clients. This operator promotes the One-To-Many data access pattern.
 
-**HttpPost** is a utility operator provided by this toolkit to test the optional HTTP(S) text or binary data reception feature available in the WebSocketSource operator. This utility operator can send text or binary data and receive text or binary data as response from the remote server. If other application scenarios see a fit for this utility operator, they can also use it as needed. If you clone this toolkit from the IBMStreams GitHub, then you must build this utility operator by running "ant clean" and "ant all" from the com.ibm.streamsx.cppws directory. 
+**HttpPost** is a utility operator provided by this toolkit to test the optional HTTP(S) text or binary data reception feature available in the WebSocketSource operator. This utility operator can send text or binary data and receive text or binary data in response from the remote server. This operator allows clients to send data via HTTP GET, PUT and POST. If other application scenarios see a fit for this utility operator, they can also use it as needed. If you clone this toolkit from the IBMStreams GitHub, then you must build this toolkit via `ant all` and `ant download-clean` from this toolkit's top-level directory. 
 
 In a Streams application, these operators can either be used together or independent of each other. 
 
@@ -28,6 +28,17 @@ https://ibmstreams.github.io/streamsx.cppws/
 WebSocket, a computer communication protocol has been in commercial use since 2012 after it became an official IETF standard. It enables two-way (full duplex) communication between a client and a remote server over TCP with low overhead when compared to the other Web protocols such as HTTP or HTTPS. Another superb benefit of WebSocket is that it can be overlaid on top of HTTP or HTTPS by making the initial connection using HTTP or HTTPS and then upgrading that connection to a full duplex TCP connection to the standard port 80 or port 443 thereby being able to flow through the firewall.
 
 At a very high level, this toolkit shares the same design goal as two other operators available in a different IBM Streams toolkit named com.ibm.streamsx.inetserver which provides two similar operators written in Java using a built-in Jetty web server. The com.ibm.streamsx.cppws provided operators are written using C++ by employing the most highly regarded C++ Boost library which is expected to use less CPU, memory and provide a better overall throughput with a good cost performance advantage.
+
+The three data access patterns highlighted above as promoted by the operators in this toolkit can be explained via the following real-life analogies.
+
+**Many to One**: On a happy occasion like birthday, many family members and friends send greeting messages to that one person who is enjoying the special day.
+![MTO](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSourceTester/etc/mto.png)
+
+**One to One**: In a performance evaluation meeting, a manager and an employee exchange information back and forth about the work accomplished. 
+![OTO](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSendReceiveTester/etc/oto.png)
+
+**One to Many**: In an annual meeting, a CEO gives data points about the company's business performance to the curiously listening shareholders.
+![OTM](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSinkTester/etc/otm.png)
 
 ## Requirements
 There are certain important requirements that need to be satisfied in order to use the IBM Streams cppws toolkit in Streams applications. Such requirements are explained below.
@@ -43,7 +54,7 @@ If you are comfortable with using a self-signed TLS/SSL certificate file in your
 ```
 <YOUR_CPPWS_TOOLKIT_HOME>/samples/WebSocketSourceTester/etc/creating-a-self-signed-certificate.txt
 ```
-A copy of the text file mentioned above is available in the `etc` directory of every example shipped with this toolkit. This file explains different procedures to create client/server-side private certificate as well as the public certificate to share with the remote party that is getting connected to or connected from. It also has more details about creating key store and trust store for C++ and Java based client and server applications.
+A copy of the text file mentioned above is available in the `etc` directory of every example shipped with this toolkit. This file explains different procedures to create client/server-side private certificate as well as the public certificate to share with the remote party that is getting connected to or connected from. It also has more details about creating key store and trust store for C++ and Java client and server applications.
 
 ## Example usage of this toolkit inside a Streams application
 Here is a code snippet that shows how to invoke the **WebSocketSource** operator available in this toolkit with a subset of supported features:
@@ -107,9 +118,18 @@ This toolkit ships with the following examples that can be used as reference app
 
 In the `etc` sub-directory of every example shown above, there is a shell script that can be used to run a given example with synthetic data and then verify the application behavior and the result. That shell script was originally written for running a given example in the IBM Streams lab in New York. It is easy to make minor changes in that shell script and use it in any other IBM Streams environment for running a given example.
 
-There is also an example WebSocket based C++ client application that can be run from a RHEL7 or CentOS7 machine to simulate high volume data traffic to be sent to the WebSocketSourceTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.
+There is also an example WebSocket C++ client application that can be run from a RHEL7 or CentOS7 machine to simulate high volume data traffic to be sent to the WebSocketSourceTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.
 
 ## WHATS NEW
+
+v1.0.5:
+* Jun/22/2020
+* A WebSocket server endpoint can now have zero or more URL context paths.
+* When data exchange via HTTP is enabled, clients can send data using HTTP GET, PUT and POST.
+* WebSocketSourceTester and HttpPostTester examples have been updated to demonstrate HTTP GET/PUT/POST.
+* All the server-based examples have been updated to demonstrate having multiple URL context paths.
+* A new build.xml file has been added at the toolkit's top-level directory to automate the downloading of all the external dependencies such as C++ Boost, websocketpp etc. and then the building of the toolkit to make it ready for use. All that a user needs to do is to download and extract an official release version of this toolkit from the [IBMStreams GitHub](https://github.com/IBMStreams/streamsx.cppws/releases) and then run `ant clean-total` followed by `ant all` followed by `ant download-clean`.
+* C++ Boost and websocketpp include and lib directories have been moved up by one level. This will simplify the customization done in IBM Streams Studio build configuration's additional SPL compiler options panel. Please read the toolkit documentation for more details.
 
 v1.0.4:
 * Jun/07/2020
@@ -145,4 +165,4 @@ v1.0.1:
 
 v1.0.0:
 - Mar/05/2020
-- Very first release of this toolkit that was tested to support receiving of text or binary data from remote client applications via WebSocket. In this release, this toolkit provides a single C++ based operator named WebSocketSource.
+- Very first release of this toolkit that was tested to support receiving of text or binary data from remote client applications via WebSocket. In this release, this toolkit provides a single C++ operator named WebSocketSource.

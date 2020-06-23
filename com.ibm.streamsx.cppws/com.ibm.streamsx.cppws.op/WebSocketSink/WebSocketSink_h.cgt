@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Apr/27/2020
-Last modified on: Jun/02/2020
+Last modified on: Jun/14/2020
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables 
@@ -63,7 +63,7 @@ public:
 	SPL::list<SPL::rstring> trustedClientX509SubjectIdentifiers;
 	SPL::boolean nonTlsEndpointNeeded;
 	SPL::uint32 nonTlsPort;
-	SPL::rstring urlContextPath;
+	SPL::list<SPL::rstring> urlContextPath;
 	SPL::float64 initDelay;
 	SPL::boolean websocketLiveMetricsUpdateNeeded;
 	bool websocketLoggingNeeded;
@@ -84,8 +84,10 @@ public:
 	SPL::boolean dataInputAsRString;
 	SPL::boolean dataInputAsBlob;
 	std::vector<std::string> strDataToSend;
+	SPL::list<SPL::list<SPL::rstring>> sendStrDataToUrlContextPaths;
 	std::vector<unsigned char *> blobDataToSend;
 	std::vector<uint64_t> blobDataSize;
+	SPL::list<SPL::list<SPL::rstring>> sendBlobDataToUrlContextPaths;
 	// This mutex is to control the multithreaded shared R/W access of the 
 	// three incoming tuple holding vectors declared just above here. 
 	SPL::Mutex wsMutex1;
@@ -110,6 +112,8 @@ public:
 		std::string remoteEndpoint;
 	    std::string clientIpAddress;
 	    std::string clientPort;
+	    // Context path found in the URL being accessed by this client.
+	    std::string urlContextPath;
 	    std::string serverIpAddress;
 	    std::string serverPort;	    
 	    bool isTlsConnection;
