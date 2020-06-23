@@ -39,9 +39,9 @@ On all your IBM Streams application machines, you have to ensure that the openss
 ## Downloading the dependencies and building the toolkit
 This toolkit is packaged with a comprehensive build.xml automation file that will help the users in downloading and building the toolkit in order to make it ready for use. Users will need network connectivity to the Internet from their Linux Streams application development machine(s) along with the open source ant tool. All that a user needs to do is to download and extract an official release version of this toolkit from the [IBMStreams GitHub](https://github.com/IBMStreams/streamsx.cppws/releases) and then run the following commands in sequence from the top-level directory (e-g: streamsx.cppws) of this toolkit.
 
-`ant clean-total`           [Approximately 2 minutes]
-`ant all`                   [Approximately 8 minutes]
-`ant download-clean`        [Approximately 2 minutes]
+1. `ant clean-total`           [Approximately 2 minutes]
+2. `ant all`                   [Approximately 8 minutes]
+3. `ant download-clean`        [Approximately 2 minutes]
 
 If all those commands ran successfully, this toolkit is ready for use.
 
@@ -53,7 +53,7 @@ i. You must add this toolkit as a dependency in your application.
        
 ii. In Streams studio, you must double click on the BuildConfig of your application's main composite and then select "Other" in the dialog that is opened. In the "Additional SPL compiler options", you must add the following. Please note that there is nothing that needs to be entered in the other two C++ compiler and linker options in that same dialog box.
 
-      - `--c++std=c++11`
+   - `--c++std=c++11`
        
 iii. If you are building your application from the command line, please refer to the Makefile provided in the WebSocketSourceTester example shipped with this toolkit. Before using that Makefile, you must set the STREAMS_CPPWS_TOOLKIT environment variable to point to the full path of your streamsx.cppws/com.ibm.streamsx.cppws directory. To build your own applications, you can do the same as done in that Makefile.
 
