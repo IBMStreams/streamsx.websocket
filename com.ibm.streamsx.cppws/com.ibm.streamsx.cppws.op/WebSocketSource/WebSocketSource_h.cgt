@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Feb/23/2020
-Last modified on: Jun/02/2020
+Last modified on: Jun/19/2020
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables and
@@ -66,7 +66,7 @@ public:
 	SPL::list<SPL::rstring> trustedClientX509SubjectIdentifiers;
 	SPL::boolean nonTlsEndpointNeeded;
 	SPL::uint32 nonTlsPort;
-	SPL::rstring urlContextPath;
+	SPL::list<SPL::rstring> urlContextPath;
 	SPL::float64 initDelay;
 	SPL::boolean websocketLiveMetricsUpdateNeeded;
 	bool websocketLoggingNeeded;
@@ -118,7 +118,7 @@ public:
 	SPL::uint64 nDataItemsReceivedFromRemoteClients;
 	SPL::uint64 nDataBytesSentToRemoteClients;
 	SPL::uint64 nDataItemsSentToRemoteClients;
-	SPL::uint64 nHttpPostMessagesReceivedFromRemoteClients;
+	SPL::uint64 nHttpMessagesReceivedFromRemoteClients;
 	SPL::uint64 nResponseTimeoutOccurrences;
 		
 	// This is the structure that will get stored in the map declard below.
@@ -126,6 +126,8 @@ public:
 		std::string remoteEndpoint;
 	    std::string clientIpAddress;
 	    std::string clientPort;
+	    // Context path found in the URL being accessed by this client.
+	    std::string urlContextPath;
 	    std::string serverIpAddress;
 	    std::string serverPort;	    
 	    bool isTlsConnection;
@@ -184,7 +186,7 @@ public:
 	Metric *nClientsConnectedMetric;
 	Metric *nDataBytesReceivedFromRemoteClientsMetric;
 	Metric *nDataItemsReceivedFromRemoteClientsMetric;
-	Metric *nHttpPostMessagesReceivedFromRemoteClientsMetric;
+	Metric *nHttpMessagesReceivedFromRemoteClientsMetric;
 	Metric *nDataBytesSentToRemoteClientsMetric;
 	Metric *nDataItemsSentToRemoteClientsMetric;
 	Metric *nResponseTimeoutOccurrencesMetric;
@@ -308,6 +310,8 @@ public:
 		std::string const & strData, SPL::blob & blobData, 
 		websocketpp::connection_hdl & hdl,
 		MY_OPERATOR::connection_metadata & con_metadata,
+		std::string const & httpRequestMethod, 
+		std::string const & urlQueryString,
 		std::string const & httpRequestHeaders);
 
 private:
@@ -315,12 +319,15 @@ private:
 	uint64_t getClientSessionId(uint64_t const & clientSessionId);
 	std::string getClientIpAddress(std::string const & clientIpAddress);
 	std::string getClientPort(std::string const & clientPort);
+	std::string getUrlContextPath(std::string const & urlContextPath);
 	bool isWebSocketClient(bool const & isWebSocketConnection);
 	bool isHttpClient(bool const & isHttpConnection);
 	uint64_t getTotalDataItemsReceived(uint64_t const & totalDataItemsReceived);
 	uint64_t getTotalDataBytesReceived(uint64_t const & totalDataBytesReceived);
 	uint64_t getTotalDataItemsSent(uint64_t const & totalDataItemsSent);
 	uint64_t getTotalDataBytesSent(uint64_t const & totalDataBytesSent);
+	std::string getHttpRequestMethodName(std::string const & httpRequestMethodName);
+	SPL::map<SPL::rstring, SPL::rstring> getUrlQueryStringKeyValuePairs(std::string const & urlQueryString);
 	SPL::map<SPL::rstring, SPL::rstring> getHttpRequestHeaders(std::string const & httpRequestHeaders);
 }; 
 

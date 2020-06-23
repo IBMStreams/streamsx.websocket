@@ -1,5 +1,14 @@
 Changes
 =======
+## v1.0.5:
+* Jun/22/2020
+* A WebSocket server endpoint can now have zero or more URL context paths.
+* When data exchange via HTTP is enabled, clients can send data using HTTP GET, PUT and POST.
+* WebSocketSourceTester and HttpPostTester examples have been updated to demonstrate HTTP GET/PUT/POST.
+* All the server-based examples have been updated to demonstrate having multiple URL context paths.
+* A new build.xml file has been added at the toolkit's top-level directory to automate the downloading of all the external dependencies such as C++ Boost, websocketpp etc. and then the building of the toolkit to make it ready for use. All that a user needs to do is to download and extract an official release version of this toolkit from the [IBMStreams GitHub](https://github.com/IBMStreams/streamsx.cppws/releases) and then run `ant clean-total` followed by `ant all` followed by `ant download-clean`.
+* C++ Boost and websocketpp include and lib directories have been moved up by one level. This will simplify the customization done in IBM Streams Studio build configuration's additional SPL compiler options panel. Please read the toolkit documentation for more details.
+
 ## v1.0.4:
 * Jun/07/2020
 * This version is upgraded to use the C++ Boost v1.73.0 and websocketpp v0.8.2.
@@ -34,4 +43,4 @@ Changes
 
 ## v1.0.0:
 * Mar/05/2020
-* Very first release of this toolkit that was tested to support receiving of text or binary data from remote client applications via WebSocket. In this release, this toolkit provides a single C++ based operator named WebSocketSource.
+* Very first release of this toolkit that was tested to support receiving of text or binary data from remote client applications via WebSocket. In this release, this toolkit provides a single C++ operator named WebSocketSource.

@@ -1,5 +1,0 @@
-# This directory is empty with no files at the time of committing it to the GitHub.
-
-# When the users clone this toolkit repository or download a release package from this repository, they will create files into their copy of this folder for compiling, testing and application bundle packaging purposes. So, they will need this empty directory to be present as part of this toolkit.
-
-# Having this .gitkeep file here will force the git add, git commit and git push commands to keep this empty folder in the remote repository instead of simply ignoring it.

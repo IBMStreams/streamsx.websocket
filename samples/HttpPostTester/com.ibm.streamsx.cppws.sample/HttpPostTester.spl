@@ -8,20 +8,23 @@
 /*
 ==================================================================
 First created on: Feb/13/2020
-Last modified on: Jun/01/2020
+Last modified on: Jun/19/2020
 
 This main composite file contains the logic to send
 a payload (plain text, JSON or XML) to a given HTTP(S) endpoint.
 This application is mainly used to test the WebSocketSource
 operator in the streamsx.cppws toolkit by sending data via
-HTTP(S) POST. In order to send the data, it also uses another
+HTTP(S) PUT and POST. In order to send the data, it also uses another
 utility operator named HttpPost available in that same 
 streamsx.cppws toolkit.
 
 In May/2020, I added a feature to send/receive binary data
 via HTTP POST to/from the WebSocketSource operator.
 So, I extended this example application to showcase the 
-binary data sending using the HttpPost client operator. 
+binary data posting/sending using the HttpPost client operator. 
+
+In addition to PUT and POST, this example also shows how to do
+HTTP GET using the HttpPost client operator. 
 
 [
 In this example, we also show how to do mutual authentication
@@ -135,8 +138,16 @@ composite HttpPostTester {
 			
 	type
 		// Schema for the input stream of the HttpPost operator.
+		// These attributes can appear in any positional order.
+		// The first three attributes are mandatory. The other two are
+		// optional. By default, the HttpPost operator will always do
+		// HTTP POST. Optionally, that operator can be made to do 
+		// HTTP PUT or HTTP GET by setting the httpMethod attribute 
+		// below to "PUT" or "GET".
+		// Please refer to the HttpPost operator documentation for more details.
 		HttpPostInput_t = rstring strData, blob blobData, 
-			map<rstring, rstring> requestHeaders;
+			map<rstring, rstring> requestHeaders, 
+			rstring httpMethod, rstring urlQueryString;
 			
 		// Schema for the input stream of the HttpPost operator.
 		HttpPostOutput_t = int32 statusCode, rstring statusMessage,
@@ -145,7 +156,8 @@ composite HttpPostTester {
 	graph
 		// Keep generating user configured number of tuples as fast as 
 		// possible carrying binary payload.
-		(stream<HttpPostInput_t> BinaryPayload as BP) = Beacon() {
+		// These data items will be sent via HTTP POST.
+		(stream<HttpPostInput_t> MyHttpPostBinaryPayload as BP) = Beacon() {
 			param
 				initDelay: 10.0;
 				iterations: $numberOfDataItemsToBeSent;
@@ -164,6 +176,7 @@ composite HttpPostTester {
 	
 		// Keep generating user configured number of tuples as fast as 
 		// possible carrying the XML payload.
+		// These data items will be sent via HTTP PUT.
 		(stream<rstring strData> Payload) = Beacon() {
 			param
 				initDelay: 10.0;
@@ -171,6 +184,23 @@ composite HttpPostTester {
 				
 			output
 				Payload: strData = $XML_PAYLOAD;
+		}
+
+		// Keep generating a few tuples as fast as 
+		// possible carrying data via the URL query string.
+		// These data items will be sent via HTTP GET.
+		(stream<HttpPostInput_t> MyHttpGetPayload as HP) = Beacon() {
+			param
+				initDelay: 10.0;
+				iterations: 20;
+				
+			output
+				// In HTTP GET, we can't send anything via strData and blobData attributes.
+				// Instead, it has to be sent via a URL query string.
+				HP: requestHeaders = {'Custom-Header1':'Hawthorne', 
+					'Custom-Header2':'Yorktown Heights', 'Custom-Header3':'Chappaqua'},
+					httpMethod = "GET", 
+					urlQueryString="NY=Albany&CT=Hartford&NJ=Trenton&RI=Providence";
 		}
 		
 		// This operator sends a periodic timer signal to 
@@ -189,13 +219,13 @@ composite HttpPostTester {
 		// This operator collects the incoming tuples for a specific 
 		// period of time and then sends that collected batch of tuples for
 		// HTTP POST targeted to a remote web server.
-		(stream<HttpPostInput_t> MyPayload as MP) = 
+		(stream<HttpPostInput_t> MyHttpPutPayload as MP) = 
 			Custom(ThrottledPayload as TP; MessageBatchTimer as MBT) {
 			logic
 				state: {
 					mutable list<rstring> _msgList = [];
 					mutable uint64 _batchCnt = 0ul;
-					mutable MyPayload _oTuple = {};
+					mutable HttpPostInput_t _oTuple = {};
 				}
 				
 				// Keep collecting the incoming messages in a list.
@@ -225,14 +255,21 @@ composite HttpPostTester {
 					// We can now send a batch of messages via a single HTTP POST.
 					if ($logHttpPostActions == true) {
 						printStringLn((rstring)_batchCnt + ") " + 
-							(rstring)msgCnt + " messages are ready to be sent.");
+							(rstring)msgCnt + 
+							" messages are ready to be sent with a total size of " +
+							(rstring)length((rstring)_msgList) + ".");
 					}
 					
 					// Convert the entire list as a string i.e. "['abc', 'rst', 'xyz']"
 					// Please refer to the HttpPost operator documentation for
 					// more details about what attributes are acceptable in its input port.
-					_oTuple = (MyPayload){};
+					_oTuple = (HttpPostInput_t){};
 					_oTuple.strData = (rstring)_msgList;
+					// By default, the HttpPost operator will always do HTTP POST.
+					// Optionally, we can make that operator to do HTTP PUT as well.
+					// That can be done by setting the httpMethod attribute to PUT.
+					_oTuple.httpMethod = "PUT";
+					
 					// We can also send any application-specific custom HTTP request headers.
 					insertM(_oTuple.requestHeaders, "Streams-Application-Name", "HttpPostTester");
 					insertM(_oTuple.requestHeaders, "Author", "Peter Pan");
@@ -265,8 +302,9 @@ composite HttpPostTester {
 		@catch(exception=all)
 		// Please refer to the HttpPost operator documentation for
 		// more details about what attributes are acceptable in its input and output ports.
-		(stream<HttpPostOutput_t> PostResult) as
-			TextPayloadHttpSender = HttpPost(MyPayload as MP) {
+		// This operator will carry both the HTTP PUT and HTTP GET payload.
+		(stream<HttpPostOutput_t> GetPutResult) as
+			TextPayloadHttpSender = HttpPost(MyHttpGetPayload, MyHttpPutPayload as MP) {
 			param
 				url: $url;
 				// text/plain is the default content type for this operator.
@@ -332,14 +370,11 @@ composite HttpPostTester {
 		}
 
 		// We can write the HTTP response somewhere or nowhere.
-		() as TextHttpResponseSink = FileSink(PostResult as PR) {
+		() as TextHttpResponseSink = FileSink(GetPutResult as GPR) {
 			param
-				// file: "/dev/stdout";
-				file: "/dev/null";
+				file: "http-text-payload-send-result-" + 
+					(rstring)jobID() + "-" + getHostName() + ".txt";
 				flush: 1u;
-				
-			//config
-				//threadedPort:  queue(PR, Sys.Wait);
 		}
 		
 		// NOTE
@@ -355,8 +390,9 @@ composite HttpPostTester {
 		@catch(exception=all)
 		// Please refer to the HttpPost operator documentation for
 		// more details about what attributes are acceptable in its input and output ports.
+		// This operator will carry the HTTP POST payload.
 		(stream<HttpPostOutput_t> BinaryPayloadSendResult) as
-		 	BinaryPayloadSender = HttpPost(BinaryPayload as BP) {
+		 	BinaryPayloadSender = HttpPost(MyHttpPostBinaryPayload as BP) {
 			param
 				url: $url;
 				// application/octet-stream is the required content type for 

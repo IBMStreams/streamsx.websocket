@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Feb/22/2020
- Last modified on: Jun/02/2020
+ Last modified on: Jun/19/2020
 
  This particular operator (WebSocketSource) is used to
  receive either text data or binary data from one or more
@@ -534,8 +534,12 @@ my $nonTlsPort = $model->getParameterByName("nonTlsPort");
 $nonTlsPort = $nonTlsPort ? $nonTlsPort->getValueAt(0)->getCppExpression() : 80;
 
 my $urlContextPath = $model->getParameterByName("urlContextPath");
-# Default: Default is an empty URL context path.
-$urlContextPath = $urlContextPath ? $urlContextPath->getValueAt(0)->getCppExpression() : "";
+# Default: Default is an empty list to indicate no URL context path.
+# If this parameter is defined, we will use the value of 
+# this parameter in the C++ class constructor below. 
+if (defined $urlContextPath) {
+	$urlContextPath = $urlContextPath->getValueAt(0)->getCppExpression();
+}
 
 my $initDelay = $model->getParameterByName("initDelay");
 # Default: 0.0
@@ -583,7 +587,8 @@ $noDataCpuYieldTimeInSenderThread = $noDataCpuYieldTimeInSenderThread ? $noDataC
 
 my $clientWhitelist = $model->getParameterByName("clientWhitelist");
 
-# Default: If this parameter is defined, we will use the value of 
+# Default: It is an empty list to indicate no client whitelist.
+# If this parameter is defined, we will use the value of 
 # this parameter in the C++ class constructor below. 
 if (defined $clientWhitelist) {
 	$clientWhitelist = $clientWhitelist->getValueAt(0)->getCppExpression();
@@ -615,8 +620,8 @@ MY_OPERATOR::MY_OPERATOR() {
 		"nDataItemsReceivedFromRemoteClients");
 	nDataBytesReceivedFromRemoteClientsMetric = &opm.getCustomMetricByName(
 		"nDataBytesReceivedFromRemoteClients");
-	nHttpPostMessagesReceivedFromRemoteClientsMetric = &opm.getCustomMetricByName(
-		"nHttpPostMessagesReceivedFromRemoteClients");
+	nHttpMessagesReceivedFromRemoteClientsMetric = &opm.getCustomMetricByName(
+		"nHttpMessagesReceivedFromRemoteClients");
 	
 	<% if (defined($dataResponseToClientPortFound)) { %>
 	// We need these metrics only if this operator is configured with a
@@ -660,34 +665,33 @@ MY_OPERATOR::MY_OPERATOR() {
 	nonTlsEndpointNeeded = <%=$nonTlsEndpointNeeded%>;
 	nonTlsPort = <%=$nonTlsPort%>;
 	
-	// For string based assignment using a perl variable, it can't be
-	// assigned directly to the value of that perl variable. If we do that,
-	// such an assignement will result in an empty assignment due to $lit3 and
-	// will lead to a compiler error. So, only for the string based copy from a
-	// perl variable, the following check must be done for an empty string and
-	// then it should be done as shown below.
-	<% if ($urlContextPath eq "") { %>
-	urlContextPath = "";
-	<% } else { %>
+	// This is a list<rstring> that can have zero or more user provided URL context paths.
+	<% if (defined $urlContextPath) { %>
 	urlContextPath = <%=$urlContextPath%>;
-	<%}%>
+	SPL::int32 numberOfContextPaths = SPL::Functions::Collections::size(urlContextPath);
 	
-	// Ensure that the url context path doesn't start with a forward slash.
-	// If it does, that will cause problems with the websocketpp::config::asio library in the
-	// way it always carries a forward slash at the beginning of the return value for
-	// the get_resource() API that we use in the validate_client method later in this file.
-	// Example: https://b0513:8443/MyServices/Banking/Deposit
-	// In this example, user must configure the context path as MyServices/Banking/Deposit
-	// and not as /MyServices/Banking/Deposit
-	if(SPL::Functions::String::findFirst(urlContextPath, "/") == 0) {
-		// First character of the URL context is a forward slash.
-		// We are not going to allow that.
-		throw std::runtime_error(
-			std::string("WebSocketSource_cpp.cgt: URL context path starts with a forward slash character: ") +
-			urlContextPath + 
-			std::string(" It is not valid. Please reconfigure it with a new value that doesn't start with ") +
-			std::string("a forward slash character. "));		
-	}
+	// We can now loop through the URL context path list and validate the
+	// syntex of every given context path.
+	for(SPL::int32 cnt = 0; cnt < numberOfContextPaths; cnt++) {
+		// Ensure that the url context path doesn't start with a forward slash.
+		// If it does, that will cause problems with the websocketpp::config::asio library in the
+		// way it always carries a forward slash at the beginning of the return value for
+		// the get_resource() API that we use in the validate_client method later in this file.
+		// Example: https://b0513:8443/MyServices/Banking/Deposit
+		// In this example, user must configure the context path as MyServices/Banking/Deposit
+		// and not as /MyServices/Banking/Deposit
+		//
+		if(SPL::Functions::String::findFirst(urlContextPath[cnt], "/") == 0) {
+			// First character of the URL context is a forward slash.
+			// We are not going to allow that.
+			throw std::runtime_error(
+				std::string("WebSocketSource_cpp.cgt: URL context path starts with a forward slash character: ") +
+				urlContextPath[cnt] + 
+				std::string(" It is not valid. Please reconfigure it with a new value that doesn't start with ") +
+				std::string("a forward slash character. "));		
+		}				
+	} // End of for loop.
+	<%}%>
 	
 	initDelay = <%=$initDelay%>;
 	websocketLiveMetricsUpdateNeeded = <%=$websocketLiveMetricsUpdateNeeded%>;
@@ -966,7 +970,7 @@ void MY_OPERATOR::process(uint32_t idx) {
 	nClientsConnected = 0;
 	nDataBytesReceivedFromRemoteClients = 0;
 	nDataItemsReceivedFromRemoteClients = 0;
-	nHttpPostMessagesReceivedFromRemoteClients = 0;
+	nHttpMessagesReceivedFromRemoteClients = 0;
 	nDataBytesSentToRemoteClients = 0;
 	nDataItemsSentToRemoteClients = 0;
 
@@ -1941,7 +1945,8 @@ void MY_OPERATOR::ws_data_sender() {
 					
 					// Please note that unlike in the on_close for WebSocket connections, we are not
 					// going to send an "End of Client Session" signal on output port 1.
-					// Because, it will simply be too many of them for the HTTP based connections.
+					// Because, it will simply be too many of them for the 
+					// HTTP based request/response connections.
 				}
 			} else {
 				// If the application layer sends an invlaid client id, then we will reach here.
@@ -2151,7 +2156,8 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 					
 					// Please note that unlike in the on_close for WebSocket connections, we are not
 					// going to send an "End of Client Session" signal on output port 1.
-					// Because, it will simply be too many of them for the HTTP based connections.
+					// Because, it will simply be too many of them for the 
+					// HTTP based request/response connections.
 				}
 			} // End of for loop that iterates over the response timed out handles.
 			
@@ -2357,6 +2363,7 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl,
 		remoteEndpoint = server_non_tls_con->get_remote_endpoint();
 		serverIp = server_non_tls_con->get_host();
 		serverPort = boost::to_string(server_non_tls_con->get_port());
+		// Get the context path present in the URL being accessed by this client.
 		myUrlContext = server_non_tls_con->get_resource();
 	} else {
 		// Upgrade our connection handle to a full connection_ptr.
@@ -2376,9 +2383,23 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl,
 		remoteEndpoint = server_tls_con->get_remote_endpoint();
 		serverIp = server_tls_con->get_host();
 		serverPort = boost::to_string(server_tls_con->get_port());
+		// Get the context path present in the URL being accessed by this client.
 		myUrlContext = server_tls_con->get_resource();
 	}
+
+	// If it is a HTTP GET URL, there may be a query string present.
+	// Remove the query string part.
+	SPL::int32 idx1 = SPL::Functions::String::findFirst(myUrlContext, "?");
 	
+	if (idx1 != -1) {
+		// Query string is present.
+		// Get rid of the query string part by taking a substring.
+		myUrlContext = SPL::Functions::String::substring(myUrlContext, 0, idx1);
+	}	
+	
+	// Let us check the correctness of the context path provided in
+	// the WebSocket server URL being accessed by the remote client.
+	//
 	// Let us first check if this client is using the correct context path in its URL.
 	// If there is no user configured URL context path, then it is an empty string.
 	// When the operator has its context path as an empty string, then the client
@@ -2387,15 +2408,47 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl,
 	// return a forward slash i.e. /     So, we will permit that in the following check.
 	// When the user configured url context path is not empty, then we must compare it
 	// with what the client is using to connect here. In this case, note below that we
-	// are adding a forward slash to the user configured url context path.
-	if((urlContextPath == "" && myUrlContext != "/") ||
-		(urlContextPath != "" && myUrlContext != (std::string("/") + urlContextPath))) {
+	// are adding a forward slash in front of the user configured url context path.
+	SPL::boolean validUrlContextPath = false;
+	SPL::int32 numberOfContextPaths = SPL::Functions::Collections::size(urlContextPath);
+	
+	if(numberOfContextPaths <= 0 && myUrlContext == "/") {
+		// Server endpoint has no user configured URL context path.
+		// Client also has used an empty context path in the URL.
+		// So, it is valid.
+		validUrlContextPath = true;
+	}
+	
+	// We can now loop through the URL context path list and do the UCP correctness check.
+	// If there are multiple URL context paths configured by the user for the 
+	// WebSocket server endpoint, then we should find at least one match in order 
+	// for the client provided URL to be valid and passed to the next stage in
+	// this client connection validation callback handler.
+	for(SPL::int32 cnt = 0; cnt < numberOfContextPaths; cnt++) {
+		if(urlContextPath[cnt] == "" && myUrlContext == "/") {
+			// Server context path is empty. 
+			// Client provided context path is simply a forward slash.
+			// So, that is a match and it is valid.
+			validUrlContextPath = true;
+			break;
+		}
+
+		if(urlContextPath[cnt] != "" && myUrlContext == (std::string("/") + urlContextPath[cnt])) {
+			// Server context path is not empty.
+			// Client provided context path is a forward slash + server's context path.
+			// So, that is a match and it is valid.
+			validUrlContextPath = true;
+			break;
+		}	
+	} // End of for loop.
+	
+	if(validUrlContextPath == false) {
 		if (wsConnectionLoggingNeeded == true) {
 			SPLAPPTRC(L_ERROR, 
 				"Operator " <<
 				operatorPhysicalName <<
 				"-->Channel " << boost::to_string(udpChannelNumber) <<
-				". Invalid URL context path is being used by this client. " <<
+				". Invalid URL context path is being accessed by this client. " <<
 				"So, this client can't be allowed to connect at this time. " <<
 				"nClientsConnected=" << nClientsConnected << 
 				", maxClientConnectionsAllowed=" << maxClientConnectionsAllowed <<
@@ -2416,10 +2469,10 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl,
 		// But, don't send any clue back to the client about the correct url context path.
 		// Because, that client may be a malware. Let it find out the correct context on its own.
 		std::string body_msg = 
-			std::string("Invalid URL context path is being used by this client: ") +
+			std::string("Invalid URL context path is being accessed by this client: ") +
 			myUrlContext + 
 			std::string(". So, this client can't be allowed to connect at this time.");
-				;
+	
 		if (isTlsConnection == false) {
 			try {
 				server_non_tls_con->set_body(body_msg);
@@ -2437,7 +2490,7 @@ bool MY_OPERATOR::validate_client(websocketpp::connection_hdl hdl,
 		}
 		
 		return(false);		
-	} // End of if((urlContextPath == "" && myUrlContext != "/") ||
+	} // End of if(validUrlContextPath == false)
 	
 	// In my tests, I have seen two different forms of values returned for remoteEndpoint. 
 	// We should be prepared to deal with both of those formats.
@@ -2998,10 +3051,12 @@ void MY_OPERATOR::on_message(EndpointType* s, websocketpp::connection_hdl hdl,
 
 	// We have a valid message from the remote websocket client.
 	// Let us submit it now on the first output port of this operator.
-	// Final argument to this method call is a string carrying the HTTP request headers.
-	// This is a WebSocket based message exchange. So, there is no HTTP request header here.
+	// Final three arguments to this method call are about the
+	// HTTP request method name, url query string and a string carrying the 
+	// HTTP request headers. This is a WebSocket based message exchange. 
+	// So, there is no applicability of those arguments here.
 	submit_received_data_item(isBinaryData, payloadSize,
-		ss.str(), myBlob, hdl, con_metadata, "");
+		ss.str(), myBlob, hdl, con_metadata, "", "", "");
 	
 	if (wsClientSessionLoggingNeeded == true) {
 		SPLAPPTRC(L_ERROR,
@@ -3428,6 +3483,8 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 	// application/octet-stream when they send us binary data.	
 	std::string contentType = "";
 	std::string contentLengthString = "";
+	std::string httpRequestMethod = "";
+	std::string urlQueryString = "";
 	
 	// Upgrade our connection handle to a full connection_ptr.
 	if(isTlsConnection == false) {
@@ -3438,8 +3495,11 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			return;
 		}
 		
+		// Get these HTTP request values that are needed for our initial check.
 		contentType = server_non_tls_con->get_request_header("Content-Type");
 		contentLengthString = server_non_tls_con->get_request_header("Content-Length");
+		httpRequestMethod = server_non_tls_con->get_request().get_method();
+		urlQueryString = server_non_tls_con->get_uri()->get_query();
 	} else {
 		if (server_tls_con == NULL) {
 			// Not a valid connection. 
@@ -3448,16 +3508,75 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			return;
 		}
 		
+		// Get these HTTP request values that are needed for our initial check.
 		contentType = server_tls_con->get_request_header("Content-Type");
 		contentLengthString = server_tls_con->get_request_header("Content-Length");
+		httpRequestMethod = server_tls_con->get_request().get_method();
+		urlQueryString = server_tls_con->get_uri()->get_query();
 	}
 	
+	// As of June/19/2020, this operator supports only HTTP GET/PUT/POST.
+	if(httpRequestMethod != "GET" && 
+	   httpRequestMethod != "PUT" &&
+	   httpRequestMethod != "POST") {
+		// Unsupported HTTP request method.
+		// Send a response back to the HTTP client about this.
+		if(isTlsConnection == false) {
+			try {
+				server_non_tls_con->replace_header(std::string("Content-Type"),
+					std::string("text/plain"));
+				server_non_tls_con->set_body(std::string("Your HTTP ") +
+					httpRequestMethod + std::string(" request is not supported by ") +
+					std::string("the IBM Streams WebSocketSource operator."));
+				server_non_tls_con->set_status(websocketpp::http::status_code::method_not_allowed);
+			} catch (websocketpp::exception const & e) {
+				// Do nothing here.
+			}
+		} else {
+			try {
+				server_tls_con->replace_header(std::string("Content-Type"),
+					std::string("text/plain"));
+				server_tls_con->set_body(std::string("Your HTTP ") +
+					httpRequestMethod + std::string(" request is not supported by ") +
+					std::string("the IBM Streams WebSocketSource operator."));
+				server_tls_con->set_status(websocketpp::http::status_code::method_not_allowed);	
+			} catch (websocketpp::exception const & e) {
+				// Do nothing here.
+			}
+		}
+		
+		// We will go ahead now and do the clean-up of this HTTP connection.
+		// HTTP POST client connections are made fresh for every message exchange.
+		// So, we are done with this particular HTTP client connection.
+		// Delete this client session id from the map that we maintain to do a
+		// faster search of a connection handle by using a client session id.
+		client_id_to_hdl_map.erase(con_metadata.clientSessionId);
+
+		// Delete this handle from our associative container.        
+		client_connections_map.erase(hdl);
+		
+		// We are now with one less client connection.
+		nClientsConnected -= 1;
+		
+		// Update the operator metric only if the user asked for a live update.
+		if (websocketLiveMetricsUpdateNeeded == true) {
+			nClientsConnectedMetric->setValueNoLock(nClientsConnected);
+		}
+
+		return;
+		
+		// Please note that unlike in the on_close for WebSocket connections, we are not
+		// going to send an End of Client Session" signal on output port 1.
+		// Because, it will simply be too many of them for the 
+		// HTTP based request/response connections.	
+	} // End of if(httpRequestMethod != "GET" && 
+
 	SPL::int32 contentLength = 0;
 	contentLength = atoi(contentLengthString.c_str());
 	
 	// Update the metric counter.
-	nHttpPostMessagesReceivedFromRemoteClients++;
-	SPLAPPTRC(L_INFO, nHttpPostMessagesReceivedFromRemoteClients << 
+	nHttpMessagesReceivedFromRemoteClients++;
+	SPLAPPTRC(L_INFO, nHttpMessagesReceivedFromRemoteClients << 
 		") Content-Type=" << contentType << 
 		", Content-Length=" << contentLengthString << 
 		", hdl=" << hdl.lock().get(), "on_http_message");
@@ -3579,7 +3698,8 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			
 			// Please note that unlike in the on_close for WebSocket connections, we are not
 			// going to send an End of Client Session" signal on output port 1.
-			// Because, it will simply be too many of them for the HTTP based connections.
+			// Because, it will simply be too many of them for the 
+			// HTTP based request/response connections.
 		} // End of if(lineCnt < 6 || myLines[2] != "" ||
 
 		// Get the binary payload consisting an arbitrary length of data that starts from line 4.
@@ -3615,7 +3735,7 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			SPL::Functions::String::substring(strData, idx1, slen);
 
 		if (wsClientSessionLoggingNeeded == true) {
-			SPLAPPTRC(L_ERROR, nHttpPostMessagesReceivedFromRemoteClients << 
+			SPLAPPTRC(L_ERROR, nHttpMessagesReceivedFromRemoteClients << 
 				") Content-Type=" << contentType << 
 				", Content-Length=" << contentLengthString <<
 				", lineCnt=" << lineCnt << 
@@ -3643,13 +3763,14 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 		// the data being sent is not string based.
 		strData = "";
 		isBinaryData = true;
-		submit_received_data_item(isBinaryData, contentLength, strData, myBlob, hdl, con_metadata,
+		submit_received_data_item(isBinaryData, contentLength, strData, myBlob, 
+			hdl, con_metadata, httpRequestMethod, urlQueryString, 
 			(isTlsConnection == false ? server_non_tls_con->get_request().raw_head() : server_tls_con->get_request().raw_head()));		
 	} else {
 		// We received a text based content in the HTTP POST.
 		submit_received_data_item(isBinaryData, contentLength,
 			(isTlsConnection == false ? server_non_tls_con->get_request_body() : server_tls_con->get_request_body()),
-			myBlob, hdl, con_metadata,
+			myBlob, hdl, con_metadata, httpRequestMethod, urlQueryString, 
 			(isTlsConnection == false ? server_non_tls_con->get_request().raw_head() : server_tls_con->get_request().raw_head()));
 	}
 	
@@ -3673,7 +3794,7 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			<< ", currentDataPacketSize=" << contentLength
 			<< ", dataItemsReceivedCnt=" << con_metadata.dataItemsReceivedCnt
 			<< ", dataBytesReceived=" << con_metadata.dataBytesReceived		
-			<< ", HTTP POST messages received from all clients=" << nHttpPostMessagesReceivedFromRemoteClients 
+			<< ", HTTP messages received from all clients=" << nHttpMessagesReceivedFromRemoteClients 
 			<< ", nClientsConnected=" << nClientsConnected
 			<< ", total data items received from all clients=" << nDataItemsReceivedFromRemoteClients
 			<< ", total data bytes received from all clients=" << nDataBytesReceivedFromRemoteClients,
@@ -3699,7 +3820,7 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			<< ", currentDataPacketSize=" << contentLength
 			<< ", dataItemsReceivedCnt=" << con_metadata.dataItemsReceivedCnt
 			<< ", dataBytesReceived=" << con_metadata.dataBytesReceived	
-			<< ", HTTP POST messages received from all clients=" << nHttpPostMessagesReceivedFromRemoteClients 
+			<< ", HTTP messages received from all clients=" << nHttpMessagesReceivedFromRemoteClients 
 			<< ", nClientsConnected=" << nClientsConnected
 			<< ", total data items received from all clients=" << nDataItemsReceivedFromRemoteClients
 			<< ", total data bytes received from all clients=" << nDataBytesReceivedFromRemoteClients		
@@ -3768,7 +3889,8 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 	
 	// Please note that unlike in the on_close for WebSocket connections, we are not
 	// going to send an End of Client Session" signal on output port 1.
-	// Because, it will simply be too many of them for the HTTP based connections.
+	// Because, it will simply be too many of them for the 
+	// HTTP based request/response connections.
 	<%} else {%>
 	// We are going to defer the response for this HTTP client until at a later time.
 	// The received data item here will get processed by the application logic and
@@ -3914,6 +4036,7 @@ bool MY_OPERATOR::create_new_connection_entry(
 	std::string serverPort = "";
 	std::string clientIp = "";
 	std::string clientPort = "";
+	std::string myUrlContext = "";
 
 	if (isTlsConnection == false) {
 		if(con_non_tls == NULL) {
@@ -3931,6 +4054,8 @@ bool MY_OPERATOR::create_new_connection_entry(
 		remoteEndpoint = con_non_tls->get_remote_endpoint();
 		serverIp = con_non_tls->get_host();
 		serverPort = boost::to_string(con_non_tls->get_port());
+		// Get the context path present in the URL being accessed by this client.
+		myUrlContext = con_non_tls->get_resource();
 	} else {
 		if(con_tls == NULL) {
 			if (wsConnectionLoggingNeeded == true) {
@@ -3946,7 +4071,9 @@ bool MY_OPERATOR::create_new_connection_entry(
 		
 		remoteEndpoint = con_tls->get_remote_endpoint();
 		serverIp = con_tls->get_host();
-		serverPort = boost::to_string(con_tls->get_port());		
+		serverPort = boost::to_string(con_tls->get_port());	
+		// Get the context path present in the URL being accessed by this client.
+		myUrlContext = con_tls->get_resource();
 	}
 	
 	// In my tests, I have seen two different forms of values returned for remoteEndpoint. 
@@ -3984,11 +4111,24 @@ bool MY_OPERATOR::create_new_connection_entry(
 		clientIp = tokens[0];
 		clientPort = tokens[1];
 	}
+
+	// In the url context path, remove the leading forward slash.
+	myUrlContext = SPL::Functions::String::ltrim(myUrlContext, "/");
+	// If it is a HTTP GET URL, there may be a query string present.
+	// Remove the qurty string part.
+	SPL::int32 idx1 = SPL::Functions::String::findFirst(myUrlContext, "?");
+	
+	if (idx1 != -1) {
+		// Query string is present.
+		// Get rid of the query string part by taking a substring.
+		myUrlContext = SPL::Functions::String::substring(myUrlContext, 0, idx1);
+	}
 	
 	// Update the clientIpAddress, clientPort and related fields.
 	con_metadata.remoteEndpoint = remoteEndpoint;
 	con_metadata.clientIpAddress =  clientIp;
 	con_metadata.clientPort = clientPort;
+	con_metadata.urlContextPath = myUrlContext;
 	con_metadata.serverIpAddress =  serverIp;
 	con_metadata.serverPort = serverPort;
 	client_connections_map[hdl] = con_metadata;
@@ -4004,6 +4144,7 @@ bool MY_OPERATOR::create_new_connection_entry(
 			", remoteEndpoint=" << remoteEndpoint <<
 			", clientIp=" << clientIp <<
 			", clientPort=" << clientPort <<
+			", urlContextPath=" << myUrlContext <<
 			", isTlsConnection=" << isTlsConnection <<
 			", isHttpConnection=" << isHttpConnection <<
 			", serverIp=" << serverIp <<
@@ -4022,6 +4163,8 @@ void MY_OPERATOR::submit_received_data_item(bool & isBinaryData, int32_t & paylo
 	std::string const & strData, SPL::blob & blobData, 
 	websocketpp::connection_hdl & hdl,
 	MY_OPERATOR::connection_metadata & con_metadata,
+	std::string const & httpRequestMethod, 
+	std::string const & urlQueryString,
 	std::string const & httpRequestHeaders) {
 	OPort0Type oTuple;
 	
@@ -4078,6 +4221,10 @@ void MY_OPERATOR::submit_received_data_item(bool & isBinaryData, int32_t & paylo
 		%>
 			// Send the client's port.
 			oTuple.set_<%=$name%>(<%=$operation%>(con_metadata.clientPort));
+		<%} elsif ($operation eq "getUrlContextPath") {
+		%>
+			// Send the context path present in the URL being accessed by the client.
+			oTuple.set_<%=$name%>(<%=$operation%>(con_metadata.urlContextPath));		
 		<%} elsif ($operation eq "isWebSocketClient") {
 		%>
 			// Send an indication abbout whether it is a WebSocket client.
@@ -4103,6 +4250,12 @@ void MY_OPERATOR::submit_received_data_item(bool & isBinaryData, int32_t & paylo
 		<%} elsif ($operation eq "getTotalDataBytesSent") {
 		%>
 			oTuple.set_<%=$name%>(<%=$operation%>(con_metadata.dataBytesSent));
+		<%} elsif ($operation eq "getHttpRequestMethodName") {
+		%>
+			oTuple.set_<%=$name%>(<%=$operation%>(httpRequestMethod));
+		<%} elsif ($operation eq "getUrlQueryStringKeyValuePairs") {
+		%>
+			oTuple.set_<%=$name%>(<%=$operation%>(urlQueryString));
 		<%} elsif ($operation eq "getHttpRequestHeaders") {
 		%>
 			oTuple.set_<%=$name%>(<%=$operation%>(httpRequestHeaders));
@@ -4116,7 +4269,7 @@ void MY_OPERATOR::submit_received_data_item(bool & isBinaryData, int32_t & paylo
 	if (websocketLiveMetricsUpdateNeeded == true) {
 		nDataItemsReceivedFromRemoteClientsMetric->setValueNoLock(nDataItemsReceivedFromRemoteClients);
 		nDataBytesReceivedFromRemoteClientsMetric->setValueNoLock(nDataBytesReceivedFromRemoteClients);
-		nHttpPostMessagesReceivedFromRemoteClientsMetric->setValueNoLock(nHttpPostMessagesReceivedFromRemoteClients);
+		nHttpMessagesReceivedFromRemoteClientsMetric->setValueNoLock(nHttpMessagesReceivedFromRemoteClients);
 	}			
 } // End of submit_received_data_item
 
@@ -4131,6 +4284,10 @@ std::string MY_OPERATOR::getClientIpAddress(std::string const & clientIpAddress)
 
 std::string MY_OPERATOR::getClientPort(std::string const & clientPort) {
 	return clientPort;
+}
+
+std::string MY_OPERATOR::getUrlContextPath(std::string const & urlContextPath) {
+	return urlContextPath;
 }
 
 bool MY_OPERATOR::isWebSocketClient(bool const & isWebSocketConnection) {
@@ -4157,11 +4314,70 @@ uint64_t MY_OPERATOR::getTotalDataBytesSent(uint64_t const & totalDataBytesSent)
 	return (totalDataBytesSent);
 }
 
+std::string MY_OPERATOR::getHttpRequestMethodName(std::string const & httpRequestMethodName) {
+	return httpRequestMethodName;
+}
+
+SPL::map<SPL::rstring, SPL::rstring> MY_OPERATOR::getUrlQueryStringKeyValuePairs(
+	std::string const & urlQueryString) {
+	SPL::map<SPL::rstring, SPL::rstring> myMap;
+	
+	// If a url query string with no Key/Value pairs was sent to 
+	// this method, return an empty map.
+	if(urlQueryString == "") {
+		return(myMap);
+	}
+	
+	/*
+	We have to simply parse the KV pairs separated by & and
+	then split the key and value parts to be inserted into the map.
+	
+	Following is a sample of a query string.
+	NY=Albany&CT=Hartford&NJ=Trenton&RI=Providence
+	*/	
+
+	// A URL query string always appears in a single string as shown above.
+	SPL::list<SPL::rstring> myKVPairs = 
+		SPL::Functions::String::tokenize(urlQueryString, "&", false);
+	SPL::int32 kvPairsCnt = SPL::Functions::Collections::size(myKVPairs);
+	
+	if(kvPairsCnt == 0) {
+		// There are no KV pairs here.
+		return(myMap);
+	}
+	
+	// We can split the individual KV pairs and push them into
+	// the map that we will return from this method.	
+	for(SPL::int32 cnt = 0; cnt < kvPairsCnt; cnt++) {
+		// As shown above, every KV pair has a "key=value" format.
+		SPL::list<SPL::rstring> keyValue = 
+			SPL::Functions::String::tokenize(myKVPairs[cnt], "=", false);
+		
+		if(SPL::Functions::Collections::size(keyValue) != 2) {
+			// Not a valid KV pair. Continue to the next one.
+			//
+			// Use the following print line if debugging of the skipped KV pairs is needed.
+			// std::cout << "Skipping this KV pair: " << myKVPairs[cnt] << std::endl;
+			//
+			continue;
+		}
+		
+		// Insert them in our map.
+		// Remove any leading and trailing spaces in them.
+		SPL::Functions::Collections::insertM(
+			myMap,
+			SPL::Functions::String::trim(keyValue[0], " "), 
+			SPL::Functions::String::trim(keyValue[1], " "));
+	}
+	
+	return(myMap);	
+}
+
 SPL::map<SPL::rstring, SPL::rstring> MY_OPERATOR::getHttpRequestHeaders(
 	std::string const & httpRequestHeaders) {
 	SPL::map<SPL::rstring, SPL::rstring> myMap;
 	
-	// If no headers were sent to this method, return an empty map/
+	// If no headers were sent to this method, return an empty map.
 	if(httpRequestHeaders == "") {
 		return(myMap);
 	}
@@ -4202,6 +4418,10 @@ SPL::map<SPL::rstring, SPL::rstring> MY_OPERATOR::getHttpRequestHeaders(
 		
 		if(SPL::Functions::Collections::size(keyValue) != 2) {
 			// Not a valid header. Continue to the next one.
+			//
+			// Use the following print line if debugging of the skipped HTTP headers is needed.
+			// std::cout << "Skipping this HTTP header: " << myHeaders[cnt] << std::endl;
+			//
 			continue;
 		}
 		

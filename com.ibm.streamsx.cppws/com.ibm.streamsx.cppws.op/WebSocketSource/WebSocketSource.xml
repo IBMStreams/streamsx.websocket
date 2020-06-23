@@ -9,12 +9,13 @@
       <description>
       The server-based WebSocketSource operator is designed to receive 
       text (plain text, JSON or XML) or binary data from the remote WebSocket and HTTP clients. 
+      This operator can also accept HTTP GET, HTTP PUT and HTTP POST requests from the remote HTTP clients.
       One or more remote clients can connect to this operator either via plain WebSocket/HTTP (ws or http) or
       via TLS WebSocket/HTTP (wss or https). For a TLS WebSocket/HTTP, a server side certificate must be
       generated first and the text file available in the etc directory of this toolkit provides 
-      useful details on that topic. For a HTTP(S) POST client to send text based data, it can have
+      useful details on that topic. For a HTTP(S) GET/PUT/POST client to send text based data, it can have
       its Content-Type header as text/plain or application/xml or application/json. To send 
-      binary based data, a HTTP(S) POST client must have its Content-Type header as 
+      binary based data, a HTTP(S) PUT/POST client must have its Content-Type header as 
       application/octet-stream and it can use a standard mechanism available in many web frameworks
       for including multipart MIME content.
             
@@ -27,11 +28,12 @@
       This operator can be configured with a WebSocket server port number which is optional. If the user of this
       operator doesn't specify a WebSocket server port number, then a default port number of 443 will be used.
       
-      This operator also provides an option for the client applications to do the HTTP/HTTPS POST for
+      This operator also provides an option for the client applications to do the HTTP/HTTPS GET/PUT/POST for
       sending text based data (plain text, JSON or XML). If this operator's allowHttpPost parameter is
       set to true, client applications can connect to this operator's HTTP/HTTPS URL endpoint and 
-      send their data via HTTP/HTTPS POST. This feature will be handy for the traditional HTTP(S) based 
-      web applications that are not suitable for quick modernization to use WebSocket instead of HTTP(S).
+      send their data via HTTP/HTTPS GET, PUT and POST. This feature will be handy for the 
+      traditional HTTP(S) based web applications that are not suitable for quick modernization to use 
+      WebSocket instead of HTTP(S).
       
       Even though it is labeled as a source operator, it can be configured to perform like an 
       analytic operator to receive data from a client, process that data and send result/response back to 
@@ -40,7 +42,7 @@
       connections from the remote clients depending on the needs of the application and based on the
       capacity of the underlying OS and hardware configuration such as networking, CPU cores and memory limits.
       
-      In summary, this operator supports data reception via both WebSocket and HTTP POST on 
+      In summary, this operator supports data reception via both WebSocket and HTTP GET/PUT/POST on 
       plain as well as secure endpoints. Users will get a five-in-one benefit 
       (WebSocket, HTTP, plain, secure and roundtripping) from this operator.
       This is Receive-only from multiple clients with an option to make it a 
@@ -104,8 +106,8 @@
         </metric>
         
         <metric>
-          <name>nHttpPostMessagesReceivedFromRemoteClients</name>
-          <description>Number of HTTP POST messages received by this operator instance.</description>
+          <name>nHttpMessagesReceivedFromRemoteClients</name>
+          <description>Number of HTTP GET, PUT and POST messages received by this operator instance.</description>
           <kind>Gauge</kind>
         </metric>
         
@@ -147,7 +149,7 @@
 
         <metric>
           <name>nHttpPostAllowed</name>
-          <description>Does this operator allow HTTP POST from clients?</description>
+          <description>Does this operator allow HTTP GET/PUT/POST from clients?</description>
           <kind>Gauge</kind>
         </metric>
       </metrics>
@@ -188,6 +190,10 @@
             <prototype><![CDATA[rstring getClientPort()]]></prototype>
           </function>
            <function>
+            <description>Returns a string indicating the context path present in the URL being accessed by the client.</description>
+            <prototype><![CDATA[rstring getUrlContextPath()]]></prototype>
+          </function>
+           <function>
             <description>Returns a boolean indicating whether a remote client holds a WebSocket connection.</description>
             <prototype><![CDATA[boolean isWebSocketClient()]]></prototype>
           </function>
@@ -196,50 +202,41 @@
             <prototype><![CDATA[boolean isHttpClient()]]></prototype>
           </function>
            <function>
-            <description>Returns an SPL map holding the HTTP headers that were part of a client's HTTP POST request.</description>
+            <description>Returns an SPL map holding the HTTP headers that were part of a client's HTTP GET/PUT/POST request.</description>
             <prototype><![CDATA[map<rstring, rstring> getHttpRequestHeaders()]]></prototype>
+          </function>
+           <function>
+            <description>Returns a string indicating the method name (GET, PUT or POST) found in the client's HTTP request.</description>
+            <prototype><![CDATA[rstring getHttpRequestMethodName()]]></prototype>
+          </function>
+           <function>
+            <description>Returns an SPL map holding the key/value pairs found in the URL query string of a client's HTTP GET request.</description>
+            <prototype><![CDATA[map<rstring, rstring> getUrlQueryStringKeyValuePairs()]]></prototype>
           </function>
 		</customOutputFunction>
       </customOutputFunctions>
-      
+
       <libraryDependencies>
         <library>
           <cmn:description>Boost Library</cmn:description>
           <cmn:managedLibrary>
             <cmn:lib>boost_system</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+            <cmn:lib>boost_chrono</cmn:lib>
+            <cmn:lib>boost_random</cmn:lib>
+            <cmn:lib>boost_thread</cmn:lib>
+            <cmn:libPath>../../lib</cmn:libPath>
+            <cmn:includePath>../../include</cmn:includePath>
           </cmn:managedLibrary>
         </library>
          
         <library>
-          <cmn:description>Boost Library</cmn:description>
+          <cmn:description>Websocketpp Library</cmn:description>
           <cmn:managedLibrary>
-            <cmn:lib>boost_chrono</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
+            <cmn:includePath>../../include</cmn:includePath>
           </cmn:managedLibrary>
         </library>
-                
-        <library>
-          <cmn:description>Boost Library</cmn:description>
-          <cmn:managedLibrary>
-            <cmn:lib>boost_random</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
-          </cmn:managedLibrary>
-        </library>       
-
-         <library>
-          <cmn:description>Boost Library</cmn:description>
-          <cmn:managedLibrary>
-            <cmn:lib>boost_thread</cmn:lib>
-            <cmn:libPath>../../impl/lib</cmn:libPath>
-            <!--<cmn:includePath>../../impl/include</cmn:includePath>-->
-          </cmn:managedLibrary>
-        </library> 
       </libraryDependencies>
-      
+            
       <providesSingleThreadedContext>Never</providesSingleThreadedContext>
     </context>  
     
@@ -308,11 +305,11 @@
 
       <parameter>
         <name>urlContextPath</name>
-        <description>This parameter specifies the WebSocket server URL context path that is user configurable to either a single or a multi-part path (e-g: MyServices/Banking/Deposit). With that example, WebSocket server URL should be https://host:port/MyServices/Banking/Deposit. Default is no url context path.</description>
+        <description>This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path \[e-g: Orders (OR) MyServices/Banking/Deposit\]. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. Default is an empty list to indicate no url context path.</description>
         <optional>true</optional>
         <rewriteAllowed>true</rewriteAllowed>
         <expressionMode>AttributeFree</expressionMode>
-        <type>rstring</type>
+        <type>list&lt;rstring></type>
         <cardinality>1</cardinality>
       </parameter> 
 
@@ -398,7 +395,7 @@
 
       <parameter>
         <name>allowHttpPost</name>
-        <description>This parameter indicates whether the client applications are allowed to send data via HTTP(S) POST. (Default is false)</description>
+        <description>This parameter indicates whether the client applications are allowed to send data via HTTP(S) GET/PUT/POST. (Default is false)</description>
         <optional>true</optional>
         <rewriteAllowed>true</rewriteAllowed>
         <expressionMode>AttributeFree</expressionMode>
@@ -533,11 +530,11 @@
       <outputPortSet>
       	<description>
       	This port produces the output tuples that carry the text or binary data received from 
-      	the remote WebSocket or HTTP POST client. The schema for this port must either have an attribute named 
+      	the remote WebSocket or HTTP GET/PUT/POST client. The schema for this port must either have an attribute named 
       	strData with an rstring data type to hold the received text data or an attribute named
       	blobData with a blob data type to hold the received binary data or both. Remaining attributes can be 
       	of any type based on the needs of the application. This operator is capable of sending out data
-		received from multiple WebSocket and HTTP POST clients that can all communicate with this operator at the very same time. 
+		received from multiple WebSocket and HTTP GET/PUT/POST clients that can all communicate with this operator at the very same time. 
 		Please refer to the custom output functions provided by this operator to query the client session id
 		and other client session specific metrics and assign such values to other optional attributes in this
 		output port. Depending on the needs of a given application, this operator can perform more beyond being

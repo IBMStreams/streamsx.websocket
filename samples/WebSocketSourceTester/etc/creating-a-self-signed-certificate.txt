@@ -1,4 +1,4 @@
-Tuesday, Jun/02/2020
+Friday, Jun/19/2020
 ==========================================================
 It is necessary for the users to create a Root CA signed 
 server side certificate file and point to that file at the time of
@@ -304,4 +304,10 @@ You can copy your pem file either to the etc sub-directory of your IBM Streams
 C++/SPL server application or outside of your application directory. If you choose
 to store it in the etc sub-directory, then you must compile your IBM Streams C++/SPL
 server application so that the pem file gets included in the Streams executable SAB file.
+==========================================================
+7) Fetching and displaying the public certificate of any TLS protected web server
+   ------------------------------------------------------------------------------
+Following openssl command will let us fetch and display the public certificate of a remote server.
+
+echo | openssl s_client -showcerts -servername ibm.com -connect ibm.com:443 2>/dev/null | openssl x509 -inform pem -noout -text
 ==========================================================

@@ -9,19 +9,24 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Jun/07/2020
+Last modified on: Jun/16/2020
 
 This Java operator is an utility operator available in the
 streamsx.cppws toolkit. It can be used to do HTTP(S) post of
 plain text or JSON or XML data or binary data. 
 It can be used to test the HTTP/HTTPS text/binary data send/receive  
-feature of the streamsx.cppws::WebSocketSource operator. If you 
-see a fit, you can also use it for similar needs in your applications.
+feature of the streamsx.cppws::WebSocketSource operator. HTTP POST is
+the predominant use case for this operator. However, it also allows
+HTTP GET and HTTP PUT when needed. Please read the operator 
+documentation for more details.
+
+If you see a fit, you can also use this operator for similar 
+needs in your own applications.
 
 This is a very simple implementation without too many
 bells and whistles so that it is easier to use in SPL applications.
-This operator can do the HTTPS (SSL) POST at a faster rate 
-(200 posts per second). For the HTTP (non-SSL) POST, this utility 
+This operator can do the HTTPS (TLS a.k.a SSL) POST at a faster rate 
+(200 posts per second). For the HTTP (non-TLS) POST, this utility 
 Java operator can give a post rate of 1500 per second. 
 
 If you observe either a missing or an empty 
@@ -43,6 +48,7 @@ package com.ibm.streamsx.cppws.op;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
@@ -50,6 +56,7 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -70,6 +77,7 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.HttpMultipartMode;
@@ -86,6 +94,7 @@ import com.ibm.streams.operator.StreamingData.Punctuation;
 import com.ibm.streams.operator.StreamingInput;
 import com.ibm.streams.operator.StreamingOutput;
 import com.ibm.streams.operator.Tuple;
+import com.ibm.streams.operator.Type;
 import com.ibm.streams.operator.compile.OperatorContextChecker;
 import com.ibm.streams.operator.model.InputPortSet;
 import com.ibm.streams.operator.model.InputPortSet.WindowMode;
@@ -125,16 +134,27 @@ import com.ibm.streams.operator.model.CustomMetric;
 @PrimitiveOperator(name="HttpPost", namespace="com.ibm.streamsx.cppws.op",
 description=HttpPost.DESC)
 @InputPorts({@InputPortSet(description=
-"Receives tuples whose first string based attribute's content or the second " +
-"blob based attribute's content will be sent as the HTTP(S) POST payload. " +
-"So, the input tuple's first attribute should be of type rstring carrying the text payload to be sent, " +
-"the second attribute should be of type blob carrying the binary payload to be sent and the third " +
-"attribute should be of type map<rstring, rstring> populated with any application-specific custom " +
-"HTTP request headers to be sent to the remote web server.", 
+"Every incoming tuple must have an `rstring strData` attribute whose text content (Plain text or XML or JSON) or " +
+"a `blob blobData` attribute whose binary content that needs to be sent as the HTTP(S) PUT or POST payload. " +
+"So, one of the input tuple's attributes should be of type `rstring` carrying the text payload if any to be sent, " +
+"another attribute should be of type `blob` carrying the binary payload if any to be sent and another " +
+"attribute should be `map<rstring, rstring> requestHeaders` populated with any application-specific custom " +
+"HTTP request headers to be sent to the remote web server. These three are mandatory " +
+"attributes that must be present in the input tuple not necessarily in any particular positional order. " + 
+"In addition, it can optionally have the following two attributes: " + 
+"`rstring httpMethod` that can either have GET or PUT or POST as the HTTP request activity to be performed. " +
+"`rstring urlQueryString` can have a well formed URL query string to be sent along with the " + 
+"GET HTTP request. e-g: `company=IBM&product=Streams&specialty=Real-Time-Data-Analytics`. " +
+"So, a schema for this input stream will look like this along with any other application-specific attributes: " +
+"`rstring strData, blob blobData, map<rstring, rstring> requestHeaders, rstring httpMethod, rstring urlQueryString`. " + 
+"Even though, a given incoming tuple must have both the rstring and blob typed data attributes, only one of them " +
+"at a time can carry the data to be sent to the remote server during a given HTTP PUT or POST. " +
+"If the httpMethod attribute is not present or if it has a value of an empty string, then a HTTP POST will be performed as " +
+"long as strData or blobData attribute has content to be sent.", 
 cardinality=1, optional=false, windowingMode=WindowMode.NonWindowed, windowPunctuationInputMode=WindowPunctuationInputMode.Oblivious), @InputPortSet(description="Optional input ports", optional=true, windowingMode=WindowMode.NonWindowed, windowPunctuationInputMode=WindowPunctuationInputMode.Oblivious)})
 @OutputPorts({@OutputPortSet(description="Emits a tuple containing the HTTP POST status code, status message, response headers " + 
 "and text or binary response received from the remote web server. "  +
-"This tuple's schema should be tuple<int32 statusCode, rstring statusMessage, map<rstring, rstring> responseHeaders, rstring strData, blob blobData>. " +
+"This tuple's schema should bec`int32 statusCode, rstring statusMessage, map<rstring, rstring> responseHeaders, rstring strData, blob blobData`. " +
 "Any other matching attributes from the incoming tuple will be forwarded via the output tuple.", 
 cardinality=1, optional=false, windowPunctuationOutputMode=WindowPunctuationOutputMode.Generating), @OutputPortSet(description="Optional output ports", optional=true, windowPunctuationOutputMode=WindowPunctuationOutputMode.Generating)})
 @Libraries("opt/HTTPClient-4.5.12/lib/*")
@@ -159,6 +179,9 @@ public class HttpPost extends AbstractOperator {
 	private String tlsTrustStorePassword = "";
 	
 	private long httpPostCnt = 0;
+	
+	private boolean httpMethodInputAttributePresent = false;
+	private boolean urlQueryStringInputAttributePresent = false;
 	
 	private Metric nDataItemsSent;
 	private Metric nDataBytesSent;
@@ -191,9 +214,24 @@ public class HttpPost extends AbstractOperator {
         	tlsTrustStoreFile, tlsTrustStorePassword);
         
     	if (httpClient == null) {
-    		System.out.println("We have no valid HTTP client. Incoming tuples arriving for HTTP POST will be ignored.");
+    		throw new Exception("We have no valid HTTP client. So, the HttpPost operator can't proceed further.");
     	}
-	}
+    	
+    	// The compile-time checker method at the bottom of this file already verified the
+    	// presence of the input stream attributes and their types.
+    	// Let us once again check the input stream to see if we have any of the optional attributes.
+    	List<StreamingInput<Tuple>> lsi = context.getStreamingInputs();
+    	// We can now validate the presence and type of the two optional input stream attributes.
+    	// Optional input stream attribute: rstring httpMethod
+    	if(lsi.get(0).getStreamSchema().getAttribute("httpMethod") != null) {
+    		httpMethodInputAttributePresent = true;
+    	}
+    	
+    	// Optional input stream attribute: rstring urlQueryString
+    	if(lsi.get(0).getStreamSchema().getAttribute("urlQueryString") != null) {
+    		urlQueryStringInputAttributePresent = true;
+    	}
+	} // End of initialize method.
 
     /**
      * Notification that initialization is complete and all input and output ports 
@@ -338,232 +376,517 @@ public class HttpPost extends AbstractOperator {
 
         // Copy across all matching attributes.
         outTuple.assign(tuple);
-
-        // Create a HTTP post object.
-    	// As of May/24/2020, this operator supports the posting of 
-    	// both text data and binary data.
-    	org.apache.http.client.methods.HttpPost httpPost = 
-    		new org.apache.http.client.methods.HttpPost(url);  
-    	// At this time, the incoming tuple must have its string based
-    	// POST content in its first attribute. In a future release,
-    	// this operator will support blob content to be posted.
-    	httpPost.setHeader("Content-Type", contentType);
-    	org.apache.http.entity.ContentType ct = 
-    		org.apache.http.entity.ContentType.create(contentType);
-    	
-    	if (ct == null) {
-    		OperatorContext context = getOperatorContext();
-            Logger.getLogger(this.getClass()).error("Operator " + 
-            	context.getName() + ", Unable to create a MIME content type object from " + 
-            		contentType + ": " + context.getPE().getPEId() + 
-            		" in Job: " + context.getPE().getJobId() );
-            return;
-    	}
-    	
-        if (contentType.equalsIgnoreCase("application/x-www-form-urlencoded") == true) {
-            // If the content-type is set to application/x-www-form-urlencoded, then we will
-            // conform to the normal practice of having the request body's format as the query string.
-            // e-g: param1=value
-        	//
-        	// This particular technique about posting as query string is explained in this URL: 
-        	// https://stackoverflow.com/questions/8120220/how-to-use-parameters-with-httppost
-        	ArrayList<NameValuePair> postParameters;
-        	postParameters = new ArrayList<NameValuePair>();
-        	StreamSchema ss = tuple.getStreamSchema();
-        	// The first input tuple attribute must be rstring strData.
-        	Attribute a1 = ss.getAttribute(0);
-        	String a1Name = a1.getName();
-        	postParameters.add(new BasicNameValuePair(a1Name, tuple.getString(a1Name)));
-        	UrlEncodedFormEntity ue = new UrlEncodedFormEntity(postParameters, "UTF-8");
-        	httpPost.setEntity(ue);
-        } else if (contentType.equalsIgnoreCase("application/octet-stream") == true) {
-        	// If the content-type is set to application/octet-stream, then we will
-        	// make this operator post raw binary data passed via the second 
-        	// attribute in the input tuple.
-        	// Some useful links that explain the use of application/octet-stream to send
-        	// any arbitrary piece of binary data:
-        	// https://www.iana.org/assignments/media-types/application/octet-stream
-        	// https://stackoverflow.com/questions/20508788/do-i-need-content-type-application-octet-stream-for-file-download
-        	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
-        	StreamSchema ss = tuple.getStreamSchema();
-        	// The second input tuple attribute must be blob blobData.
-        	Attribute a2 = ss.getAttribute(1);
-        	String a2Name = a2.getName();
-        	// This particular technique about posting binary data is explained in this URL:
-        	// https://www.baeldung.com/httpclient-multipart-upload 
-        	MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-        	builder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
-        	builder.addBinaryBody("blobData", tuple.getBlob(a2Name).getData());
-        	HttpEntity entity = builder.build();
-        	httpPost.setEntity(entity);
-        	dataBytesSent += tuple.getBlob(a2Name).getLength();
-        } else  {
-        	// Any other content type that the user specified must be
-        	// related to posting text data.
-        	StringEntity se = new StringEntity(tuple.getString(0), ct);
-        	httpPost.setEntity(se);
-        	dataBytesSent += tuple.getString(0).length();
-        }
+        String httpMethod = "POST";
         
-        // Set the connection close request header.
-        // We must do this for the Apache HttpClient versions greater than 4.3.6.
-        // If we don't have this header in those versions of the HttpClient, 
-        // it will give the following exception when trying to do a burst of
-        // POST data with a very little time gap between them (say 50 msecs spacing
-        // between each HTTP POST).
-        //
-        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
-        //
-        // You can learn more about this fix from these URLs.
-        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
-        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
-        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
-        //
-        httpPost.setHeader("connection", "close");
-        
-        // We will now set the application-specific custom HTTP request headers if any sent via
-        // the second attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
-        // This map iteration technique is explained in the following URL. 
-        // https://www.geeksforgeeks.org/map-interface-java-examples/
-        Map<RString, RString> requestHeadersMap = (Map<RString, RString>) tuple.getMap(2);
-        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
-        
-        // Set the customer HTTP request headers.
-        for(Map.Entry<RString, RString> mapEntry : setView) {
-        	httpPost.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
-        }
-        
-        httpPostCnt++;
-        
-        if(logHttpPostActions == true) {
-        	System.out.println((httpPostCnt) + 
-    			") Executing request " + httpPost.getRequestLine());
+        // If the incoming tuple has an httpMethod attribute, let us read that attribute's value now.
+        if(httpMethodInputAttributePresent == true) {
+        	httpMethod = tuple.getString("httpMethod").toUpperCase();
+        	
+        	if(httpMethod.equalsIgnoreCase("GET") == false &&
+        	   httpMethod.equalsIgnoreCase("PUT") == false &&
+        	   httpMethod.equalsIgnoreCase("POST") == false &&
+        	   httpMethod.equalsIgnoreCase("") == false) {
+        	   // We only support GET, PUT and POST.
+        	   // If any other http method is specified, we will ignore this input tuple.
+        	   OperatorContext context = getOperatorContext();
+               Logger.getLogger(this.getClass()).error("Operator " + 
+        		   context.getName() + 
+        		   ". Unsupported HTTP method " +  httpMethod + " is specified. " +
+        		   "This input tuple is being ignored." + ": " + 
+        		   context.getPE().getPEId() + 
+           		   " in Job: " + context.getPE().getJobId());
+               return;
+        	}
+        	
+        	// If the httpMethod attribute is present and if it is set to 
+        	// an empty string, let us put it to the default of POST.
+        	if(httpMethod.equalsIgnoreCase("") == true) {
+        		httpMethod = "POST";
+        	}
         }
 
-        // Do the HTTP POST now.
-        CloseableHttpResponse response = null;
+        if(httpMethod.equalsIgnoreCase("PUT") == true || 
+           httpMethod.equalsIgnoreCase("POST") == true) {
+	        // ============= START OF HTTP PUT/POST PROCESSING =============
+	        // Create a HTTP put or post object.
+	    	// As of May/24/2020, this operator supports the posting of 
+	    	// both text data and binary data.
+        	org.apache.http.client.methods.HttpPut httpPut = null;
+	    	org.apache.http.client.methods.HttpPost httpPost = null;
+	    	
+	    	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	    		httpPut = new org.apache.http.client.methods.HttpPut(url); 
+		    	// At this time, the incoming tuple must have its string or 
+		    	// blob PUT content in one of its attributes. 
+		    	httpPut.setHeader("Content-Type", contentType);
+	    	} else {
+		    	httpPost = new org.apache.http.client.methods.HttpPost(url);  
+		    	// At this time, the incoming tuple must have its string or 
+		    	// blob POST content in one of its attributes. 
+		    	httpPost.setHeader("Content-Type", contentType);
+	    	}
+	    	
+	        if (contentType.equalsIgnoreCase("application/x-www-form-urlencoded") == true) {
+	            // If the content-type is set to application/x-www-form-urlencoded, then we will
+	            // conform to the normal practice of having the request body's format as the query string.
+	            // e-g: param1=value
+	        	//
+	        	// This particular technique about posting as query string is explained in this URL: 
+	        	// https://stackoverflow.com/questions/8120220/how-to-use-parameters-with-httppost
+	        	ArrayList<NameValuePair> postParameters;
+	        	postParameters = new ArrayList<NameValuePair>();
+	        	postParameters.add(new BasicNameValuePair("strData", tuple.getString("strData")));
+	        	UrlEncodedFormEntity ue = new UrlEncodedFormEntity(postParameters, "UTF-8");
+	        	
+	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	        		httpPut.setEntity(ue);
+	        	} else {
+	        		httpPost.setEntity(ue);
+	        	}
+	        } else if (contentType.equalsIgnoreCase("application/octet-stream") == true) {
+	        	// If the content-type is set to application/octet-stream, then we will
+	        	// make this operator post raw binary data passed via the blobData 
+	        	// attribute in the input tuple.
+	        	// Some useful links that explain the use of application/octet-stream to send
+	        	// any arbitrary piece of binary data:
+	        	// https://www.iana.org/assignments/media-types/application/octet-stream
+	        	// https://stackoverflow.com/questions/20508788/do-i-need-content-type-application-octet-stream-for-file-download
+	        	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+	        	// This particular technique about posting binary data is explained in this URL:
+	        	// https://www.baeldung.com/httpclient-multipart-upload 
+	        	MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+	        	builder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
+	        	builder.addBinaryBody("blobData", tuple.getBlob("blobData").getData());
+	        	HttpEntity entity = builder.build();
+	        	
+	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	        		httpPut.setEntity(entity);
+	        	} else {
+	        		httpPost.setEntity(entity);
+	        	}
+	        	
+	        	dataBytesSent += tuple.getBlob("blobData").getLength();
+	        } else  {
+		    	org.apache.http.entity.ContentType ct = 
+			    	org.apache.http.entity.ContentType.create(contentType);
+			    	
+		    	if (ct == null) {
+		    		OperatorContext context = getOperatorContext();
+		            Logger.getLogger(this.getClass()).error("Operator " + 
+		            	context.getName() + ", Unable to create a MIME content type object from " + 
+		            	contentType + ": " + context.getPE().getPEId() + 
+		            	" in Job: " + context.getPE().getJobId());
+		            return;
+		    	}
+			    	
+	        	// Any other content type that the user specified must be
+	        	// related to posting text data.
+	        	StringEntity se = new StringEntity(tuple.getString("strData"), ct);
+	        	
+	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	        		httpPut.setEntity(se);
+	        	} else {
+	        		httpPost.setEntity(se);
+	        	}
+	        	
+	        	dataBytesSent += tuple.getString("strData").length();
+	        }
+	        
+	        // Set the connection close request header.
+	        // We must do this for the Apache HttpClient versions greater than 4.3.6.
+	        // If we don't have this header in those versions of the HttpClient, 
+	        // it will give the following exception when trying to do a burst of
+	        // POST data with a very little time gap between them (say 50 msecs spacing
+	        // between each HTTP POST).
+	        //
+	        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
+	        //
+	        // You can learn more about this fix from these URLs.
+	        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
+	        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
+	        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
+	        //
+	        if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	        	httpPut.setHeader("connection", "close");
+	        } else {
+	        	httpPost.setHeader("connection", "close");
+	        }
+	        
+	        // We will now set the application-specific custom HTTP request headers if any sent via
+	        // the requestHeaders attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
+	        // This map iteration technique is explained in the following URL. 
+	        // https://www.geeksforgeeks.org/map-interface-java-examples/
+	        Map<RString, RString> requestHeadersMap = 
+	        	(Map<RString, RString>) tuple.getMap("requestHeaders");
+	        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
+	        
+	        // Set the customer HTTP request headers.
+	        for(Map.Entry<RString, RString> mapEntry : setView) {
+	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	        		httpPut.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
+	        	} else {
+	        		httpPost.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
+	        	}
+	        }
+	        
+	        httpPostCnt++;
+	        
+	        if(logHttpPostActions == true) {
+	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        	System.out.println((httpPostCnt) + 
+			        	") Executing request " + httpPut.getRequestLine());	        		
+	        	} else {
+		        	System.out.println((httpPostCnt) + 
+		        		") Executing request " + httpPost.getRequestLine());
+	        	}
+	        }
+	
+	        // Do the HTTP PUT/POST now.
+	        CloseableHttpResponse response = null;
+	        
+	        try {
+	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	        		response = httpClient.execute(httpPut);
+	        	} else {
+	        		response = httpClient.execute(httpPost);
+	        	}
+	        } catch (Exception ex) {
+	        	URI uri = null;
+	        	
+	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	        		uri = httpPut.getURI();
+	        	} else {
+	        		uri = httpPost.getURI();
+	        	}
+	        	
+	    		OperatorContext context = getOperatorContext();
+	            Logger.getLogger(this.getClass()).error("Operator " + 
+	            	context.getName() + ", HTTP " + httpMethod + 
+	            	" " + httpPostCnt + " failed to " + uri + ". Exception=" + 
+	            	ex.getMessage() + ". PE " + context.getPE().getPEId() + 
+	            	" in Job: " + context.getPE().getJobId());
+	            // Release the HTTP connection which is a must after 
+	            // consuming the response from the remote web server.
+	            // If we don't do this, it will start hanging when doing the 
+	            // next HTTP GET/PUT/POST for the next incoming  tuple.
+	            if(httpMethod.equalsIgnoreCase("PUT") == true) {
+	            	httpPut.releaseConnection();
+	            } else {
+	            	httpPost.releaseConnection();
+	            }
+	            
+	            // Update the operator metrics.
+	            nHttpPostFailed.increment();
+	            return;
+	        }
+	                
+	        int responseStatusCode = response.getStatusLine().getStatusCode();
+	        
+	        // Update the operator metrics.
+	        if (responseStatusCode < 200 || responseStatusCode > 299) {
+	        	nHttpPostFailed.increment();
+	        } else {
+	        	nDataItemsSent.increment();
+	        	nDataBytesSent.setValue(dataBytesSent);
+	        }
+	        
+	        String responseStatusReason = response.getStatusLine().getReasonPhrase();
+	        // Let us now parse all the response headers and populate them in
+	        // a map to be sent in the output tuple later in the code below.
+	        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
+	        Header[] responseHeaders = response.getAllHeaders();
+	        
+	        // Store the response headers in a map for later use.
+	        for (Header header : responseHeaders) {
+	        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
+	        }
+	        
+	        HttpEntity resEntity = response.getEntity();
+	        String responseStrData = "";
+	        byte[] responseBlobData = null;
+	        
+	        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
+	        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+	        if (resEntity != null) {
+	        	// This technique is explained well in this URL:
+	        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+	        	org.apache.http.entity.ContentType contentType = 
+	        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
+	            String mimeType = contentType.getMimeType();
+	            
+	            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
+	            	// It is binary based response sent by the remote web server.
+	            	responseBlobData = EntityUtils.toByteArray(resEntity);
+	            	dataBytesReceived += responseBlobData.length;
+	            } else {
+	            	// It is text based response sent by the remote web server.
+	            	responseStrData = EntityUtils.toString(resEntity);
+	            	dataBytesReceived += responseStrData.length();
+	            	// This is string based response. So, we can safely 
+	            	// clear the blobData attribute.
+	            	byte[] emptyBytes = new byte[0];
+	            	outTuple.setBlob("blobData", 
+	                	ValueFactory.newBlob(emptyBytes, 0, 0));
+	            }
+	            
+	            if (responseStatusCode >= 200 && responseStatusCode < 300) {
+	            	// Update the metrics if it is a successful response code.
+	            	nDataItemsReceived.increment();
+	            	nDataBytesReceived.setValue(dataBytesReceived);
+	            }
+	        }
+	        
+	        if (resEntity != null) {
+	        	EntityUtils.consume(resEntity);
+	        }
+	        
+	        if(logHttpPostActions == true) {
+	        	System.out.println((httpPostCnt) + ") Response=" + 
+	        		response.getStatusLine() + " " + responseStrData);
+	        }
+	      
+	        // We can close this response object now.
+	        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
+	        response.close();
+	        
+	        // Release the HTTP connection which is a must after 
+	        // consuming the response from the remote web server.
+	        // If we don't do this, it will start hanging when doing the 
+	        // next HTTP GET/PUT/POST for the next incoming tuple.
+	        if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        httpPut.releaseConnection();
+		        httpPut = null;	        	
+	        } else {
+		        httpPost.releaseConnection();
+		        httpPost = null;	        	
+	        }
+	        
+	        outTuple.setInt("statusCode", responseStatusCode);
+	        outTuple.setString("statusMessage", responseStatusReason);
+	        outTuple.setMap("responseHeaders", responseHeadersMap);
+	        outTuple.setString("strData", responseStrData);
+	        
+	        if(responseBlobData != null) {
+	        	outTuple.setBlob("blobData", 
+	        		ValueFactory.newBlob(responseBlobData, 0,
+	        		responseBlobData.length));
+	        }
+	        
+	        // If the response status code is not 200, clear the blob output attribute.
+	        // Because, in case of an HTTP PUT/POST error, we want only the strData attribute to
+	        // carry the error reason. In that case, we don't want any blobData auto assigned 
+	        // from the input tuple. So, we can safely empty the contents if any in the 
+	        // blobData attribute. This may be a redundant exercise since there is similar
+	        // logic performed above when any kind of text response is received from HTTP POST.
+	        // Since it is such a minimal logic here, that redundancy is something we can live with.
+	        if(responseStatusCode != 200) {
+	        	byte[] emptyBytes = new byte[0];
+	        	outTuple.setBlob("blobData", 
+	            	ValueFactory.newBlob(emptyBytes, 0, 0));
+	        }
+	
+	        // Submit new tuple to output port 0
+	        outStream.submit(outTuple);
+	        // ============= END OF HTTP PUT/POST PROCESSING =============
+        } // End of if(httpMethod.equalsIgnoreCase("PUT") == true ||    
         
-        try {
-        	response = httpClient.execute(httpPost);
-        } catch (Exception ex) {
-    		OperatorContext context = getOperatorContext();
-            Logger.getLogger(this.getClass()).error("Operator " + 
-            	context.getName() + ", HTTP POST " + httpPostCnt + 
-            	" failed to " + httpPost.getURI() + ". Exception=" + 
-            	ex.getMessage() + ". PE " + context.getPE().getPEId() + 
-            	" in Job: " + context.getPE().getJobId());
-            // Release the HTTP connection which is a must after 
-            // consuming the response from the remote web server.
-            // If we don't do this, it will start hanging when doing the 
-            // next HTTP POST for the next incoming  tuple.
-            httpPost.releaseConnection();
-            // Update the operator metrics.
-            nHttpPostFailed.increment();
-            return;
-        }
-                
-        int responseStatusCode = response.getStatusLine().getStatusCode();
-        
-        // Update the operator metrics.
-        if (responseStatusCode < 200 || responseStatusCode > 299) {
-        	nHttpPostFailed.increment();
-        } else {
-        	nDataItemsSent.increment();
-        	nDataBytesSent.setValue(dataBytesSent);
-        }
-        
-        String responseStatusReason = response.getStatusLine().getReasonPhrase();
-        // Let us now parse all the response headers and populate them in
-        // a map to be sent in the output tuple later in the code below.
-        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
-        Header[] responseHeaders = response.getAllHeaders();
-        
-        // Store the response headers in a map for later use.
-        for (Header header : responseHeaders) {
-        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
-        }
-        
-        HttpEntity resEntity = response.getEntity();
-        String responseStrData = "";
-        byte[] responseBlobData = null;
-        
-        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
-        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
-        if (resEntity != null) {
-        	// This technique is explained well in this URL:
-        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
-        	org.apache.http.entity.ContentType contentType = 
-        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
-            String mimeType = contentType.getMimeType();
-            
-            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
-            	// It is binary based response sent by the remote web server.
-            	responseBlobData = EntityUtils.toByteArray(resEntity);
-            	dataBytesReceived += responseBlobData.length;
-            } else {
-            	// It is text based response sent by the remote web server.
-            	responseStrData = EntityUtils.toString(resEntity);
-            	dataBytesReceived += responseStrData.length();
-            	// This is string based response. So, we can safely 
-            	// clear the blobData attribute.
-            	byte[] emptyBytes = new byte[0];
-            	outTuple.setBlob("blobData", 
-                	ValueFactory.newBlob(emptyBytes, 0, 0));
-            }
-            
-            if (responseStatusCode >= 200 && responseStatusCode < 300) {
-            	// Update the metrics if it is a successful response code.
-            	nDataItemsReceived.increment();
-            	nDataBytesReceived.setValue(dataBytesReceived);
-            }
-        }
-        
-        if (resEntity != null) {
-        	EntityUtils.consume(resEntity);
-        }
-        
-        if(logHttpPostActions == true) {
-        	System.out.println((httpPostCnt) + ") Response=" + 
-        		response.getStatusLine() + " " + responseStrData);
-        }
-      
-        // We can close this response object now.
-        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
-        response.close();
-        
-        // Release the HTTP connection which is a must after 
-        // consuming the response from the remote web server.
-        // If we don't do this, it will start hanging when doing the 
-        // next HTTP POST for the next incoming tuple.
-        httpPost.releaseConnection();
-        httpPost = null;
-        
-        outTuple.setInt("statusCode", responseStatusCode);
-        outTuple.setString("statusMessage", responseStatusReason);
-        outTuple.setMap("responseHeaders", responseHeadersMap);
-        outTuple.setString("strData", responseStrData);
-        
-        if(responseBlobData != null) {
-        	outTuple.setBlob("blobData", 
-        		ValueFactory.newBlob(responseBlobData, 0,
-        		responseBlobData.length));
-        }
-        
-        // If the response status code is not 200, clear the blob output attribute.
-        // Because, in case of an HTTP POST error, we want only the strData attribute to
-        // carry the error reason. In that case, we don't want any blobData auto assigned 
-        // from the input tuple. So, we can safely empty the contents if any in the 
-        // blobData attribute. This may be a redundant exercise since there is similar
-        // logic performed above when any kind of text response is received from HTTP POST.
-        // Since it is such a minimal logic here, that redundancy is something we can live with.
-        if(responseStatusCode != 200) {
-        	byte[] emptyBytes = new byte[0];
-        	outTuple.setBlob("blobData", 
-            	ValueFactory.newBlob(emptyBytes, 0, 0));
-        }
+        if(httpMethod.equalsIgnoreCase("GET") == true) {
+        	// ============= START OF HTTP GET PROCESSING =============
+        	// In HTTP GET, we can only send the data via a query string as
+        	// key=value pairs. The content type application/x-www-form-urlencoded is
+        	// not applicable for HTTP GET since that particular content type is associated 
+        	// only with putting/posting data from HTML forms or in a programmatic way.
+        	org.apache.http.client.methods.HttpGet httpGet = null;
+        	String urlQueryString = "";
 
-        // Submit new tuple to output port 0
-        outStream.submit(outTuple);
+        	if(urlQueryStringInputAttributePresent == true) {
+        		// Get the user specified URL query string value.
+        		urlQueryString = tuple.getString("urlQueryString");
+        	}
+        	
+        	if(urlQueryString.equalsIgnoreCase("") == true) {
+        		// No URL query string specified by the user.
+        		// We can use just the URL that is configured and
+        		// get a new http GET object for us to work with.
+        		httpGet = new org.apache.http.client.methods.HttpGet(url);
+        	} else {
+        		// There is a user specified URL query string. Let us create a 
+        		// new URI with a combination of the URL and the query string.
+        		// Then, we can use that URI get a new http GET object for us to work with.
+        		URIBuilder uriBuilder = new URIBuilder(url);
+        		uriBuilder = uriBuilder.setCustomQuery(urlQueryString);
+        		URI uri = uriBuilder.build();
+        		httpGet = new org.apache.http.client.methods.HttpGet(uri);
+        	}
+        	
+	    	httpGet.setHeader("Content-Type", contentType);
+	        dataBytesSent += urlQueryString.length();
+	        
+	        // Set the connection close request header.
+	        // We must do this for the Apache HttpClient versions greater than 4.3.6.
+	        // If we don't have this header in those versions of the HttpClient, 
+	        // it will give the following exception when trying to do a burst of
+	        // GET/PUT/POST data with a very little time gap between them (say 50 msecs spacing
+	        // between each HTTP GET/PUT/POST).
+	        //
+	        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
+	        //
+	        // You can learn more about this fix from these URLs.
+	        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
+	        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
+	        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
+	        //
+	        httpGet.setHeader("connection", "close");
+	        
+	        // We will now set the application-specific custom HTTP request headers if any sent via
+	        // the requestHeaders attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
+	        // This map iteration technique is explained in the following URL. 
+	        // https://www.geeksforgeeks.org/map-interface-java-examples/
+	        Map<RString, RString> requestHeadersMap = 
+	        	(Map<RString, RString>) tuple.getMap("requestHeaders");
+	        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
+	        
+	        // Set the customer HTTP request headers.
+	        for(Map.Entry<RString, RString> mapEntry : setView) {
+	        	httpGet.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
+	        }
+	        
+	        httpPostCnt++;
+	        
+	        if(logHttpPostActions == true) {
+		        System.out.println((httpPostCnt) + 
+			        ") Executing request " + httpGet.getRequestLine());	        		
+	        }
+	
+	        // Do the HTTP GET now.
+	        CloseableHttpResponse response = null;
+	        
+	        try {
+	        	response = httpClient.execute(httpGet);
+	        } catch (Exception ex) {
+	        	URI uri = null;
+	        	uri = httpGet.getURI();
+	        	
+	    		OperatorContext context = getOperatorContext();
+	            Logger.getLogger(this.getClass()).error("Operator " + 
+	            	context.getName() + ", HTTP GET " + httpPostCnt + 
+	            	" failed to " + uri + ". Exception=" + 
+	            	ex.getMessage() + ". PE " + context.getPE().getPEId() + 
+	            	" in Job: " + context.getPE().getJobId());
+	            // Release the HTTP connection which is a must after 
+	            // consuming the response from the remote web server.
+	            // If we don't do this, it will start hanging when doing the 
+	            // next HTTP GET/PUT/POST for the next incoming  tuple.
+	            httpGet.releaseConnection();
+	            // Update the operator metrics.
+	            nHttpPostFailed.increment();
+	            return;
+	        }
+	                
+	        int responseStatusCode = response.getStatusLine().getStatusCode();
+	        
+	        // Update the operator metrics.
+	        if (responseStatusCode < 200 || responseStatusCode > 299) {
+	        	nHttpPostFailed.increment();
+	        } else {
+	        	nDataItemsSent.increment();
+	        	nDataBytesSent.setValue(dataBytesSent);
+	        }
+	        
+	        String responseStatusReason = response.getStatusLine().getReasonPhrase();
+	        // Let us now parse all the response headers and populate them in
+	        // a map to be sent in the output tuple later in the code below.
+	        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
+	        Header[] responseHeaders = response.getAllHeaders();
+	        
+	        // Store the response headers in a map for later use.
+	        for (Header header : responseHeaders) {
+	        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
+	        }
+	        
+	        HttpEntity resEntity = response.getEntity();
+	        String responseStrData = "";
+	        byte[] responseBlobData = null;
+	        
+	        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
+	        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+	        if (resEntity != null) {
+	        	// This technique is explained well in this URL:
+	        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+	        	org.apache.http.entity.ContentType contentType = 
+	        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
+	            String mimeType = contentType.getMimeType();
+	            
+	            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
+	            	// It is binary based response sent by the remote web server.
+	            	responseBlobData = EntityUtils.toByteArray(resEntity);
+	            	dataBytesReceived += responseBlobData.length;
+	            } else {
+	            	// It is text based response sent by the remote web server.
+	            	responseStrData = EntityUtils.toString(resEntity);
+	            	dataBytesReceived += responseStrData.length();
+	            	// This is string based response. So, we can safely 
+	            	// clear the blobData attribute.
+	            	byte[] emptyBytes = new byte[0];
+	            	outTuple.setBlob("blobData", 
+	                	ValueFactory.newBlob(emptyBytes, 0, 0));
+	            }
+	            
+	            if (responseStatusCode >= 200 && responseStatusCode < 300) {
+	            	// Update the metrics if it is a successful response code.
+	            	nDataItemsReceived.increment();
+	            	nDataBytesReceived.setValue(dataBytesReceived);
+	            }
+	        }
+	        
+	        if (resEntity != null) {
+	        	EntityUtils.consume(resEntity);
+	        }
+	        
+	        if(logHttpPostActions == true) {
+	        	System.out.println((httpPostCnt) + ") Response=" + 
+	        		response.getStatusLine() + " " + responseStrData);
+	        }
+	      
+	        // We can close this response object now.
+	        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
+	        response.close();
+	        
+	        // Release the HTTP connection which is a must after 
+	        // consuming the response from the remote web server.
+	        // If we don't do this, it will start hanging when doing the 
+	        // next HTTP POST for the next incoming tuple.
+		    httpGet.releaseConnection();
+		    httpGet = null;	        	
+	        
+	        outTuple.setInt("statusCode", responseStatusCode);
+	        outTuple.setString("statusMessage", responseStatusReason);
+	        outTuple.setMap("responseHeaders", responseHeadersMap);
+	        outTuple.setString("strData", responseStrData);
+	        
+	        if(responseBlobData != null) {
+	        	outTuple.setBlob("blobData", 
+	        		ValueFactory.newBlob(responseBlobData, 0,
+	        		responseBlobData.length));
+	        }
+	        
+	        // If the response status code is not 200, clear the blob output attribute.
+	        // Because, in case of an HTTP POST error, we want only the strData attribute to
+	        // carry the error reason. In that case, we don't want any blobData auto assigned 
+	        // from the input tuple. So, we can safely empty the contents if any in the 
+	        // blobData attribute. This may be a redundant exercise since there is similar
+	        // logic performed above when any kind of text response is received from HTTP POST.
+	        // Since it is such a minimal logic here, that redundancy is something we can live with.
+	        if(responseStatusCode != 200) {
+	        	byte[] emptyBytes = new byte[0];
+	        	outTuple.setBlob("blobData", 
+	            	ValueFactory.newBlob(emptyBytes, 0, 0));
+	        }
+	
+	        // Submit new tuple to output port 0
+	        outStream.submit(outTuple);
+        	// ============= END OF HTTP GET PROCESSING =============
+        } // End of if(httpMethod.equalsIgnoreCase("GET") == true)
     } // End of process method.
     
     /**
@@ -681,23 +1004,34 @@ public class HttpPost extends AbstractOperator {
     public void setTlsTrustStorePassword(String val) {
     	tlsTrustStorePassword = val;
     }
-    
-    public static final String DESC = "This operator sends the incoming tuple's text or binary content to a " +
-    		"HTTP or HTTPS endpoint specified in the operator parameter named url. Every incoming tuple " +
-    		"must have its first attribute with a data type rstring to carry any " + 
-    		"text based content that needs be posted to the remote web server. The second attribute must have " +
-    		"a data type blob to carry any binary based content that needs to be posted to the remote web server. " +
-    		"The third attribute in the incoming tuple should be of type map<rstring, rstring> and it " +
-    		"can carry any application-specific custom HTTP request headers to be sent to the remote web server. " +  
+        
+    public static final String DESC = "This operator posts/sends the incoming tuple's text or binary content to a " +
+    		"HTTP or HTTPS endpoint specified in the operator parameter named url. If needed, this operator can also be " +
+    		"made to perform GET and PUT HTTP request activities as explained here." +
+    		"Every incoming tuple must have an `rstring strData` attribute whose text content (Plain text or XML or JSON) or " +
+    		"a `blob blobData` attribute whose binary content that needs to be sent as the HTTP(S) PUT or POST payload. " +
+    		"So, one of the input tuple's attributes should be of type `rstring` carrying the text payload if any to be sent, " +
+    		"another attribute should be of type `blob` carrying the binary payload if any to be sent and another " +
+    		"attribute should be `map<rstring, rstring> requestHeaders` populated with any application-specific custom " +
+    		"HTTP request headers to be sent to the remote web server. These three are mandatory " +
+    		"attributes that must be present in the input tuple not necessarily in any particular positional order. " + 
+    		"In addition, it can optionally have the following two attributes: " + 
+    		"`rstring httpMethod` that can either have GET or PUT or POST as the HTTP request activity to be performed. " +
+    		"`rstring urlQueryString` can have a well formed URL query string to be sent along with the " + 
+    		"GET HTTP request. e-g: `company=IBM&product=Streams&specialty=Real-Time-Data-Analytics`. " +
+    		"So, a schema for this input stream will look like this along with any other application-specific attributes: " +
+    		"`rstring strData, blob blobData, map<rstring, rstring> requestHeaders, rstring httpMethod, rstring urlQueryString`. " + 
     		"Even though, a given incoming tuple must have both the rstring and blob typed data attributes, only one of them " +
-    		"at a time can carry the data to be sent to the remote server during a given HTTP POST. " +
+    		"at a time can carry the data to be sent to the remote server during a given HTTP PUT or POST. " +
+    		"If the httpMethod attribute is not present or if it has a value of an empty string, then a HTTP POST will be performed as " +
+    		"long as strData or blobData attribute has content to be sent. " + 
     		"On its output port, this operator emits a tuple containing the " + 
     		"HTTP POST status code, status message, response headers, " + 
     		"text based response and binary based response received from the remote web server. "  +
-    		"This output tuple's schema should be tuple<int32 statusCode, rstring statusMessage, " +
-    		"map<rstring, rstring> responseHeaders, rstring strData, blob blobData>. " +
-    		"To send text based data, users can set this operator's contentType parameter to text/plain or " + 
-    		"application/xml or application/json or application/x-www-form-urlencoded. To send binary based data, " +
+    		"This output tuple's schema should be `int32 statusCode, rstring statusMessage, " +
+    		"map<rstring, rstring> responseHeaders, rstring strData, blob blobData`. " +
+    		"To post/send text data, users can set this operator's contentType parameter to text/plain or " + 
+    		"application/xml or application/json or application/x-www-form-urlencoded. To send binary data, " +
     		"it should be set to application/octet-stream which tells this operator to use a web standard based " + 
     		"mechanism available for including multipart MIME content. This operator is mainly used to test the " + 
     		"HTTP(S) feature available in the WebSocketSource operator from the streamsx.cppws toolkit. If this " + 
@@ -737,6 +1071,55 @@ public class HttpPost extends AbstractOperator {
     @ContextCheck(compile = true)
     public static void checkMethodParams(OperatorContextChecker occ) {
     	String OPER_NAME="HttpPost";
+    	
+    	// Let us check the input stream to see if we have the expected attributes.
+    	List<StreamingInput<Tuple>> lsi = occ.getOperatorContext().getStreamingInputs();
+    	occ.checkRequiredAttributes(lsi.get(0), "strData", "blobData", "requestHeaders");
+    
+    	// Let us now check the types of the mandatory input stream attributes.
+    	occ.checkAttributeType(lsi.get(0).getStreamSchema().getAttribute("strData"), Type.MetaType.RSTRING);
+    	occ.checkAttributeType(lsi.get(0).getStreamSchema().getAttribute("blobData"), Type.MetaType.BLOB);
+    	occ.checkAttributeType(lsi.get(0).getStreamSchema().getAttribute("requestHeaders"), Type.MetaType.MAP);
+    	
+    	// Validate that the requestHeaders attribute is of type map<rstring,rstring>
+    	if(lsi.get(0).getStreamSchema().getAttribute("requestHeaders").
+    		getType().toString().equalsIgnoreCase("MAP:map<rstring,rstring>") == false) {
+            occ.setInvalidContext("{0} operator: Input stream attribute requestHeaders must be of type map<rstring,rstring>.", 
+        		new String[] {OPER_NAME});
+    	}
+    	
+    	// We can now validate the presence and type of the two optional input stream attributes.
+    	// Optional input stream attribute: rstring httpMethod
+    	if(lsi.get(0).getStreamSchema().getAttribute("httpMethod") != null) {
+    		// httpMethod attribute is present. Let us validate its SPL type.
+    		occ.checkAttributeType(lsi.get(0).getStreamSchema().getAttribute("httpMethod"), Type.MetaType.RSTRING);
+    	}
+    	
+    	// Optional input stream attribute: rstring urlQueryString
+    	if(lsi.get(0).getStreamSchema().getAttribute("urlQueryString") != null) {
+    		// urlQueryString attribute is present. Let us validate its SPL type.
+    		occ.checkAttributeType(lsi.get(0).getStreamSchema().getAttribute("urlQueryString"), Type.MetaType.RSTRING);
+    	}
+    	
+    	// Let us now validate the output stream attributes and their types.
+    	List<StreamingOutput<OutputTuple>> lso = occ.getOperatorContext().getStreamingOutputs();    	
+    	occ.checkRequiredAttributes(lso.get(0), "statusCode", "statusMessage", 
+    		"responseHeaders", "strData", "blobData");
+
+    	// Let us now check the types of the mandatory output stream attributes.
+    	occ.checkAttributeType(lso.get(0).getStreamSchema().getAttribute("statusCode"), Type.MetaType.INT32);
+    	occ.checkAttributeType(lso.get(0).getStreamSchema().getAttribute("statusMessage"), Type.MetaType.RSTRING);
+    	occ.checkAttributeType(lso.get(0).getStreamSchema().getAttribute("responseHeaders"), Type.MetaType.MAP);
+    	occ.checkAttributeType(lso.get(0).getStreamSchema().getAttribute("strData"), Type.MetaType.RSTRING);
+    	occ.checkAttributeType(lso.get(0).getStreamSchema().getAttribute("blobData"), Type.MetaType.BLOB);
+
+    	// Validate that the responseHeaders attribute is of type map<rstring,rstring>
+    	if(lso.get(0).getStreamSchema().getAttribute("responseHeaders").
+    		getType().toString().equalsIgnoreCase("MAP:map<rstring,rstring>") == false) {
+            occ.setInvalidContext("{0} operator: Output stream attribute responseHeaders must be of type map<rstring,rstring>.", 
+        		new String[] {OPER_NAME});
+    	}
+    	
     	// We will ensure that certain combination of operator parameters are specified correctly.
         Set<String> parameterNames = occ.getOperatorContext().getParameterNames();
         

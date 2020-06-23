@@ -1,0 +1,464 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+-->
+<project name="streamsx.cppws" default="all">
+	<description>
+		With this build file you can:
+			- download the required libraries
+			- build the required libraies
+			- build the toolkit
+			- build the toolkit spldoc
+			- build all samples
+			- build a release archive
+			- clean up the generated artifacts
+	</description>
+	<!-- check streams installation -->
+	<property environment="env" />
+	<fail unless="env.STREAMS_INSTALL"  message="STREAMS_INSTALL not set."/>
+	<property name="streams.install"    value="${env.STREAMS_INSTALL}"/>
+	<property name="spl-mt"             value="${streams.install}/bin/spl-make-toolkit"/>
+	<property name="spl-md"             value="${env.STREAMS_INSTALL}/bin/spl-make-doc"/>
+	<property name="spl-st"             value="${env.STREAMS_INSTALL}/bin/streamtool"/>
+
+	<property name="websocket.version"  value="0.8.2"/>
+	<property name="boost.version"      value="1.73.0"/>
+	<property name="boost.archive"      value="boost_1_73_0.tar.gz"/>
+	<!-- use a local archive name with pattern name-X.Y.Z.tar.gz to make the split into name and version easier for the
+	scripts in production -->
+	<property name="boost.archive.local" value="boost-${boost.version}.tar.gz"/>
+
+
+	<exec executable="bash" outputproperty="boost.version.name" failonerror="true">
+		<arg value="-c"/>
+		<arg value='x="${boost.version}"; echo "${x//./_}"'/>
+	</exec>
+
+	<property name="websocket.archive"  value="https://github.com/zaphoyd/websocketpp/archive"/>
+	<!-- since download is not possible from archive 1 : returns 403 forbidden 
+	try to download from second archive -->
+	<property name="boost.archive.src0" value="http://syss114.pok.stglabs.ibm.com:8081/nexus/content/repositories/Streams.external/external/noarch/noarch/boost-sources/${boost.version}/boost-sources-${boost.version}.tar.gz"/>
+	<property name="boost.archive.loc1" value="https://dl.bintray.com/boostorg/release"/>
+	<property name="boost.archive.loc2" value="https://downloads.sourceforge.net/project/boost/boost"/>
+	
+	<property name="boost.str"          value="boost"/>
+	<property name="websocket.str"      value="websocketpp"/>
+	
+	<!-- Note: some properties are values and some are locations.
+	This is due to that some command arguments must not be a full path -->
+	<property name="toolkit.dir"        value="com.ibm.streamsx.cppws"/>
+	<property name="impl.dir"           location="${toolkit.dir}/impl" />
+	<!-- Directories for external libs -->
+	<property name="prefix.dir"         location="${toolkit.dir}"/>
+	<property name="lib.dir"            location="${prefix.dir}/lib" />
+	<property name="inc.dir"            location="${prefix.dir}/include"/>
+	<property name="ext.dir"            location="ext"/>
+	<property name="lib.dir.old"        location="${impl.dir}/lib" />
+	<property name="inc.dir.old"        location="${impl.dir}/include"/>
+	<!-- streams studio bin dir / used only on clean target -->
+	<property name="out.dir"            location="${toolkit.dir}/output"/>
+
+	<property name="doc.string"         value="doc"/>
+	<property name="doc.dir"            value="${doc.string}/spldoc"/>
+	<property name="doc.dir.old"        value="${toolkit.dir}/${doc.string}"/>
+	<property name="tktitle"            value="C++ WebSocket toolkit for IBM Streams" />
+	<property name="tkauthor"           value="Senthil Nathan" />
+
+	<property name="samples.dir"        value="samples"/>
+	<property name="samples.doc.dir"    value="samples/${doc.string}/spldoc"/>
+
+	<property name="test.dir"           location="tests/frameworktests"/>
+
+	<property name="release.dir"        location="releases"/>
+	<property name="release.info.file"  value="${toolkit.dir}/build.info"/>
+
+	<available property="websocket.src.dir.exists" file="${ext.dir}/${websocket.str}-${websocket.version}/${websocket.str}" type="dir"/>
+	<available property="boost.exists" file="${ext.dir}/boost-install-files/${boost.str}_${boost.version.name}" type="dir"/>
+	<available property="boost.archive.exists" file="${ext.dir}/boost-install-files/${boost.archive.local}" type="file"/>
+
+	<!-- Create the time stamp -->
+	<tstamp/>
+	<!-- get toolkit version -->
+	<xmlproperty file="${toolkit.dir}/info.xml" prefix="tkinfo" keepRoot="no"/>
+
+	<target name="init">
+		<property name="tkversion" value="${tkinfo.info:identity.info:version}"/>
+		<echo message="Toolkit Version: ${tkversion} boost.version: ${boost.version} websocket.version: ${websocket.version}"/>
+		<mkdir dir="${lib.dir}"/>
+		<mkdir dir="${inc.dir}"/>
+		<mkdir dir="${ext.dir}/boost-install-files"/>
+	</target>
+
+	<target name="all" depends="toolkit,spldoc"
+		description="Build the toolkit index and the doc. This is compatibility target for production">
+	</target>
+	
+	<target name="clean" depends="spldoc-clean,samples-clean,toolkit-clean,releaseinfo-clean"
+		description="Clean up generated toolkit artifacts, spldoc and samples">
+		<delete dir="${out.dir}"/>
+	</target>
+
+	<target name="clean-all" depends="clean,requirements-clean"
+		description="Clean up generated toolkit artifacts, spldoc, samples and remove libraries from toolkit directory">
+	</target>
+
+	<target name="clean-total" depends="clean-all,download-clean"
+		description="Clean up generated toolkit artifacts, spldoc, samples, remove libraries from toolkit directory and remove all library files from ext directory">
+	</target>
+
+	<target name="toolkit" depends="requirements"
+		description="Build the toolkit index and all dependencies">
+		<ant dir="${toolkit.dir}" target="toolkit"/>
+	</target>
+
+	<target name="toolkit-clean"
+		description="Clean the toolkit index">
+		<ant dir="${toolkit.dir}" target="clean"/>
+	</target>
+
+	<!-- Download websocket library -->
+	<target name="download-websocket" depends="download-websocket-target"
+		description="Download websocket++ library if not existitng. (all files into ext directory)">
+	</target>
+	
+	<!-- must examine websocket.src.dir.exists property otherwise the get task downloads the source archive all the time 
+	     (no valid file date) -->
+	<target name="download-websocket-target" depends="init" unless="${websocket.src.dir.exists}">
+		<echo>Download websocketpp ${websocket.version}</echo>
+		<get src="${websocket.archive}/${websocket.version}.tar.gz" dest="${ext.dir}/${websocket.str}-${websocket.version}.tar.gz" verbose="true" usetimestamp="true"/>
+		<untar src="${ext.dir}/${websocket.str}-${websocket.version}.tar.gz" dest="${ext.dir}" compression="gzip">
+			<patternset>
+				<include name="${websocket.str}-${websocket.version}/${websocket.str}/**"/>
+			</patternset>
+		</untar>
+	</target>
+
+	<!-- Download and build boost -->
+	<!-- must examine boost.exists property, otherwise the tar command is always executed -->
+	<target name="download-boost" depends="download-boost-target" unless="${boost.exists}"
+		description="Download, untar and bootstrap boost library if not existing. (all files into ext directory)">
+		<!-- use tar command because ant untar target does not set execute permission -->
+		<echo>Untar and bootstrap boost ${boost.version}</echo>
+		<exec dir="${ext.dir}/boost-install-files" executable="tar">
+			<arg value="xzf"/>
+			<arg value="${boost.archive.local}"/>
+		</exec>
+		<exec executable="./bootstrap.sh" dir="${ext.dir}/boost-install-files/boost_${boost.version.name}" failonerror="true">
+			<arg value="--prefix=${prefix.dir}"/>
+		</exec>
+	</target>
+	
+	<!-- download from archive1 2 or 3-->
+	<target name="download-boost-target" depends="init" unless="${boost.archive.exists}">
+		<echo>Download from ${boost.archive.src0}</echo>
+		<get src="${boost.archive.src0}" dest="${ext.dir}/boost-install-files/${boost.archive.local}"
+			verbose="true" ignoreerrors="true" skipexisting="true"/>
+		<echo>Download from ${boost.archive.loc1}</echo>
+		<get src="${boost.archive.loc1}/${boost.version}/source/${boost.archive}" dest="${ext.dir}/boost-install-files/${boost.archive.local}"
+			verbose="true" ignoreerrors="true" skipexisting="true"/>
+		<echo>Download from ${boost.archive.loc2}</echo>
+		<get src="${boost.archive.loc2}/${boost.version}/${boost.archive}" dest="${ext.dir}/boost-install-files/${boost.archive.local}"
+			verbose="true" ignoreerrors="false" skipexisting="true"/>
+	</target>
+
+	<target name="download-clean"
+		description="Clean up downloaded library sources and the libraries build artifacts from ext directory">
+		<delete includeemptydirs="true">
+			<fileset dir="${ext.dir}"/>
+		</delete>
+	</target>
+
+	<target name="requirements" depends="download-websocket,download-boost"
+		description="Build required libraries and copy results into toolkit directory">
+		<echo>Copy websocketcpp to ${inc.dir}/${websocket.str}</echo>
+		<copy todir="${inc.dir}/${websocket.str}">
+			<fileset dir="${ext.dir}/${websocket.str}-${websocket.version}/${websocket.str}"/>
+		</copy>
+		<echo>Build boost ${boost.version}</echo>
+		<exec executable="bash" outputproperty="no.cpus" failonerror="true">
+			<arg value="-c"/>
+			<arg value="cat /proc/cpuinfo | grep processor | wc -l"/>
+		</exec>
+		<exec executable="./b2" dir="${ext.dir}/boost-install-files/boost_${boost.version.name}" failonerror="true">
+			<arg value="install"/>
+			<arg value="--prefix=${prefix.dir}"/>
+			<arg value="--with-chrono"/>
+			<arg value="--with-random"/>
+			<arg value="--with-system"/>
+			<arg value="--with-thread"/>
+			<arg value="-j${no.cpus}"/>
+		</exec>
+	</target>
+
+	<target name="requirements-clean"
+		description="Remove the required libraries from toolkit directory">
+		<delete dir="${lib.dir}"/>
+		<delete dir="${inc.dir}"/>
+		<delete dir="${lib.dir.old}"/>
+		<delete dir="${inc.dir.old}"/>
+	</target>
+
+	<target name="spldoc" depends="toolkit"
+		description="Generate the toolkit documentation">
+		<echo message="Tookit spldoc to: ${doc.dir}"/>
+		<exec executable="${spl-md}" failonerror="true">
+			<arg value="--include-composite-operator-diagram" />
+			<arg value="--author" />
+			<arg value="${tkauthor}" />
+			<arg value="--doc-title" />
+			<arg value="${tktitle}" />
+			<arg value="--directory" />
+			<arg value="${toolkit.dir}" />
+			<arg value="--warn-no-comments"/>
+			<arg value="--copy-image-files" />
+			<arg value="--output-directory" />
+			<arg value="${doc.dir}" />
+		</exec>
+	</target>
+	
+	<target name="spldoc-clean"
+		description="Clean the toolkit documentation and samples documentation">
+		<delete dir="${doc.dir}"/>
+		<delete dir="${samples.doc.dir}"/>
+		<delete dir="${doc.dir.old}"/>
+	</target>
+
+	<!-- Targets on samples -->
+	<target name="samples" depends="toolkit"
+		description="Build all samples">
+		<subant genericantfile="${basedir}/build.xml">
+			<target name="build-sample-target"/>
+			<dirset dir="samples" includes="*" excludes="${doc.string}"/>
+		</subant>
+	</target>
+	
+	<target name="samples-clean"
+		description="Clean up all samples index and samples code">
+		<subant genericantfile="${basedir}/build.xml">
+			<target name="clean-sample-target"/>
+			<dirset dir="samples" includes="*" excludes="${doc.string}"/>
+		</subant>
+	</target>
+
+	<target name="samples-toolkit-xml" depends="toolkit">
+		<subant genericantfile="${basedir}/build.xml">
+			<target name="build-sample-toolkit-xml-target"/>
+			<dirset dir="samples" includes="*" excludes="${doc.string}"/>
+		</subant>
+	</target>
+
+	<target name="spldoc-samples" depends="samples-toolkit-xml"
+		description="Generate the spldoc for all samples">
+		<echo message="All samples spldoc to: ${samples.doc.dir}"/>
+		<exec executable="bash" outputproperty="samples.list" failonerror="true">
+			<arg value="-c"/>
+			<arg value="for x in samples/*/info.xml; do echo -n ${x%/*};  echo -n : ; done"/>
+		</exec>
+		<echo message="All samples to SPLDOC: ${samples.list}"/>
+		<exec executable="${spl-md}" failonerror="true">
+			<arg value="--include-composite-operator-diagram"/>
+			<arg value="--author"/>
+			<arg value="${tkauthor}"/>
+			<arg value="--doc-title"/>
+			<arg value="${tktitle} samples"/>
+			<arg value="--toolkit-path"/>
+			<arg value="${samples.list}"/>
+			<arg value="--warn-no-comments"/>
+			<arg value="--check-tags"/>
+			<arg value="--include-source"/>
+			<arg value="--output-directory"/>
+			<arg value="${samples.doc.dir}"/>
+		</exec>
+	</target>
+	
+	<target name="build-sample-target">
+		<echo message="Sample to build: ${basedir}"/>
+		<exec executable="make" failonerror="true" dir="${basedir}">
+			<arg value="PWD=${basedir}"/>
+		</exec>
+	</target>
+	
+	<target name="build-sample-toolkit-xml-target">
+		<echo message="Sample to build: ${basedir}"/>
+		<exec executable="${spl-mt}" failonerror="true" dir="${basedir}">
+			<arg value="-i"/>
+			<arg value="${basedir}"/>
+		</exec>
+	</target>
+
+	<target name="clean-sample-target">
+		<echo message="Sample to clean: ${basedir}"/>
+		<exec executable="make" failonerror="true" dir="${basedir}">
+			<arg value="clean" />
+			<arg value="PWD=${basedir}"/>
+		</exec>
+	</target>
+
+	<!-- Test targets -->
+	<target name="test" depends="toolkit"
+		description="Execute the toolkit test. Requires an up to date toolkit build">
+		<echo message="Start full test"/>
+		<exec executable="./runTest.sh" dir="${test.dir}" failonerror="true">
+			<arg value="--noprompt"/>
+			<arg value="--no-browser"/>
+		</exec>
+	</target>
+
+	<target name="test-quick" depends="toolkit"
+		description="Execute the toolkit quick test. Requires an up to date toolkit build">
+		<echo message="Start quick test"/>
+		<exec executable="./runTest.sh" dir="${test.dir}" failonerror="true">
+			<arg value="--noprompt"/>
+			<arg value="--no-browser"/>
+			<arg value="--category"/>
+			<arg value="quick"/>
+		</exec>
+	</target>
+
+	<!-- Targets to build releases -->
+	<target name="release" depends="clean-all"
+		description="Make a toolkit release archive - purge workspace except downloaded libs and build toolkit from scratch">
+		<antcall target="release-target" inheritAll="true"/>
+	</target>
+	
+	<target name="release-target" depends="releaseinfo">
+		<antcall target="spldoc"/>
+		<antcall target="spldoc-samples"/>
+		<antcall target="samples-clean"/>
+		<mkdir dir="${release.dir}"/>
+		<!-- Extract the short git commit hash -->
+		<exec executable="git" outputproperty="commithash">
+			<arg value="rev-parse" />
+			<arg value="--short" />
+			<arg value="HEAD" />
+		</exec>
+		<property name="tkversion" value="${tkinfo.info:identity.info:version}"/>
+		<property name="releasefilename" value="${release.dir}/${ant.project.name}-${tkversion}-${commithash}-${DSTAMP}-${TSTAMP}.tgz"/>
+		<echo message="Make releasefile Toolkit Version: ${tkversion} ${commithash}: ${releasefilename}"/>
+		<!-- must use the tar command because the tar target handles symbolic links incorrect -->
+		<!-- <tar compression="gzip" longfile="gnu"
+			destfile="${releasefilename}"
+			basedir="${basedir}"
+			includes="${toolkit.dir}/** ${samples.dir}/** ${doc.string}/** README.md LICENSE sttgateway-tech-brief.txt"
+			excludes="**/.toolkitList **/.git* ${toolkit.dir}/.settings/ ${toolkit.dir}/.externalToolBuilders/ ${toolkit.dir}/.project ${toolkit.dir}/.classpath ${toolkit.dir}/build.xml ${toolkit.dir}/pom.xml ${toolkit.dir}/icons/ ${toolkit.dir}/impl/java/"
+		/> -->
+		<exec executable="tar" failonerror="true">
+			<arg value="czf"/>
+			<arg value="${releasefilename}"/>
+			<arg value="--exclude=**/.toolkitList"/>
+			<arg value="--exclude=**/.git*"/>
+			<arg value="--exclude=**/.apt_generated"/>
+			<arg value="--exclude=${toolkit.dir}/.settings"/>
+			<arg value="--exclude=${toolkit.dir}/**/.theFileNameList"/>
+			<arg value="--exclude=${toolkit.dir}/.externalToolBuilders"/>
+			<arg value="--exclude=${toolkit.dir}/.project"/>
+			<arg value="--exclude=${toolkit.dir}/.classpath"/>
+			<arg value="--exclude=${toolkit.dir}/build.xml"/>
+			<arg value="--exclude=${toolkit.dir}/pom.xml"/>
+			<arg value="--exclude=${toolkit.dir}/.cproject"/>
+			<arg value="--exclude=${toolkit.dir}/impl/java/src/"/>
+			<arg value="--exclude=${toolkit.dir}/impl/java/src-gen/"/>
+			<arg value="--exclude=${toolkit.dir}/lib/cmake"/>
+			<arg value="${toolkit.dir}/"/>
+			<arg value="${samples.dir}/"/>
+			<arg value="${doc.string}/"/>
+			<arg value="README.md"/>
+			<arg value="LICENSE"/>
+			<arg value="cppws-tech-brief.txt"/>
+		</exec>
+		<checksum file="${releasefilename}"/>
+		<checksum algorithm="sha1" file="${releasefilename}"/>
+	</target>
+	
+	<!-- Extract the git commit hash and make release info file -->
+	<target name="releaseinfo" depends="clean-ignored">
+		<exec executable="git" outputproperty="commithash.long" failonerror="true">
+			<arg value="rev-parse" />
+			<arg value="HEAD" />
+		</exec>
+		<exec executable="bash" outputproperty="streamsversion" failonerror="true">
+			<arg value="-c"/>
+			<arg value="${spl-st} version | grep Version="/>
+		</exec>
+		<exec executable="bash" failonerror="true">
+			<arg value="-c" />
+			<arg value="echo -e &quot;commit_hash=${commithash.long}\nos=${os.version}\nStreams_${streamsversion}&quot; > ${release.info.file}"/>
+		</exec>
+		<echo message="Generated release info file ${release.info.file}"/>
+		<exec executable="bash" failonerror="true">
+			<arg value="-c" />
+			<arg value="cat ${release.info.file}" />
+		</exec>
+	</target>
+
+	<target name="releaseinfo-clean">
+		<delete file="${release.info.file}"/>
+	</target>
+	
+	<!--- Targets to purge the workspace before a release archive is produced -->
+	<target name="clean-ignored" depends="warn-unclean">
+	</target>
+	
+	<target name="warn-unclean" depends="check-unclean" if="has.uncommited">
+		<echo>!Your workspace is not clean!</echo>
+		<echo>Commit all changes before you produce a release</echo>
+		<echo>commitstatus:</echo>
+		<echo>${commitstatus}</echo>
+		<input>Press Return key to continue or ^C to exit...</input>
+	</target>
+
+	<target name="check-unclean" depends="warn-untracked">
+		<exec executable="git" outputproperty="commitstatus">
+			<arg value="status" />
+			<arg value="--porcelain" />
+		</exec>
+		<!-- set condition true if there are any non-whitespaces -->
+		<condition property="has.uncommited">
+			<matches string="${commitstatus}" pattern="\S" multiline="true"/>
+		</condition>
+		<echo message="has.uncommited=${has.uncommited}"/>
+	</target>
+
+	<target name="warn-untracked" depends="check-untracked" if="has.untracked">
+		<echo>!!! DANGER: Git-ignored or untracked files to be removed from your workspace:</echo>
+		<echo>${untracked}</echo>
+		<input>Press Return key to continue or ^C to exit...</input>
+		<exec executable="git" failonerror="true">
+			<arg value="clean"/>
+			<arg value="--force"/>
+			<arg value="-d"/>
+			<arg value="-x"/>
+			<arg value="--"/>
+			<arg value="${toolkit.dir}"/>
+			<arg value="${samples.dir}"/>
+			<arg value="${doc.string}"/> <!-- use a value here because git clean fails is this is an location and is empty -->
+		</exec>
+	</target>
+
+	<target name="check-untracked">
+		<exec executable="git" outputproperty="untracked" failonerror="true">
+			<arg value="clean"/>
+			<arg value="--dry-run"/>
+			<arg value="-d"/>
+			<!-- do no clean up for all studio files which are excluded from the release package -->
+			<arg value="--exclude=${toolkit.dir}/.settings"/>
+			<arg value="--exclude=${toolkit.dir}/.externalToolBuilders"/>
+			<arg value="--exclude=**/.apt_generated"/>
+			<arg value="--exclude=**/.toolkitList"/>
+			<arg value="-x"/>
+			<arg value="--"/>
+			<arg value="${toolkit.dir}"/>
+			<arg value="${samples.dir}"/>
+			<arg value="${doc.string}"/> <!-- use a value here because git clean fails is this is an location and is empty -->
+		</exec>
+		<!-- set condition true if there are any non-whitespaces -->
+		<condition property="has.untracked">
+			<matches string="${untracked}" pattern="\S" multiline="true"/>
+		</condition>
+		<echo message="has.untracked=${has.untracked}"/>
+	</target>
+
+</project>

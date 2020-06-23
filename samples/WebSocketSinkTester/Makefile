@@ -24,7 +24,7 @@ endif
 
 SPL_MAIN_COMPOSITE1 = com.ibm.streamsx.cppws.sample::WebSocketClientApp
 SPL_MAIN_COMPOSITE2 = com.ibm.streamsx.cppws.sample::WebSocketSinkTester
-SPLC_FLAGS = -a --c++std=c++11 -x '-I $(STREAMS_CPPWS_TOOLKIT)/impl/include'
+SPLC_FLAGS = -a --c++std=c++11
 SPL_CMD_ARGS ?=
 
 build: distributed

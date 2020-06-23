@@ -8,11 +8,11 @@
 /*
 ==============================================
 First created on: Feb/23/2020
-Last modified on: Jun/02/2020
+Last modified on: Jun/19/2020
 
 This example demonstrates the ingestion of text or binary data
 from one or more remote WebSocket clients. It also shows how to
-receive regular HTTP and HTTPS POST messages from remote HTTP based
+receive regular HTTP and HTTPS GET/PUT/POST messages from remote HTTP based
 client applications. 
 
 [WebSocketSource operator from the streamsx.cppws toolkit supports 
@@ -92,11 +92,17 @@ composite WebSocketSourceTester {
 		expression<uint32> $nonTlsPort : 
 			(uint32)getSubmissionTimeValue("nonTlsPort", "8080");
 		// Do you want to use a specific URL context path for the WebSocketSource operator?
-        // It can either be a single or a multi-part path (e-g: MyServices/Banking/Deposit).
-        // With that example, WebSocket server URL should be 
+        // It can either be a single or a multi-part path.
+        // e-g: Orders (OR) MyServices/Banking/Deposit
+        // With that example, WebSocket server URL should either be 
+        // https://host:port/Orders   (OR)
         // https://host:port/MyServices/Banking/Deposit
-        // Default is no url context path.
-		expression<rstring> $urlContextPath : getSubmissionTimeValue("urlContextPath", "");
+        // Default is an empty list to indicate no url context path.
+        // You can expose any number of context paths for the 
+        // remote clients to access this WebSocket server endpoint. 
+        // e-g: []    (OR)    ["Orders", "", "MyServices/Banking/Deposit"]
+		expression<list<rstring>> $urlContextPath : (list<rstring>)
+			getSubmissionTimeValue("urlContextPath", "[]");
 		// Server side certificate (.pem) file for the WebSocket server.
 		// It is necessary for the users to create a Root CA signed 
 		// server side certificate file and point to that file at the time of
@@ -200,15 +206,20 @@ composite WebSocketSourceTester {
 		// uint64 clientSessionId --> Unique identifier of a remote client as assigned by this operator. 
 		// rstring clientIpAddress --> IP address of the remote client from where the data was received.
 		// rstring clientPort --> Port of the remote client from where the data was received.
+		// rstring urlContextPath --> Context path present in the URL being accessed by a client.
 		// boolean isWebSocketClient --> True indicates that the remote client holds a WebSocket connection.
 		// boolean isHttpClient --> True indicates that the remote client holds a Http connection.
+		// rstring httpRequestMethodName --> It tells us about the HTTP request whether it is a GET or PUT or POST.
+		// map<rstring, rstring> urlQueryStringKeyValuePairs --> It has the HTTP GET URL query string key/value pairs.
 		// map<rstring, rstring> httpRequestHeaders --> If HTTP clients are going to send data here, this 
 		//                                              attribute can be there to fetch the HTTP request headers.
 		// uint64 totalDataItemsReceived --> Total data items received so far from a given clientSessionId.
 		// uint64 totalDataBytesReceived --> Number of data bytes received so far from a given clientSessionId.
 		ReceivedData_t = rstring strData, blob blobData, uint64 clientSessionId, 
-			rstring clientIpAddress, rstring clientPort,
+			rstring clientIpAddress, rstring clientPort, rstring urlContextPath,
 			boolean isWebSocketClient, boolean isHttpClient,
+			rstring httpRequestMethodName,
+			map<rstring, rstring> urlQueryStringKeyValuePairs,
 			map<rstring, rstring> httpRequestHeaders,
 			uint64 totalDataItemsReceived, uint64 totalDataBytesReceived;
 			
@@ -275,8 +286,11 @@ composite WebSocketSourceTester {
 				WSRD: clientSessionId = getClientSessionId(),
 					clientIpAddress = getClientIpAddress(),
 					clientPort = getClientPort(),
+					urlContextPath = getUrlContextPath(),
 					isWebSocketClient = isWebSocketClient(),
 					isHttpClient = isHttpClient(),
+					httpRequestMethodName = getHttpRequestMethodName(),
+					urlQueryStringKeyValuePairs = getUrlQueryStringKeyValuePairs(),
 					httpRequestHeaders = getHttpRequestHeaders(),
 					totalDataItemsReceived = getTotalDataItemsReceived(),
 					totalDataBytesReceived = getTotalDataBytesReceived(); 
