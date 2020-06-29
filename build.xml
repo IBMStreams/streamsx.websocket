@@ -141,11 +141,12 @@
 	<target name="download-boost" depends="download-boost-target" unless="${boost.exists}"
 		description="Download, untar and bootstrap boost library if not existing. (all files into ext directory)">
 		<!-- use tar command because ant untar target does not set execute permission -->
-		<echo>Untar and bootstrap boost ${boost.version}</echo>
+		<echo>Untar boost ${boost.version}</echo>
 		<exec dir="${ext.dir}/boost-install-files" executable="tar">
 			<arg value="xzf"/>
 			<arg value="${boost.archive.local}"/>
 		</exec>
+		<echo>Bootstrap boost ${boost.version}</echo>
 		<exec executable="./bootstrap.sh" dir="${ext.dir}/boost-install-files/boost_${boost.version.name}" failonerror="true">
 			<arg value="--prefix=${prefix.dir}"/>
 		</exec>
@@ -183,13 +184,13 @@
 			<arg value="cat /proc/cpuinfo | grep processor | wc -l"/>
 		</exec>
 		<exec executable="./b2" dir="${ext.dir}/boost-install-files/boost_${boost.version.name}" failonerror="true">
-			<arg value="install"/>
-			<arg value="--prefix=${prefix.dir}"/>
+			<arg value="--no-cmake-config"/>
 			<arg value="--with-chrono"/>
 			<arg value="--with-random"/>
 			<arg value="--with-system"/>
 			<arg value="--with-thread"/>
 			<arg value="-j${no.cpus}"/>
+			<arg value="install"/>
 		</exec>
 	</target>
 
@@ -361,7 +362,6 @@
 			<arg value="--exclude=${toolkit.dir}/.cproject"/>
 			<arg value="--exclude=${toolkit.dir}/impl/java/src/"/>
 			<arg value="--exclude=${toolkit.dir}/impl/java/src-gen/"/>
-			<arg value="--exclude=${toolkit.dir}/lib/cmake"/>
 			<arg value="${toolkit.dir}/"/>
 			<arg value="${samples.dir}/"/>
 			<arg value="${doc.string}/"/>
