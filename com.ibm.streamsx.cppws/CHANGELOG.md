@@ -1,5 +1,10 @@
-Changes
-=======
+# Changes
+
+## Branch develop latest
+* [#11](https://github.com/IBMStreams/streamsx.cppws/issues/11) Avoid boost cmake files in lib directory
+* build.xml: Use same settings for targets warn-and-remove-untracked and check-untracked
+* [#12](https://github.com/IBMStreams/streamsx.cppws/issues/12) Move file CHANGELOG.md to toolkit directory
+
 ## v1.0.5:
 * Jun/22/2020
 * A WebSocket server endpoint can now have zero or more URL context paths.
