@@ -1,8 +1,8 @@
 ---
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
-excerpt: "Describes the design of the Cpp WS toolkit operators."
-last_modified_at: 2020-06-22T23:12:48+01:00
+excerpt: "Describes the design of the streamsx.websocket toolkit operators."
+last_modified_at: 2020-06-30T23:12:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -46,7 +46,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | tlsPort | `uint32` | `443` | This parameter specifies the WebSocket TLS port number. |
 | certificateFileName | `rstring` | `etc/ws-server.pem present inside the Streams application` | This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. |
 | trustedClientCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. |
-| trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=cppws.streams@ibm.com"] |
+| trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"] |
 | nonTlsEndpointNeeded | `boolean` | `false` | This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. |
 | nonTlsPort | `uint32` | `80` | This parameter specifies the WebSocket (plain) non-TLS port number. |
 | urlContextPath | `list<rstring>` | `An empty list` | This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path. e-g: Orders (OR) MyServices/Banking/Deposit. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. |
@@ -100,7 +100,7 @@ Following are the parameters accepted by the WebSocketSendReceive operator. Some
 | url | `rstring` | `An empty string` | This parameter specifies the URL of the remote WebSocket server. |
 | certificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the WebSocket client's private key and public certificate holding PEM file name. |
 | trustedServerCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that contains the public certificate of the trusted remote server. This allows for the server authentication. If this parameter is not used or empty, then there will be no server authentication. |
-| trustedServerX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted server's public certificate. It is helpful in performing the server authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: \["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=cppws.streams@ibm.com"\] |
+| trustedServerX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted server's public certificate. It is helpful in performing the server authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: \["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"\] |
 | websocketLiveMetricsUpdateNeeded | `boolean` | `true` | This parameter specifies whether live update for this operator's custom metrics is needed. |
 | websocketLoggingNeeded | `boolean` | `false` | This parameter specifies whether logging is needed from the WebSocket library. |
 | wsConnectionLoggingNeeded | `boolean` | `false` | This parameter specifies whether logging is needed when this operator connects and disconnects to/from the remote server. |
@@ -135,7 +135,7 @@ Following are the parameters accepted by the WebSocketSink operator. Some parame
 | tlsPort | `uint32` | `443` | This parameter specifies the WebSocket TLS port number. |
 | certificateFileName | `rstring` | `etc/ws-server.pem present inside the Streams application` | This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. |
 | trustedClientCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. |
-| trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=cppws.streams@ibm.com"] |
+| trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"] |
 | nonTlsEndpointNeeded | `boolean` | `false` | This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. |
 | nonTlsPort | `uint32` | `80` | This parameter specifies the WebSocket (plain) non-TLS port number. |
 | urlContextPath | `list<rstring>` | `An empty list` | This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path. e-g: Orders (OR) MyServices/Banking/Deposit. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. |

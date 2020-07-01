@@ -1,8 +1,8 @@
 ---
 title: "Operator Usage Patterns"
-permalink: /docs/user/CppWSUsagePatterns/
-excerpt: "Describes the CppWS toolkit usage patterns."
-last_modified_at: 2020-06-22T23:40:48+01:00
+permalink: /docs/user/WebSocketUsagePatterns/
+excerpt: "Describes the streamsx.websocket toolkit usage patterns."
+last_modified_at: 2020-06-30T23:40:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:

@@ -29,7 +29,7 @@ userdocs:
       - title: "Operator Design"
         url: /docs/user/OperatorDesign
       - title: "Operator Usage Patterns"
-        url: /docs/user/CppWSUsagePatterns
+        url: /docs/user/WebSocketUsagePatterns
 
 # developer documentation links
 developerdocs:

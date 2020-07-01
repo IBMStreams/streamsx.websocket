@@ -1,8 +1,8 @@
 ---
 title: "Toolkit Development Overview"
 permalink: /docs/developer/overview/
-excerpt: "Contributing to this toolkits development"
-last_modified_at: 2020-03-04T12:37:48+01:00
+excerpt: "Contributing to this toolkit's development"
+last_modified_at: 2020-06-30T12:37:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:

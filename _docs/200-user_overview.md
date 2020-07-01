@@ -2,7 +2,7 @@
 title: "Toolkit Usage Overview"
 permalink: /docs/user/overview/
 excerpt: "How to use this toolkit."
-last_modified_at: 2020-06-22T08:28:48+01:00
+last_modified_at: 2020-06-30T08:28:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -37,7 +37,7 @@ This toolkit requires the following two open source packages that are not shippe
 On all your IBM Streams application machines, you have to ensure that the openssl-devel-1.0.2k-12 and openssl-libs-1.0.2k-12 (or a higher version) are installed. This can be verified via this command: `rpm -qa | grep -i openssl`
 
 ## Downloading the dependencies and building the toolkit
-This toolkit is packaged with a comprehensive build.xml automation file that will help the users in downloading and building the toolkit in order to make it ready for use. Users will need network connectivity to the Internet from their Linux Streams application development machine(s) along with the open source ant tool. All that a user needs to do is to download and extract an official release version of this toolkit from the [IBMStreams GitHub](https://github.com/IBMStreams/streamsx.cppws/releases) and then run the following commands in sequence from the top-level directory (e-g: streamsx.cppws) of this toolkit.
+This toolkit is packaged with a comprehensive build.xml automation file that will help the users in downloading and building the toolkit in order to make it ready for use. Users will need network connectivity to the Internet from their Linux Streams application development machine(s) along with the open source ant tool. All that a user needs to do is to download and extract an official release version of this toolkit from the [IBMStreams GitHub](https://github.com/IBMStreams/streamsx.websocket/releases) and then run the following commands in sequence from the top-level directory (e-g: streamsx.websocket) of this toolkit.
 
 1. `ant clean-total`           [Approximately 2 minutes]
 2. `ant all`                   [Approximately 8 minutes]
@@ -55,13 +55,13 @@ ii. In Streams studio, you must double click on the BuildConfig of your applicat
 
    - `--c++std=c++11`
        
-iii. If you are building your application from the command line, please refer to the Makefile provided in the WebSocketSourceTester example shipped with this toolkit. Before using that Makefile, you must set the STREAMS_CPPWS_TOOLKIT environment variable to point to the full path of your streamsx.cppws/com.ibm.streamsx.cppws directory. To build your own applications, you can do the same as done in that Makefile.
+iii. If you are building your application from the command line, please refer to the Makefile provided in the WebSocketSourceTester example shipped with this toolkit. Before using that Makefile, you must set the STREAMS_WEBSOCKET_TOOLKIT environment variable to point to the full path of your streamsx.websocket/com.ibm.streamsx.websocket directory. To build your own applications, you can do the same as done in that Makefile.
 
 ## Example usage of this toolkit inside a Streams application:
 Here is a code snippet that shows how to invoke the **WebSocketSource** operator available in this toolkit with a subset of supported features:
 
 ```
-use com.ibm.streamsx.cppws.op::*;
+use com.ibm.streamsx.websocket.op::*;
 
 // Receive text data or binary data or both from the
 // remote WebSocket clients.
@@ -95,28 +95,58 @@ use com.ibm.streamsx.cppws.op::*;
 A built-in example inside this toolkit can be compiled and launched with the default options as shown below:
 
 ```
-cd   streamsx.cppws/samples/WebSocketSourceTester
+cd   streamsx.websocket/samples/WebSocketSourceTester
 make
-st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab 
+st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  com.ibm.streamsx.websocket.sample.WebSocketSourceTester.sab 
 ```
 
 Following IBM Streams job submission command shows how to override the default values with your own as needed for the various options that are available:
 
 ```
-cd   streamsx.cppws/samples/WebSocketSourceTester
+cd   streamsx.websocket/samples/WebSocketSourceTester
 make
-st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  com.ibm.streamsx.cppws.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456 -P allowHttpPost=true
+st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  com.ibm.streamsx.websocket.sample.WebSocketSourceTester.sab -P tlsPort=8443 -P certificateFileName=/tmp/mycert.pem -P initDelayBeforeReceivingData=7.0 -P ipv6Available=true -P numberOfMessagesToReceiveBeforeAnAck=23456 -P allowHttpPost=true
 ```
 
 ## Examples that showcase this toolkit's features
 This toolkit ships with the following examples that can be used as reference applications. These examples showcase the full feature set of the WebSocketSource, WebSocketSendReceive, WebSocketSink and the HttpPost operators that are available within this toolkit. Every example below will have the client and server-side application needed to test it. All the examples went through extensive testing in the IBM Streams lab in New York and they include excellent code documentation in the source files to guide the application/solution development engineers. More details about these examples can be obtained in a following section.
 
-* [WebSocketSourceTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSourceTester)
-* [WebSocketSourceWithResponseTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSourceWithResponseTester)
-* [WebSocketSendReceiveTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSendReceiveTester)
-* [WebSocketSinkTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/WebSocketSinkTester)
-* [HttpPostTester](https://github.com/IBMStreams/streamsx.cppws/tree/master/samples/HttpPostTester)
+* [WebSocketSourceTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSourceTester)
+* [WebSocketSourceWithResponseTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSourceWithResponseTester)
+* [WebSocketSendReceiveTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSendReceiveTester)
+* [WebSocketSinkTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSinkTester)
+* [HttpPostTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/HttpPostTester)
 
 In the `etc` sub-directory of every example shown above, there is a shell script that can be used to run a given example with synthetic data and then verify the application behavior and the result. That shell script was originally written for running a given example in the IBM Streams lab in New York. It is easy to make minor changes in that shell script and use it in any other IBM Streams environment for running a given example.
 
-There is also an example WebSocket C++ client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketSourceTester application. That example client application is available in the streamsx.cppws/samples/WebSocketSourceTester/WSClientDataSimulator directory.
+There is also an example WebSocket C++ client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketSourceTester application. That example client application is available in the streamsx.websocket/samples/WebSocketSourceTester/WSClientDataSimulator directory.
+
+## Importing this toolkit and its built-in examples into IBM Streams Studio
+1. Build the `streamsx.websocket` toolkit using the three ant commands mentioned in the previous section.
+
+2. In Streams Studio, select `File->Import->IBM Streams Studio->SPL Project` and click `Next`.
+
+3. In the resulting dialog box, click `Browse` and then select the `streamsx.websocket` directory from where you ran those ant commands.
+
+4. Now, it should list the `com.ibm.streamsx.websocket` project which you must select and click `Finish`. It will take about 8 minutes to take a copy of that entire project into your Streams Studio workspace.
+
+5. From your Streams Studio's Project Explorer view, right click on the `com.ibm.streamsx.websocket` project and select `Properties`. In the resulting dialog box, select `Java Build Path` from its left pane. In its right pane, select the `Libraries` tab and click `Add JARs` button. In the resulting `JAR Selection` dialog box, navigate to your `com.ibm.streamsx.websocket/opt/HTTPClient-x.y.z/lib` and select all the jar files present there and click `OK`. Now, click `Apply` and click `OK`.
+
+6. At this time, the `com.ibm.streamsx.websocket` project in your Streams Studio workspace is ready to be added as a dependency in any of your own applications that want to use the WebSocket operators.
+
+
+We will also show here the steps needed to import one of the built-in examples. You can use similar steps for other examples as well.
+
+1. In Streams Studio, select `File->Import->IBM Streams Studio->SPL Project` and click `Next`.
+
+2. In the resulting dialog box, click `Browse` and then select the `streamsx.websocket->samples` directory. (This is the location where you ran those ant commands earlier).
+
+3. Now, it should list all the available examples from which you can select an example project that you want and click `Finish`.
+
+4. You have to change the SPL build of the imported project from an External Builder to an Internal Builder. You can do that by right clicking on that imported project and then selecting `Configure SPL Build`. In the resulting dialog box, you can change the `Builder type` from an `External builder` to `Streams Studio internal builder`. Click `OK`.
+
+5. Now, expand your imported top-level project, expand the namespace below it and then right-click the main composite name below it and select `New->Build Configuration`. (You have to do it for every main composite present in a given example.)
+
+6. In the resulting dialog box, select Other and enter `--c++std=c++11` in the `Additional SPL compiler options` field. Click `OK`.
+
+7. Your imported example project should build correctly now.

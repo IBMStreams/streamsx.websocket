@@ -1,0 +1,703 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en-us" lang="en-us">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta name="copyright" content="(C) Copyright 2005"/>
+<meta name="DC.rights.owner" content="(C) Copyright 2005"/>
+<meta name="DC.Type" content="reference"/>
+<meta name="DC.Title" content="Operator HttpPost"/>
+<meta name="DC.Format" content="XHTML"/>
+<meta name="DC.Identifier" content="spldoc_operator"/>
+<link rel="stylesheet" type="text/css" href="../../html/commonltr.css"/>
+<link rel="stylesheet" type="text/css" href="../../html/spldoc.css"/>
+<title>Operator HttpPost</title>
+</head>
+<body id="spldoc_operator">
+
+
+<h1 class="title topictitle1">Operator <tt class="ph tt">HttpPost</tt></h1>
+
+<div class="body refbody">
+<div class="section">
+<p class="p">
+<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.0.6</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; HttpPost</p>
+
+</div>
+
+<div class="section splprimop">
+  <embed class="image" src="../../image/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$HttpPost.svg" width="872" height="112"/>
+</div>
+
+<div class="section">
+
+<p class="p">This operator posts/sends the incoming tuple's text or binary content to a HTTP or HTTPS endpoint specified in the operator parameter named url. If needed, this operator can also be made to perform GET and PUT HTTP request activities as explained here.Every incoming tuple must have an <tt class="ph tt">rstring strData</tt> attribute whose text content (Plain text or XML or JSON) or a <tt class="ph tt">blob blobData</tt> attribute whose binary content that needs to be sent as the HTTP(S) PUT or POST payload. So, one of the input tuple's attributes should be of type <tt class="ph tt">rstring</tt> carrying the text payload if any to be sent, another attribute should be of type <tt class="ph tt">blob</tt> carrying the binary payload if any to be sent and another attribute should be <tt class="ph tt">map&lt;rstring, rstring&gt; requestHeaders</tt> populated with any application-specific custom HTTP request headers to be sent to the remote web server. These three are mandatory attributes that must be present in the input tuple not necessarily in any particular positional order. In addition, it can optionally have the following two attributes: <tt class="ph tt">rstring httpMethod</tt> that can either have GET or PUT or POST as the HTTP request activity to be performed. <tt class="ph tt">rstring urlQueryString</tt> can have a well formed URL query string to be sent along with the GET HTTP request. e-g: <tt class="ph tt">company=IBM&amp;product=Streams&amp;specialty=Real-Time-Data-Analytics</tt>. So, a schema for this input stream will look like this along with any other application-specific attributes: <tt class="ph tt">rstring strData, blob blobData, map&lt;rstring, rstring&gt; requestHeaders, rstring httpMethod, rstring urlQueryString</tt>. Even though, a given incoming tuple must have both the rstring and blob typed data attributes, only one of them at a time can carry the data to be sent to the remote server during a given HTTP PUT or POST. If the httpMethod attribute is not present or if it has a value of an empty string, then a HTTP POST will be performed as long as strData or blobData attribute has content to be sent. On its output port, this operator emits a tuple containing the HTTP POST status code, status message, response headers, text based response and binary based response received from the remote web server. This output tuple's schema should be <tt class="ph tt">int32 statusCode, rstring statusMessage, map&lt;rstring, rstring&gt; responseHeaders, rstring strData, blob blobData</tt>. To post/send text data, users can set this operator's contentType parameter to text/plain or application/xml or application/json or application/x-www-form-urlencoded. To send binary data, it should be set to application/octet-stream which tells this operator to use a web standard based mechanism available for including multipart MIME content. This operator is mainly used to test the HTTP(S) feature available in the WebSocketSource operator from the streamsx.websocket toolkit. If this operator can be useful in other application scenarios, developers can use it as they see fit. If you observe either a missing or an empty streamsx.websocket/com.ibm.streamsx.websocket/impl/java/bin directory, then you should run <tt class="ph tt">ant all</tt> from the streamsx.websocket/com.ibm.streamsx.websocket directory. That will compile this HttpPost Java operator.
+</p>
+
+</div>
+
+<div class="section"><h2 class="title sectiontitle splhead-1">Summary</h2>
+
+<dl class="dl" compact="compact">
+ 
+  <dt class="dt dlterm">Ports</dt>
+
+  <dd class="dd">This operator has 1 or more input ports and 1 or more output ports.</dd>
+
+ 
+ 
+  <dt class="dt dlterm">Windowing</dt>
+
+  <dd class="dd">This operator does not accept any windowing configurations.</dd>
+
+ 
+ 
+  <dt class="dt dlterm">Parameters</dt>
+
+  <dd class="dd">This operator supports 11 parameters.
+<p class="p"> Required: 
+<a class="xref" href="#spldoc_operator__parameter__url">url</a>
+
+</p>
+
+<p class="p"> Optional: 
+<a class="xref" href="#spldoc_operator__parameter__contentType">contentType</a>, <a class="xref" href="#spldoc_operator__parameter__delayBetweenConsecutiveHttpPosts">delayBetweenConsecutiveHttpPosts</a>, <a class="xref" href="#spldoc_operator__parameter__httpTimeout">httpTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__logHttpPostActions">logHttpPostActions</a>, <a class="xref" href="#spldoc_operator__parameter__tlsAcceptAllCertificates">tlsAcceptAllCertificates</a>, <a class="xref" href="#spldoc_operator__parameter__tlsKeyPassword">tlsKeyPassword</a>, <a class="xref" href="#spldoc_operator__parameter__tlsKeyStoreFile">tlsKeyStoreFile</a>, <a class="xref" href="#spldoc_operator__parameter__tlsKeyStorePassword">tlsKeyStorePassword</a>, <a class="xref" href="#spldoc_operator__parameter__tlsTrustStoreFile">tlsTrustStoreFile</a>, <a class="xref" href="#spldoc_operator__parameter__tlsTrustStorePassword">tlsTrustStorePassword</a>
+
+</p>
+</dd>
+
+ 
+ 
+  <dt class="dt dlterm">Metrics</dt>
+
+  <dd class="dd">This operator reports 5 metrics.</dd>
+
+ 
+</dl>
+</div>
+
+<div class="section"><h2 class="title sectiontitle splhead-1">Properties</h2>
+
+<dl class="dl" compact="compact">
+ 
+  <dt class="dt dlterm">Implementation</dt>
+
+  <dd class="dd">Java</dd>
+
+ 
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set">Input Ports</a></strong></p>
+<dl class="dl">
+  
+   <dt class="dt dlterm">Ports (0)</dt>
+
+   <dd class="dd">
+
+<p class="p">Every incoming tuple must have an <tt class="ph tt">rstring strData</tt> attribute whose text content (Plain text or XML or JSON) or a <tt class="ph tt">blob blobData</tt> attribute whose binary content that needs to be sent as the HTTP(S) PUT or POST payload. So, one of the input tuple's attributes should be of type <tt class="ph tt">rstring</tt> carrying the text payload if any to be sent, another attribute should be of type <tt class="ph tt">blob</tt> carrying the binary payload if any to be sent and another attribute should be <tt class="ph tt">map&lt;rstring, rstring&gt; requestHeaders</tt> populated with any application-specific custom HTTP request headers to be sent to the remote web server. These three are mandatory attributes that must be present in the input tuple not necessarily in any particular positional order. In addition, it can optionally have the following two attributes: <tt class="ph tt">rstring httpMethod</tt> that can either have GET or PUT or POST as the HTTP request activity to be performed. <tt class="ph tt">rstring urlQueryString</tt> can have a well formed URL query string to be sent along with the GET HTTP request. e-g: <tt class="ph tt">company=IBM&amp;product=Streams&amp;specialty=Real-Time-Data-Analytics</tt>. So, a schema for this input stream will look like this along with any other application-specific attributes: <tt class="ph tt">rstring strData, blob blobData, map&lt;rstring, rstring&gt; requestHeaders, rstring httpMethod, rstring urlQueryString</tt>. Even though, a given incoming tuple must have both the rstring and blob typed data attributes, only one of them at a time can carry the data to be sent to the remote server during a given HTTP PUT or POST. If the httpMethod attribute is not present or if it has a value of an empty string, then a HTTP POST will be performed as long as strData or blobData attribute has content to be sent.
+</p>
+   </dd>
+
+  
+    
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__optional">Optional</a>: false
+     </li>
+
+   </ul>
+
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__controlport">ControlPort</a>: false
+</li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowingmode">WindowingMode</a>: NonWindowed
+</li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowpunctuationinputmode">WindowPunctuationInputMode</a>: Oblivious
+</li>
+
+   </ul>
+
+      </dd>
+
+    
+  
+   <dt class="dt dlterm">Ports (1...)</dt>
+
+    <dd class="dd">
+
+<p class="p">Optional input ports
+</p>
+   <dl class="dl">
+    
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__controlport">ControlPort</a>: false
+</li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowingmode">WindowingMode</a>: NonWindowed
+</li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowpunctuationinputmode">WindowPunctuationInputMode</a>: Oblivious
+</li>
+
+   </ul>
+
+      </dd>
+
+    
+   </dl>
+
+  </dd>
+
+
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set">Output Ports</a></strong></p>
+<dl class="dl">
+  
+     <dt class="dt dlterm">Assignments</dt>
+
+       <dd class="dd">Java operators do not support output assignments.
+       </dd>
+
+  
+</dl>
+
+<dl class="dl">
+  
+   <dt class="dt dlterm">Ports (0)</dt>
+
+   <dd class="dd">
+
+<p class="p">Emits a tuple containing the HTTP POST status code, status message, response headers and text or binary response received from the remote web server. This tuple's schema should bec<tt class="ph tt">int32 statusCode, rstring statusMessage, map&lt;rstring, rstring&gt; responseHeaders, rstring strData, blob blobData</tt>. Any other matching attributes from the incoming tuple will be forwarded via the output tuple.
+</p>
+
+<p class="p"/>
+
+   <dl class="dl">
+    
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__optional">Optional</a>: false
+     </li>
+
+   </ul>
+
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__windowpunctuationoutputmode">WindowPunctuationOutputMode</a>: Generating
+     </li>
+
+   </ul>
+
+      </dd>
+
+    
+   </dl>
+
+   <p class="p"/>
+
+   </dd>
+
+  
+  
+   <dt class="dt dlterm">Ports (1...)</dt>
+
+   <dd class="dd">
+
+<p class="p">Optional output ports
+</p>
+
+   <p class="p"/>
+
+   <dl class="dl">
+    
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__windowpunctuationoutputmode">WindowPunctuationOutputMode</a>: Generating
+     </li>
+
+   </ul>
+
+      </dd>
+
+    
+   </dl>
+
+   <p class="p"/>
+
+   </dd>
+
+  
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters">Parameters</a></strong></p>
+This operator supports 11 parameters.
+<p class="p"> Required: 
+<a class="xref" href="#spldoc_operator__parameter__url">url</a>
+
+</p>
+
+<p class="p"> Optional: 
+<a class="xref" href="#spldoc_operator__parameter__contentType">contentType</a>, <a class="xref" href="#spldoc_operator__parameter__delayBetweenConsecutiveHttpPosts">delayBetweenConsecutiveHttpPosts</a>, <a class="xref" href="#spldoc_operator__parameter__httpTimeout">httpTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__logHttpPostActions">logHttpPostActions</a>, <a class="xref" href="#spldoc_operator__parameter__tlsAcceptAllCertificates">tlsAcceptAllCertificates</a>, <a class="xref" href="#spldoc_operator__parameter__tlsKeyPassword">tlsKeyPassword</a>, <a class="xref" href="#spldoc_operator__parameter__tlsKeyStoreFile">tlsKeyStoreFile</a>, <a class="xref" href="#spldoc_operator__parameter__tlsKeyStorePassword">tlsKeyStorePassword</a>, <a class="xref" href="#spldoc_operator__parameter__tlsTrustStoreFile">tlsTrustStoreFile</a>, <a class="xref" href="#spldoc_operator__parameter__tlsTrustStorePassword">tlsTrustStorePassword</a>
+
+</p>
+<dl class="dl">
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__contentType"><!-- --></a><tt class="ph tt">contentType</tt></dt>
+
+<dd class="dd">
+<p class="p">Specify the MIME content type that you want. Default is text/plain.
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__delayBetweenConsecutiveHttpPosts"><!-- --></a><tt class="ph tt">delayBetweenConsecutiveHttpPosts</tt></dt>
+
+<dd class="dd">
+<p class="p">Do you want to have a tiny delay in millseconds between consecutive HTTP Posts? (Default: 0 milliseconds i.e. no delay)
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: int32
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__httpTimeout"><!-- --></a><tt class="ph tt">httpTimeout</tt></dt>
+
+<dd class="dd">
+<p class="p">This parameter can be used to configure the three commonly used HTTP timeout settings namely connect, connection request and socket timeout all with one value. (Default: 30 seconds)
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: int32
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__logHttpPostActions"><!-- --></a><tt class="ph tt">logHttpPostActions</tt></dt>
+
+<dd class="dd">
+<p class="p">Do you want to log HTTP POST actions to the screen? (Default: false)
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__tlsAcceptAllCertificates"><!-- --></a><tt class="ph tt">tlsAcceptAllCertificates</tt></dt>
+
+<dd class="dd">
+<p class="p">This parameter can be used to configure whether all TLS certificates can be accepted with a possibility for an insecure connection. If this parameter is set, the other two parameters <tt class="ph tt">tlsTrustStoreFile</tt> and <tt class="ph tt">tlsKeyStoreFile</tt> are not allowed. (Default: false)
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__tlsKeyPassword"><!-- --></a><tt class="ph tt">tlsKeyPassword</tt></dt>
+
+<dd class="dd">
+<p class="p">This parameter specifies the password for the keys stored in the store.
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__tlsKeyStoreFile"><!-- --></a><tt class="ph tt">tlsKeyStoreFile</tt></dt>
+
+<dd class="dd">
+<p class="p">This parameter if present should point to a key store file in JKS format which will be used for client authentication. This store should have client's certificate to prove its identity. When this parameter is present, then the tlsKeyPassword parameter must be present and the tlsKeyStorePassword can be optional.
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__tlsKeyStorePassword"><!-- --></a><tt class="ph tt">tlsKeyStorePassword</tt></dt>
+
+<dd class="dd">
+<p class="p">This parameter specifies the password for the key store.
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__tlsTrustStoreFile"><!-- --></a><tt class="ph tt">tlsTrustStoreFile</tt></dt>
+
+<dd class="dd">
+<p class="p">This parameter if present should point to a trust store file in JKS format which will be used for authenticating the remote web server. This store should have server's public certificate to verify its identity. When this parameter is present, then the tlsTrustStorePassword can be optional.
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__tlsTrustStorePassword"><!-- --></a><tt class="ph tt">tlsTrustStorePassword</tt></dt>
+
+<dd class="dd">
+<p class="p">This parameter specifies the password for the trust store.
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+
+<dt class="dt dlterm"><a name="spldoc_operator__parameter__url"><!-- --></a><tt class="ph tt">url</tt></dt>
+
+<dd class="dd">
+<p class="p">Specify the URL to which HTTP POSTs will be sent.
+</p>
+<dl class="dl">
+
+ <dt class="dt dlterm">Properties </dt>
+
+ <dd class="dd">
+  <ul class="sl simple">
+  <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+  </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: false
+     </li>
+
+  </ul>
+
+ </dd>
+
+
+</dl>
+
+</dd>
+
+
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics">Metrics</a></strong></p>
+<dl class="dl">
+  
+    <dt class="dt dlterm"><tt class="ph tt">nDataBytesReceived</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_counter">Counter</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Total number of data bytes received from the remote remote web server.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nDataBytesSent</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_counter">Counter</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Total number of data bytes sent to the remote remote web server.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nDataItemsReceived</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_counter">Counter</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Number of data items received from the remote web server.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nDataItemsSent</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_counter">Counter</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Number of data items sent to the remote web server.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nHttpPostFailed</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_counter">Counter</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Number of failed HTTP POSTs to the remote web server.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies">Libraries</a></strong></p>
+
+ <dl class="dl">
+ 
+  <dt class="dt dlterm">Operator class library
+  </dt>
+
+  <dd class="dd"/>
+
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__libpath">Library Path</a>: <tt class="ph tt">../../impl/java/bin, ../../opt/HTTPClient-4.5.12/lib/*</tt></dd>
+
+ 
+ </dl>
+
+</div>
+
+</div>
+
+
+</body>
+</html>

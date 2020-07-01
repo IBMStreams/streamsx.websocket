@@ -1,0 +1,960 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xml:lang="en-us" lang="en-us">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta name="copyright" content="(C) Copyright 2005"/>
+<meta name="DC.rights.owner" content="(C) Copyright 2005"/>
+<meta name="DC.Type" content="reference"/>
+<meta name="DC.Title" content="Operator WebSocketSink"/>
+<meta name="DC.Format" content="XHTML"/>
+<meta name="DC.Identifier" content="spldoc_operator"/>
+<link rel="stylesheet" type="text/css" href="../../html/commonltr.css"/>
+<link rel="stylesheet" type="text/css" href="../../html/spldoc.css"/>
+<title>Operator WebSocketSink</title>
+</head>
+<body id="spldoc_operator">
+
+
+<h1 class="title topictitle1">Operator <tt class="ph tt">WebSocketSink</tt></h1>
+
+<div class="body refbody">
+<div class="section">
+<p class="p">
+<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.0.6</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSink</p>
+
+</div>
+
+<div class="section splprimop">
+  <embed class="image" src="../../image/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSink.svg" width="872" height="112"/>
+</div>
+
+<div class="section">
+
+<p class="p">      The server-based WebSocketSink operator is designed to send data to the remote        WebSocket clients that are connected at any given time to the WebSocket       server running inside of this operator. This operator can be used to        send text (plain text, JSON or XML) and/or binary data. This operator will        accept a client connection either via plain WebSocket (ws or http) or        via TLS WebSocket (wss or https). Since any given WebSocket connection is       bidirectional (full duplex) in nature, this sink operator will focus only on        sending data to the connected remote clients and will simply ignore any        data received from them. In addition, this operator can be configured to       allow a certain maximum number of concurrent connections from the remote       clients depending on the needs of the application and based on the       capacity of the underlying OS and hardware configuration such as         networking, CPU cores and memory limits.
+</p>
+
+<p class="p">      This is Send-only to multiple clients.        This operator promotes One-To-Many data access pattern.
+</p>
+
+<p class="p">      By default, any remote client that knows the WebSocket URL of this operator can       connect to receive data sent by this operator. If only a specific set of remote       clients should be allowed to connect to this operator, an optional operator       parameter named clientWhitelist can be used to provide a list&lt;rstring&gt; with       one or more client IP addresses. An empty list means connections will be accepted       from any client with no restrictions. A new whitelist can also be injected into this       operator via an optional input port in the middle of an application run. On receiving       such a new whitelist, this operator will start using it immediately and it will       terminate its existing connections with those remote clients that are no longer       specified in the whitelist. IP addresses can be exact or wildcard based as shown below.
+</p>
+
+<p class="p">      clientWhitelist: ["172.34.18.212", "10.5.23.17", "172.<em class="ph i">.42.</em>", "10.29.42.*"];
+</p>
+
+<p class="p">      This operator provides two input ports. First input port is used for an application to       send data to the remote WebSocket clients. This input port must have either        rstring strData or blob blobData or both of them and        list&lt;rstring&gt; sendToUrlContextPaths as the incoming tuple attribute(s).       The input attribute sendToUrlContextPaths can be used to send a given data item       to one or more remote clients that accessed a particular url context path by including       such context paths as elements in the list. If this attribute has an empty list, then a       given data item will be sent to all the connected clients irrespective of the       url context paths they accessed.       Second input port is optional and it is used to send a new client whitelist into this       operator to accept client connections only from the specified IP addresses. This input       port must have only one attribute named clientWhitelist that is of type list&lt;rstring&gt;.        This can be an empty list for accepting connections from any client with no restrictions or        a list with one or more remote client IP addresses that are allowed to receive data       from this operator.
+</p>
+
+<p class="p">      This being a sink operator, it has no output ports.
+</p>
+
+<div class="p">      Requirements: 
+<ul class="ul">
+<li class="li"> Intel RHEL6 or RHEL7 hosts installed with IBM Streams. </li>
+
+</ul>
+
+</div>
+
+<p class="p">      See the samples folder inside this toolkit for a working example that shows how to use this operator.
+</p>
+
+<p class="p">      For a detailed documentation about the operator design, usage patterns and in-depth technical       details, please refer to the official websocket toolkit documentation available at this URL:
+</p>
+
+<p class="p">      <a class="xref" href="https://ibmstreams.github.io/streamsx.websocket">https://ibmstreams.github.io/streamsx.websocket</a>
+</p>
+
+</div>
+
+<div class="section"><h2 class="title sectiontitle splhead-1">Summary</h2>
+
+<dl class="dl" compact="compact">
+ 
+  <dt class="dt dlterm">Ports</dt>
+
+  <dd class="dd">This operator has 2 input ports and 0 output ports.</dd>
+
+ 
+ 
+  <dt class="dt dlterm">Windowing</dt>
+
+  <dd class="dd">This operator does not accept any windowing configurations.</dd>
+
+ 
+ 
+  <dt class="dt dlterm">Parameters</dt>
+
+  <dd class="dd">This operator supports 17 parameters.
+<p class="p"> Optional: 
+<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+
+</p>
+</dd>
+
+ 
+ 
+  <dt class="dt dlterm">Metrics</dt>
+
+  <dd class="dd">This operator reports 6 metrics.</dd>
+
+ 
+</dl>
+</div>
+
+<div class="section"><h2 class="title sectiontitle splhead-1">Properties</h2>
+
+<dl class="dl" compact="compact">
+ 
+  <dt class="dt dlterm">Implementation</dt>
+
+  <dd class="dd">C++</dd>
+
+ 
+ 
+  <dt class="dt dlterm"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__providessinglethreadedexecutioncontext">Threading</a></dt>
+
+  <dd class="dd"><tt class="ph tt">Never</tt> - Operator never provides a single threaded execution context.</dd>
+
+ 
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set">Input Ports</a></strong></p>
+<dl class="dl">
+  
+   <dt class="dt dlterm">Ports (0)</dt>
+
+   <dd class="dd">
+<p class="p">      	This port brings the data into this operator for sending it to the remote WebSocket clients.
+</p>
+
+<div class="p">      	Attributes on this input port:
+<ul class="ul">
+<li class="li"> <strong class="ph b">strData</strong> (required, rstring) - Any text based data (plain text, JSON or XML) can be sent to the remote WebSocket clients via this attribute.</li>
+
+<li class="li"> <strong class="ph b">blobData</strong> (required, blob) - Any binary (blob) data can be sent to the remote WebSocket clients via this attribute.</li>
+
+<li class="li"> <strong class="ph b">sendToUrlContextPaths</strong> (required, list&lt;rstring&gt;) - This input attribute can be used to send a given data item to one or more remote clients that accessed a particular url context path by including such context paths as elements in the list. If this attribute has an empty list, then a given data item will be sent to all the connected clients irrespective of the url context paths they accessed.        </li>
+
+</ul>
+
+</div>
+
+<p class="p">		All the extra input attributes will be ignored.  	
+</p>
+
+   <dl class="dl">
+    
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__optional">Optional</a>: false
+     </li>
+
+   </ul>
+
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__controlport">ControlPort</a>: false
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__tuplemutationallowed">TupleMutationAllowed</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowingmode">WindowingMode</a>: NonWindowed
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowpunctuationinputmode">WindowPunctuationInputMode</a>: Oblivious
+     </li>
+
+   </ul>
+
+      </dd>
+    
+   </dl>
+
+   <p class="p"/>
+   </dd>
+
+  
+  
+   <dt class="dt dlterm">Ports (1)</dt>
+
+   <dd class="dd">
+<p class="p">      	This port brings the new client whitelist..
+</p>
+
+<div class="p">      	Attributes on this input port:
+<ul class="ul">
+<li class="li"> <strong class="ph b">clientWhitelist</strong> (required, list&lt;rstring&gt;) - An empty list or a list of client IP addresses that are allowed to connect to this operator.</li>
+
+</ul>
+
+</div>
+
+<p class="p">		All the extra input attributes will be ignored.  	
+</p>
+
+   <dl class="dl">
+    
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__optional">Optional</a>: true
+     </li>
+
+   </ul>
+
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__controlport">ControlPort</a>: false
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__tuplemutationallowed">TupleMutationAllowed</a>: false
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowingmode">WindowingMode</a>: NonWindowed
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowpunctuationinputmode">WindowPunctuationInputMode</a>: Oblivious
+     </li>
+
+   </ul>
+
+      </dd>
+    
+   </dl>
+
+   <p class="p"/>
+   </dd>
+
+  
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters">Parameters</a></strong></p>
+This operator supports 17 parameters.
+<p class="p"> Optional: 
+<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+
+</p>
+<dl class="dl">
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__certificateFileName"><!-- --></a><tt class="ph tt">certificateFileName</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the full path of the WebSocket server PEM certificate file name. Default is to read ws-server.pem from the etc sub-directory of the application that is invoking this operator.
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__clientWhitelist"><!-- --></a><tt class="ph tt">clientWhitelist</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies a list of client IP addresses to accept connections only from those clients. (Default is an empty list to have no client connection restrictions.)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: list&lt;rstring&gt;
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__ipv6Available"><!-- --></a><tt class="ph tt">ipv6Available</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the IBMVoiceGatewaySource operator is running. (Default is true)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__maxClientConnectionsAllowed"><!-- --></a><tt class="ph tt">maxClientConnectionsAllowed</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the maximum number of concurrent clients allowed to connect with this operator. After this limit is reached, new client connections will be denied until any existing clients close their connections. (Default is 32.)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread"><!-- --></a><tt class="ph tt">newDataCpuYieldTimeInSenderThread</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that is just about to send a new data item to the remote clients. It should be &gt;= 0.0 (Default is 0.001 i.e. 1 millisecond)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: float64
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread"><!-- --></a><tt class="ph tt">noDataCpuYieldTimeInSenderThread</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote clients. It should be &gt;= 0.0 (Default is 0.001 i.e. 1 millisecond)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: float64
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__nonTlsEndpointNeeded"><!-- --></a><tt class="ph tt">nonTlsEndpointNeeded</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. (Default is false)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__nonTlsPort"><!-- --></a><tt class="ph tt">nonTlsPort</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the WebSocket (plain) non-TLS port number. Default port number is 80.
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__tlsPort"><!-- --></a><tt class="ph tt">tlsPort</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the WebSocket TLS port number. Default port number is 443.
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__trustedClientCertificateFileName"><!-- --></a><tt class="ph tt">trustedClientCertificateFileName</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. (Default is an empty string.)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__trustedClientX509SubjectIdentifiers"><!-- --></a><tt class="ph tt">trustedClientX509SubjectIdentifiers</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"] (Default is an empty list.)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: list&lt;rstring&gt;
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__urlContextPath"><!-- --></a><tt class="ph tt">urlContextPath</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path [e-g: Orders (OR) MyServices/Banking/Deposit]. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. Default is an empty list to indicate no url context path.
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: list&lt;rstring&gt;
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded"><!-- --></a><tt class="ph tt">websocketLiveMetricsUpdateNeeded</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies whether live update for this operator's custom metrics is needed. (Default is true)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__websocketLoggingNeeded"><!-- --></a><tt class="ph tt">websocketLoggingNeeded</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies whether logging is needed from the WebSocket library. (Default is false)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__websocketStaleConnectionPurgeInterval"><!-- --></a><tt class="ph tt">websocketStaleConnectionPurgeInterval</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies periodic time interval in seconds during which any stale remote client connection should be purged to free up memory usage. (Default is 3<em class="ph i">60</em>60 seconds)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__wsClientSessionLoggingNeeded"><!-- --></a><tt class="ph tt">wsClientSessionLoggingNeeded</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies whether logging is needed when the remote client session is in progress with this operator. (Default is false)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__wsConnectionLoggingNeeded"><!-- --></a><tt class="ph tt">wsConnectionLoggingNeeded</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies whether logging is needed when the remote clients connect and disconnect. (Default is false)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics">Metrics</a></strong></p>
+<dl class="dl">
+  
+    <dt class="dt dlterm"><tt class="ph tt">nClientsConnected</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Number of remote clients currently connected to this operator instance.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nDataBytesSentToRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Total number of data bytes sent to the remote clients thus far.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nDataItemsSentToRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Number of data items sent to the remote clients thus far.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nNonTlsPort</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Non-TLS port number configured for this operator.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nNonTlsPortNeeded</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Did the user configure to exchange data via a non-TLS port?
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nTlsPort</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">TLS port number configured for this operator.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+</dl>
+
+</div>
+
+<div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies">Libraries</a></strong></p>
+<dl class="dl">
+ 
+  <dt class="dt dlterm"><tt class="ph tt">Boost Library</tt>  </dt>
+
+<dd class="dd"/>
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__lib">Library Name</a>: <tt class="ph tt">boost_system, boost_chrono, boost_random, boost_thread</tt></dd>
+
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__libpath">Library Path</a>: <tt class="ph tt">../../lib</tt></dd>
+
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__includepath">Include Path</a>: <tt class="ph tt">../../include</tt></dd>
+
+ 
+ 
+  <dt class="dt dlterm"><tt class="ph tt">Websocketpp Library</tt>  </dt>
+
+<dd class="dd"/>
+  <dd class="dd"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__dependencies__managedlibrary__includepath">Include Path</a>: <tt class="ph tt">../../include</tt></dd>
+
+ 
+</dl>
+
+</div>
+
+</div>
+
+
+</body>
+</html>

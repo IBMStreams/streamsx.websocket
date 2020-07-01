@@ -2,7 +2,7 @@
 title: "New Feature Checklist"
 permalink: /docs/developer/new_feature_checklist/
 excerpt: "New feature checklist"
-last_modified_at: 2020-03-04T12:37:48+01:00
+last_modified_at: 2020-06-30T12:37:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -23,4 +23,4 @@ The following is a set of guidelines for adding a new feature to this toolkit.
   * Test the new feature in both the standalone in distributed execution modes.
 * Generate the SPLDoc either by using the "Generate SPLDOC" option in Streams Studio or by using the spl-make-doc command line tool.
   * After pushing docs to `gh-pages`, verify that they are visible and correct when navigating to
-  the [toolkit documentation web site](https://ibmstreams.github.io/streamsx.cppws/).
+  the [toolkit documentation web site](https://ibmstreams.github.io/streamsx.websocket/).

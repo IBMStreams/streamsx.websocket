@@ -1,4 +1,4 @@
-# streamsx.cppws documentation README
+# streamsx.websocket documentation README
 
 
 This toolkit documentation project is currently incubating.
