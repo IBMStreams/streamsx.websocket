@@ -1,0 +1,353 @@
+<?xml version="1.0" ?>
+<operatorModel
+  xmlns="http://www.ibm.com/xmlns/prod/streams/spl/operator" 
+  xmlns:cmn="http://www.ibm.com/xmlns/prod/streams/spl/common" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.ibm.com/xmlns/prod/streams/spl/operator operatorModel.xsd">
+  <cppOperatorModel>
+    <context>
+      <description>
+      The server-based WebSocketSink operator is designed to send data to the remote 
+      WebSocket clients that are connected at any given time to the WebSocket
+      server running inside of this operator. This operator can be used to 
+      send text (plain text, JSON or XML) and/or binary data. This operator will 
+      accept a client connection either via plain WebSocket (ws or http) or 
+      via TLS WebSocket (wss or https). Since any given WebSocket connection is
+      bidirectional (full duplex) in nature, this sink operator will focus only on 
+      sending data to the connected remote clients and will simply ignore any 
+      data received from them. In addition, this operator can be configured to
+      allow a certain maximum number of concurrent connections from the remote
+      clients depending on the needs of the application and based on the
+      capacity of the underlying OS and hardware configuration such as  
+      networking, CPU cores and memory limits.
+      
+      This is Send-only to multiple clients. 
+      This operator promotes One-To-Many data access pattern.
+      
+      By default, any remote client that knows the WebSocket URL of this operator can
+      connect to receive data sent by this operator. If only a specific set of remote
+      clients should be allowed to connect to this operator, an optional operator
+      parameter named clientWhitelist can be used to provide a list&lt;rstring&gt; with
+      one or more client IP addresses. An empty list means connections will be accepted
+      from any client with no restrictions. A new whitelist can also be injected into this
+      operator via an optional input port in the middle of an application run. On receiving
+      such a new whitelist, this operator will start using it immediately and it will
+      terminate its existing connections with those remote clients that are no longer
+      specified in the whitelist. IP addresses can be exact or wildcard based as shown below.
+      
+      clientWhitelist: \["172.34.18.212", "10.5.23.17", "172.*.42.*", "10.29.42.*"\];
+      
+      This operator provides two input ports. First input port is used for an application to
+      send data to the remote WebSocket clients. This input port must have either 
+      rstring strData or blob blobData or both of them and 
+      list&lt;rstring&gt; sendToUrlContextPaths as the incoming tuple attribute(s).
+      The input attribute sendToUrlContextPaths can be used to send a given data item
+      to one or more remote clients that accessed a particular url context path by including
+      such context paths as elements in the list. If this attribute has an empty list, then a
+      given data item will be sent to all the connected clients irrespective of the
+      url context paths they accessed.
+      Second input port is optional and it is used to send a new client whitelist into this
+      operator to accept client connections only from the specified IP addresses. This input
+      port must have only one attribute named clientWhitelist that is of type list&lt;rstring&gt;. 
+      This can be an empty list for accepting connections from any client with no restrictions or 
+      a list with one or more remote client IP addresses that are allowed to receive data
+      from this operator.
+      
+      This being a sink operator, it has no output ports.
+      
+      Requirements: 
+      * Intel RHEL6 or RHEL7 hosts installed with IBM Streams. 
+      
+      See the samples folder inside this toolkit for a working example that shows how to use this operator.
+      
+      For a detailed documentation about the operator design, usage patterns and in-depth technical
+      details, please refer to the official websocket toolkit documentation available at this URL:
+      
+      [https://ibmstreams.github.io/streamsx.websocket]
+      </description>
+
+      <iconUri size="16">ibmwssink_16.gif</iconUri>
+      <iconUri size="32">ibmwssink_32.gif</iconUri>
+
+      <metrics>
+        <metric>
+          <name>nClientsConnected</name>
+          <description>Number of remote clients currently connected to this operator instance.</description>
+          <kind>Gauge</kind>
+        </metric>
+
+        <metric>
+          <name>nDataItemsSentToRemoteClients</name>
+          <description>Number of data items sent to the remote clients thus far.</description>
+          <kind>Gauge</kind>
+        </metric>
+
+        <metric>
+          <name>nDataBytesSentToRemoteClients</name>
+          <description>Total number of data bytes sent to the remote clients thus far.</description>
+          <kind>Gauge</kind>
+        </metric>
+        
+        <metric>
+          <name>nTlsPort</name>
+          <description>TLS port number configured for this operator.</description>
+          <kind>Gauge</kind>
+        </metric>
+
+        <metric>
+          <name>nNonTlsPortNeeded</name>
+          <description>Did the user configure to exchange data via a non-TLS port?</description>
+          <kind>Gauge</kind>
+        </metric>
+
+        <metric>
+          <name>nNonTlsPort</name>
+          <description>Non-TLS port number configured for this operator.</description>
+          <kind>Gauge</kind>
+        </metric>    
+      </metrics>
+
+      <libraryDependencies>
+        <library>
+          <cmn:description>Boost Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:lib>boost_system</cmn:lib>
+            <cmn:lib>boost_chrono</cmn:lib>
+            <cmn:lib>boost_random</cmn:lib>
+            <cmn:lib>boost_thread</cmn:lib>
+            <cmn:libPath>../../lib</cmn:libPath>
+            <cmn:includePath>../../include</cmn:includePath>
+          </cmn:managedLibrary>
+        </library>
+         
+        <library>
+          <cmn:description>Websocketpp Library</cmn:description>
+          <cmn:managedLibrary>
+            <cmn:includePath>../../include</cmn:includePath>
+          </cmn:managedLibrary>
+        </library>
+      </libraryDependencies>
+
+      <providesSingleThreadedContext>Never</providesSingleThreadedContext>
+    </context>  
+
+    <parameters>
+      <allowAny>false</allowAny>
+      
+      <parameter>
+        <name>tlsPort</name>
+        <description>This parameter specifies the WebSocket TLS port number. Default port number is 443.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter> 
+      
+      <parameter>
+        <name>certificateFileName</name>
+        <description>This parameter specifies the full path of the WebSocket server PEM certificate file name. Default is to read ws-server.pem from the etc sub-directory of the application that is invoking this operator.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>trustedClientCertificateFileName</name>
+        <description>This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. (Default is an empty string.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>trustedClientX509SubjectIdentifiers</name>
+        <description>This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: \["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"\] (Default is an empty list.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>list&lt;rstring></type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>nonTlsEndpointNeeded</name>
+        <description>This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>nonTlsPort</name>
+        <description>This parameter specifies the WebSocket (plain) non-TLS port number. Default port number is 80.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter> 
+
+      <parameter>
+        <name>urlContextPath</name>
+        <description>This parameter specifies a list with zero or more URL context path(s) for a given WebSocket server endpoint. Users can come up with any application-specific value(s) made of either a single or a multi-part path \[e-g: Orders (OR) MyServices/Banking/Deposit\]. With that example, WebSocket server URL should either be https://host:port/Orders (OR) https://host:port/MyServices/Banking/Deposit. Default is an empty list to indicate no url context path.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>list&lt;rstring></type>
+        <cardinality>1</cardinality>
+      </parameter> 
+
+      <parameter>
+        <name>websocketLiveMetricsUpdateNeeded</name>
+        <description>This parameter specifies whether live update for this operator's custom metrics is needed. (Default is true)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>websocketLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed from the WebSocket library. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>wsConnectionLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed when the remote clients connect and disconnect. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>wsClientSessionLoggingNeeded</name>
+        <description>This parameter specifies whether logging is needed when the remote client session is in progress with this operator. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>websocketStaleConnectionPurgeInterval</name>
+        <description>This parameter specifies periodic time interval in seconds during which any stale remote client connection should be purged to free up memory usage. (Default is 3*60*60 seconds)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>ipv6Available</name>
+        <description>This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the IBMVoiceGatewaySource operator is running. (Default is true)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>newDataCpuYieldTimeInSenderThread</name>
+        <description>This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that is just about to send a new data item to the remote clients. It should be >= 0.0 (Default is 0.001 i.e. 1 millisecond)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>float64</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>noDataCpuYieldTimeInSenderThread</name>
+        <description>This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote clients. It should be >= 0.0 (Default is 0.001 i.e. 1 millisecond)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>float64</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>clientWhitelist</name>
+        <description>This parameter specifies a list of client IP addresses to accept connections only from those clients. (Default is an empty list to have no client connection restrictions.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>list&lt;rstring></type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>maxClientConnectionsAllowed</name>
+        <description>This parameter specifies the maximum number of concurrent clients allowed to connect with this operator. After this limit is reached, new client connections will be denied until any existing clients close their connections. (Default is 32.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
+    </parameters>
+
+    <inputPorts>
+      <inputPortSet>
+      	<description>
+      	This port brings the data into this operator for sending it to the remote WebSocket clients.
+      	
+      	Attributes on this input port:
+		* **strData** (required, rstring) - Any text based data (plain text, JSON or XML) can be sent to the remote WebSocket clients via this attribute.
+		* **blobData** (required, blob) - Any binary (blob) data can be sent to the remote WebSocket clients via this attribute.
+		* **sendToUrlContextPaths** (required, list&lt;rstring&gt;) - This input attribute can be used to send a given data item to one or more remote clients that accessed a particular url context path by including such context paths as elements in the list. If this attribute has an empty list, then a given data item will be sent to all the connected clients irrespective of the url context paths they accessed.        
+        
+		All the extra input attributes will be ignored.  	
+      	</description>
+      	<!-- 
+      	Sink operators usually have tuple mutation allowed set to false.
+      	In this operator, we have a need to set it to true due to the sink logic being
+      	performed in different threads and a need to extract the internal memory buffer of 
+      	a blob tuple attribute. Setting it to true will have no other side effects.
+      	-->
+        <tupleMutationAllowed>true</tupleMutationAllowed>
+        <windowingMode>NonWindowed</windowingMode>
+        <windowPunctuationInputMode>Oblivious</windowPunctuationInputMode>
+      	<cardinality>1</cardinality>
+      	<optional>false</optional>
+      </inputPortSet>
+      
+      <inputPortSet>
+      	<description>
+      	This port brings the new client whitelist..
+      	
+      	Attributes on this input port:
+		* **clientWhitelist** (required, list&lt;rstring>) - An empty list or a list of client IP addresses that are allowed to connect to this operator.
+        
+		All the extra input attributes will be ignored.  	
+      	</description>
+        <tupleMutationAllowed>false</tupleMutationAllowed>
+        <windowingMode>NonWindowed</windowingMode>
+        <windowPunctuationInputMode>Oblivious</windowPunctuationInputMode>
+      	<cardinality>1</cardinality>
+      	<optional>true</optional>
+      </inputPortSet>
+    </inputPorts>
+
+    <outputPorts>
+    </outputPorts>
+  </cppOperatorModel>
+</operatorModel>

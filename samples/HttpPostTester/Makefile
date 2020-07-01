@@ -2,15 +2,15 @@
 # others. All Rights Reserved.                        
 .PHONY: build all distributed clean 
 
-# Please point this to your correct CPPWS toolkit location.
-STREAMS_CPPWS_TOOLKIT ?= $(PWD)/../../com.ibm.streamsx.cppws
+# Please point this to your correct WEBSOCKET toolkit location.
+STREAMS_WEBSOCKET_TOOLKIT ?= $(PWD)/../../com.ibm.streamsx.websocket
 
 SPLC_FLAGS ?= 
 SPLC = $(STREAMS_INSTALL)/bin/sc
 SPL_CMD_ARGS ?= 
-SPL_MAIN_COMPOSITE = com.ibm.streamsx.cppws.sample::HttpPostTester
+SPL_MAIN_COMPOSITE = com.ibm.streamsx.websocket.sample::HttpPostTester
 SPLC_FLAGS = -a
-TOOLKIT_PATH = $(STREAMS_CPPWS_TOOLKIT)
+TOOLKIT_PATH = $(STREAMS_WEBSOCKET_TOOLKIT)
 DATA_DIR = data
 OUTPUT_DIR = output
 

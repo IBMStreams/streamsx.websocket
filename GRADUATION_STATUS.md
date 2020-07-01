@@ -1,4 +1,4 @@
-# streamsx.cppws Graduation Status
+# streamsx.websocket Graduation Status
 
 
 ## Overview
@@ -17,7 +17,7 @@ Incubation for projects is covered here: https://github.com/IBMStreams/administr
 - [ ] :white_check_mark: Instructions on how to get started with development and contributing to project
   * Status: Clear description exists to get started with this toolkit.
 - [ ] :white_check_mark: Website that contains information and documentation of the project
-  * Status: https://ibmstreams.github.io/streamsx.cppws/
+  * Status: https://ibmstreams.github.io/streamsx.websocket/
 - [ ] :white_check_mark: Clear release plan
   * Status: It has proper releases done via the master branch.
 - [ ] :white_check_mark: At least one active committer

@@ -1,4 +1,4 @@
-Friday, Jun/19/2020
+Monday, Jun/29/2020
 ==========================================================
 It is necessary for the users to create a Root CA signed 
 server side certificate file and point to that file at the time of
@@ -77,8 +77,8 @@ ST = NY
 L = Yorktown Heights
 O = IBM
 OU = AI
-CN = cppws.streams
-emailAddress = cppws.streams@ibm.com
+CN = websocket.streams
+emailAddress = websocket.streams@ibm.com
 [v3_req]
 keyUsage = keyEncipherment, dataEncipherment
 extendedKeyUsage = serverAuth
@@ -106,25 +106,25 @@ openssl req -x509 -nodes -days 7300 -newkey rsa:2048 -keyout ws-client.pem -out 
 
 g) Extract just the server's or the client's self-signed public certificate into a separate file.
 
-openssl x509 -outform pem -in ws-server.pem -out ibm-streams-server-cppws-crt.pem
+openssl x509 -outform pem -in ws-server.pem -out ibm-streams-server-websocket-crt.pem
 
 (OR) 
 
-openssl x509 -outform pem -in ws-client.pem -out ibm-streams-client-cppws-crt.pem
+openssl x509 -outform pem -in ws-client.pem -out ibm-streams-client-websocket-crt.pem
 
 h) We are done. You can verify the different parts of the certificate as shown below. Ensure that the IP addresses you entered in your config file show up inside the certificate.
 
-   openssl x509 -noout -text -in ibm-streams-server-cppws-crt.pem
-   openssl verify ibm-streams-server-cppws-crt.pem  [You may ignore error 20 since there is no root CA in this self-signed certificate.]
-   openssl x509 -in ibm-streams-server-cppws-crt.pem -noout -issuer
-   openssl x509 -noout -subject -in ibm-streams-server-cppws-crt.pem
+   openssl x509 -noout -text -in ibm-streams-server-websocket-crt.pem
+   openssl verify ibm-streams-server-websocket-crt.pem  [You may ignore error 20 since there is no root CA in this self-signed certificate.]
+   openssl x509 -in ibm-streams-server-websocket-crt.pem -noout -issuer
+   openssl x509 -noout -subject -in ibm-streams-server-websocket-crt.pem
    
    (OR)
    
-   openssl x509 -noout -text -in ibm-streams-client-cppws-crt.pem
-   openssl verify ibm-streams-client-cppws-crt.pem  [You may ignore error 20 since there is no root CA in this self-signed certificate.]
-   openssl x509 -in ibm-streams-client-cppws-crt.pem -noout -issuer
-   openssl x509 -noout -subject -in ibm-streams-client-cppws-crt.pem
+   openssl x509 -noout -text -in ibm-streams-client-websocket-crt.pem
+   openssl verify ibm-streams-client-websocket-crt.pem  [You may ignore error 20 since there is no root CA in this self-signed certificate.]
+   openssl x509 -in ibm-streams-client-websocket-crt.pem -noout -issuer
+   openssl x509 -noout -subject -in ibm-streams-client-websocket-crt.pem
    
 i) At this time, copy either the ws-server.pem or the ws-client.pem file to the 
    etc sub-directory of your IBM Streams application that uses the WebSocketSource 
@@ -134,13 +134,13 @@ i) At this time, copy either the ws-server.pem or the ws-client.pem file to the
    into the SAB file. Alternatively, you can decide to store the ws-server.pem file 
    or the ws-client.pem file outside of your application directory.
 
-j) Use the ibm-streams-server-cppws-crt.pem file to configure the 
+j) Use the ibm-streams-server-websocket-crt.pem file to configure the 
    remote WebSocket client's security (trust store) details by following the 
    required steps mandated by the client application. This step is needed only
    when there is interest in doing the server's identity check in the 
    client-side application(s).
 
-   Similarly, use the ibm-streams-client-cppws-crt.pem file to configure the 
+   Similarly, use the ibm-streams-client-websocket-crt.pem file to configure the 
    remote WebSocket server's security (trust store) details by following the 
    required steps mandated by the server application. This step is needed only
    when there is interest in doing the client's identity check in the 
@@ -182,7 +182,7 @@ self signed client certificate along with a key store as shown below.
 Reference URL:
 https://www.sslshopper.com/article-how-to-create-a-self-signed-certificate-using-java-keytool.html
 
-keytool -genkey -keyalg RSA -alias cppws -keystore key-store-on-client-side.jks -storepass cppws1 -validity 7200 -keysize 2048
+keytool -genkey -keyalg RSA -alias websocket -keystore key-store-on-client-side.jks -storepass websocket1 -validity 7200 -keysize 2048
 
 When prompted, you can make the key password same as that of the store password 
 mentioned in the keytool command above. Please remember this password for later 
@@ -222,7 +222,7 @@ https://docs.oracle.com/cd/E19509-01/820-3503/ggfgo/index.html
 
 I used the following two simple steps to create a client-side 
 trust store to be used in the Java based client test applications
-included in the streamsx.cppws toolkit.
+included in the streamsx.websocket toolkit.
 
 1) Use steps g and j shown in section (1) above to prepare/extract a 
 server-side public certificate PEM file.
@@ -236,7 +236,7 @@ Remember the password that you will enter while running this command.
 You will need it for later use in your Java client application(s).
 ]
 
-keytool -import -file ibm-streams-server-cppws-crt.pem -alias cppws -keystore trust-store-on-client-side.jks
+keytool -import -file ibm-streams-server-websocket-crt.pem -alias websocket -keystore trust-store-on-client-side.jks
 
 This trust store will be used in your Java client appliction to authenticate the 
 remote server's identity. You can copy your trust-store-on-client-side.jks
@@ -255,7 +255,7 @@ SPL and C++ based client-side operators or application code to
 authenticate the remote server's identity. This step is needed 
 if there is interest in doing server's identity check.
 
-e-g: ibm-streams-server-cppws-crt.pem
+e-g: ibm-streams-server-websocket-crt.pem
 
 You can copy your pem file either to the etc sub-directory of your IBM Streams 
 SPL client application or outside of your application directory. If you choose
@@ -272,7 +272,7 @@ a) Trust file for authenticating C++ based clients
 You can extract a C++ client's certificate from the ws-client.pem that you
 created in (3) above. Following command will do that.
 
-openssl x509 -outform pem -in ws-client.pem -out ibm-streams-client-cppws-crt.pem
+openssl x509 -outform pem -in ws-client.pem -out ibm-streams-client-websocket-crt.pem
 
 b) Trust file for authenticating Java based clients
    ************************************************
@@ -286,11 +286,11 @@ check the client's identity.
 Reference URL:
 https://stackoverflow.com/questions/652916/converting-a-java-keystore-into-pem-format
 
-keytool -importkeystore -srckeystore key-store-on-client-side.jks -destkeystore foo.p12 -srcalias cppws -srcstoretype jks -deststoretype pkcs12
+keytool -importkeystore -srckeystore key-store-on-client-side.jks -destkeystore foo.p12 -srcalias websocket -srcstoretype jks -deststoretype pkcs12
 
 openssl pkcs12 -in foo.p12 -out ws-client.pem
 
-openssl x509 -outform pem -in ws-client.pem -out ibm-streams-client-cppws-crt.pem
+openssl x509 -outform pem -in ws-client.pem -out ibm-streams-client-websocket-crt.pem
 
 rm -f ws-client.pem
 rm -f foo.p12

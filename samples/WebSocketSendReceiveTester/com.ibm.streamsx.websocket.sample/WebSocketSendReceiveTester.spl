@@ -1,0 +1,411 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+==============================================
+First created on: Apr/24/2020
+Last modified on: Jun/29/2020
+
+This example demonstrates the use of the WebSocketSendReceive operator available
+in the streamsx.websocket toolkit. This operator can be configured with a remote
+WebSocket server endpoint so that this operator can connect to that remote endpoint. 
+Once there is an active, persistent, long running connection with the remote server,
+it can start sending text (plain text, JSON, XML) and/or binary data to the remote server 
+as well as receiving text and/or binary data all at the same time. This operator can
+connect to a remote WebSocket server on plain (ws/http) or secure (wss/https) endpoints.
+
+[
+In this example, we also show how to do mutual authentication
+i.e. client and server authentication. In the C++ based WebSocketSendReceive
+client operator, we show the use of the trusted server's public certificate and
+the client's private key and its public certificate. In a C++ WebSocketSource operator,
+we show how it uses the client's public certificate to do the peer verification.
+]
+
+You can build this example from command line via the make command by using the
+Makefile available in the top-level directory of this example. Inside that
+Makefile, it will be necessary to export the STREAMS_WEBSOCKET_TOOLKIT 
+environment variable by pointing it to the full path of your 
+streamsx.websocket/com.ibm.streamsx.websocket directory.
+
+If you want to build this example inside the Streams Studio, there are certain
+build configuration settings needed. Please refer to the streamsx.websocket
+toolkit documentation to learn more about those Streams Studio configuration settings.
+
+In order to test this application, you must first compile and run another companion
+application named "WebSocketServerApp" available inside this example directory. When that
+application is run, it will start a WebSocket server and wait to accept connections and then
+exchange messages with the connected client. After running that companion application, 
+you can then run this particular application below to connect to that companion 
+application and send/receive data.
+
+NOTE: There is a run-ws-send-receive-test.sh script available in the etc sub-directory of this
+example project. That convenience script can be modified to suit your needs and run
+this application along with a test server application running on different
+IBM Streams instances. That will test the WebSocketSendReceive operator's capabilities.
+==============================================
+*/
+namespace com.ibm.streamsx.websocket.sample;
+
+// We will use the WebSocketSendReceive operator from this namespace. 
+// [Inside the IBM Streams Studio, it is necessary to make the
+//  com.ibm.streamsx.websocket as a dependency for this example SPL project.]
+// [If you are building this example outside of Streams Studio, then
+//  you have to do what is necessary inside the Makefile as explained in 
+//  the previous commentary block.]
+use com.ibm.streamsx.websocket.op::*;
+
+// This is the main composite for this application.
+composite WebSocketSendReceiveTester {
+	param
+		// WebSocket connectivity related submission time values are defined below.
+		//
+		// URL of the remote WebSocket server must be specified at the time of
+		// launching this application.
+		expression<rstring> $url : getSubmissionTimeValue("url");
+		// Please refer to the following file in the etc sub-directory of 
+		// this application for details about client-side and server-side certificates:
+		// etc/creating-a-self-signed-certificate.txt
+		expression<rstring> $certificateFileName :
+			getSubmissionTimeValue("certificateFileName", "");
+		// Do you want to specifiy a file name that contains the public certificate of
+		// the trusted remote server. If this file name is not empty, then the
+		// WebSocketSource operator will perform a server authentication.
+		expression<rstring> $trustedServerCertificateFileName :
+			getSubmissionTimeValue("trustedServerCertificateFileName", "");	
+		// Do you want to specify a list of identifiers present in the 
+		// trusted server's X509 certificate's subject line. If that certificate is
+		// self signed, then it will help during the server authentication to approve
+		// that server's identity as a known one.
+		// 
+		// Following are some examples of the subject line as it appears in an X509 public certificate.
+		// /C=US/ST=NY/L=Yorktown Heights/O=IBM/OU=AI/CN=websocket.streams/emailAddress=websocket.streams@ibm.com
+		// /C=US/O=Let's Encrypt/CN=Let's Encrypt Authority X3
+		// /C=BE/O=GlobalSign nv-sa/CN=GlobalSign CloudSSL CA - SHA256 - G3
+		// /C=US/O=Google Trust Services/CN=GTS CA 1O1
+		// /C=US/O=DigiCert Inc/OU=www.digicert.com/CN=DigiCert Global Root CA
+		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
+		//
+		// So your value for this submission time parameter can be as shown here.
+		// ["emailAddress=websocket.streams@ibm.com", "CN=www.ibm.com"]
+		expression<list<rstring>> $trustedServerX509SubjectIdentifiers :
+			(list<rstring>)getSubmissionTimeValue("trustedServerX509SubjectIdentifiers", "[]");
+		// Is live metrics needed for the WebSocketSource operator?
+		expression<boolean> $websocketLiveMetricsUpdateNeeded : 
+			(boolean)getSubmissionTimeValue("websocketLiveMetricsUpdateNeeded", "true");
+		// Is WebSocket library low level logging needed?
+		expression<boolean> $websocketLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("websocketLoggingNeeded", "false");
+		// Is WebSocket server connection logging needed?
+		expression<boolean> $wsConnectionLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("wsConnectionLoggingNeeded", "false");
+		// Is client message exchange logging needed for debugging?
+		expression<boolean> $wsClientSessionLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("wsClientSessionLoggingNeeded", "false");			
+		// How many data items we want to send to the remote server?
+		expression<uint32> $numberOfDataItemsToBeSent :
+			(uint32)getSubmissionTimeValue("numberOfDataItemsToBeSent", "1000");
+	type
+		// The following is the schema of the first output stream for the
+		// WebSocketSendReceive operator. The first two attributes are
+		// very important and the other ones are purely optional if some
+		// scenarios really require them.
+		// rstring strData --> String based data (plain text, JSON and XML) received from the remote server.
+		// uint64 totalDataItemsReceived -- Total data items received so far from the remote server.
+		// uint64 totalDataBytesReceived --> Number of data bytes received so far from the remote server.
+		// uint64 totalDataItemsSent -- Total data items sent so far to the remote server.
+		// uint64 totalDataBytesSent --> Number of data bytes sent so far to the remote server.
+		ReceivedData_t = rstring strData, blob blobData,  
+			uint64 totalDataItemsReceived, uint64 totalDataBytesReceived,
+			uint64 totalDataItemsSent, uint64 totalDataBytesSent;
+			
+		// The following schema is for the second output stream of the
+		// WebSocketSendReceive operator. It has two attributes.
+		// int32 sendResultCode, rstring sendResultMessage.
+      	// sendResultCode will carry a value of  0 on a successful send to the remote server and a
+      	// non-zero result in case of an error in sending the data. sendResultMessage will
+      	// carry a descriptive message about the send result. Application logic can check these 
+      	// output tuple attributes and have additional logic to retransmit a given 
+      	// input tuple if it was not sent to the remote server due to an error (e-g: broken connection).
+		SendDataResult_t = int32 sendResultCode, rstring sendResultMessage;
+		
+		// The following schema defines the required attributes for the input stream of
+		// the WebSocketSendReceive operator. You can have either one or both of
+		// these attributes depending on your needs.
+		SendData_t = rstring strData, blob blobData;
+
+	graph
+		// Let us generate binary data for the testing need of this application.
+		(stream<SendData_t> BinaryData as BD) 
+			as BinaryDataGenerator = Beacon() {
+			param
+				iterations: $numberOfDataItemsToBeSent;
+				initDelay: 10.0;
+			
+			output
+				BD: blobData = convertToBlob("This data item " + 
+					(rstring)(IterationCount() + 1ul) + " is sent as a blob.");
+		}
+		
+		// Let us generate text data for the testing need of this application.
+		(stream<SendData_t> TextData as TD) 
+			as TextDataGenerator = Beacon() {
+			param
+				iterations: $numberOfDataItemsToBeSent;
+				initDelay: 10.0;
+			
+			output
+				TD: strData = "This data item " + 
+					(rstring)(IterationCount() + 1ul) + " is sent as a text.";
+		}		
+
+		// ========= START OF THE CODE BLOCK WITH DATA RETRANSMISSION LOGIC =========
+		// Any data item we send to the remote WebSocket server will have a result to
+		// indicate whether that data item was sent successfully or not.
+		// Let us release the incoming tuples one by one as fast as possible once 
+		// we get a successful data send result. If the data sending failed due to 
+		// connection error, then we can simply retransmit the tuple that didn't get sent. 
+		// This safety measure and retransmission logic is a must instead of trying to 
+		// send blindly when there is no WebSocket server active on the other end. 
+		// This type of low impact throttling/gating the tuple flow based on the 
+		// previous tuple's send result will require special application logic. 
+		// The pattern shown here can be adopted in real-life applications.
+		// Without this logic to check the data send result, the WebSocketSendReceive
+		// operator will not properly do its full duplex task of simultaneously
+		// sending and receiving data to/from the remote WebSocket server.
+		//
+		// Note: Consuming the SDR stream below in the 2nd input port will make the
+		// compiler to give a "Feedback Loop" warning which can be ignored.
+		//
+		//
+		// Since we are doing quick tests with a very few number of test data tuples using
+		// two Beacon operators above, we are going to inter-mix both the text and blob 
+		// data tuples sent by those two Beacon operators and send them to the remote 
+		// WebSocket web server to prove that we can send both text and blob data items as
+		// they arrive in any order. It is important to note that there will be
+		// two sets of punctuations arriving here from those two Beacon operators. 
+		// So, we are also going to merge both the punctuations coming from the two 
+		// Beacon operators into one and send a single punctuation at the very end. 
+		// This is very specific to this test application that is dealing with fixed number of 
+		// data tuples arriving from two Beacon operators. In real-life scenarios there will be 
+		// infinite number of data tuples generated and so this special stream merger 
+		// may not be required.
+		(stream<SendData_t> SendData as SD) 
+			as DataThrottler = Custom(BinaryData, TextData as D; SendDataResult as SDR) {
+			logic
+				state: {
+					mutable list<SendData_t> _dataToBeSent = [];
+					mutable boolean _sendResultPending = false;
+					mutable uint64 _tuplesSentCnt = 0;
+					mutable int32 _numberOfWindowPunctuations = 0;
+					mutable int32 _numberOfFinalPunctuations = 0;
+				}
+				
+			onTuple D: {
+				// We will send the data item from here only when there is
+				// no pending data send activity i.e. when we are not waiting to get a send result.
+				// If there is a pending data send activity, subsequent data will be 
+				// sent in the other onTuple block that checks the result of the 
+				// previous data send activity.
+				//
+				// Simply insert into the list state variable.
+				appendM(_dataToBeSent, D);
+				
+				if (_sendResultPending == false) {
+					_tuplesSentCnt++;
+					
+					if (_tuplesSentCnt == 1ul) {
+						appTrc(Trace.error, "Sending the first data item to the remote WebSocket server.");
+					}
+
+					if (_tuplesSentCnt == (uint64)($numberOfDataItemsToBeSent * 2u)) {
+						appTrc(Trace.error, "Sending the last data item to the remote WebSocket server.");
+					}
+					
+					// There is no pending data send activity.
+					// So, we can release the oldest tuple waiting to be 
+					// sent to the remote server.
+					_sendResultPending = true;
+					submit(_dataToBeSent[0], SD);
+				}
+			}
+
+			// Process the send data result.
+			// This is the feedback stream coming from the WebSocketSendReceive operator used below.
+			onTuple SDR: {
+				if (SDR.sendResultCode != 0) {
+					// If the previous send activity failed, it will simply retransmit the
+					// tuple that couldn't be sent.
+					appTrc(Trace.error, "Error in sending data item " + 
+						(rstring)_tuplesSentCnt + ". " +  
+						"Attempting to the send it again now. Send data result=" + (rstring)SDR);
+					// If it is a connection error due to the remote WebSocket server's absence,
+					// there is no valid reason to keep retrying immediately and too frequently.
+					// It may be a good idea to retry at a slower pace by inducing a wait time that is 
+					// suitable for the needs of your application. Additional application logic
+					// can also be added to limit the number of retransmission attempts and
+					// take a proper action when exceeding that threshold.
+					//
+					// IMPORTANT TIP
+					// -------------
+					// It is a good practice for the application logic to backoff and wait for a 
+					// reasonable amount of time when there is a connection error with the
+					// remote WebSocket server before inputting a tuple again into the WebSocketSendReceive operator.
+					// Otherwise, that operator will trigger too many connection attempts on every incoming
+					// tuple to send it to the remote server. So, the application
+					// logic should make an attempt to wait for a while before attempting to send the
+					// data after knowing that there is an ongoing connection problem with the remote server.
+					block(10.0);
+					submit(_dataToBeSent[0], SD);
+				} else {
+					// Previous tuple was successfully sent.
+					// Remove it from the list state variable.
+					removeM(_dataToBeSent, 0);
+					
+					// Let us send if the next one is available in the waiting list.
+					if(size(_dataToBeSent) > 0) {
+						if (++_tuplesSentCnt == (uint64)($numberOfDataItemsToBeSent * 2u)) {
+							appTrc(Trace.error, "Sending the last data item to the remote WebSocket server.");
+						}
+						
+						_sendResultPending = true;
+						submit(_dataToBeSent[0], SD);	
+					} else {
+						// Nothing pending to be sent at this time.
+						_sendResultPending = false;
+					}
+				}
+			} 
+
+			onPunct D: {
+				// We are going to ignore the punctuation markers sent by the Beacon operators.
+				// Because, we don't want any final punctuation marker to stop the normal
+				// operation of the downstream WebSocketSendReceive operator.
+				// In general, it is a good idea for the WebSocketSendReceive operator below to 
+				// keep its persistent WebSocket client connection open until this application is
+				// cancelled/stopped/shut down. That will help in receiving the data sent by the
+				// remote server based WebSocketSink operator.
+				//				
+				// Unless the punctuations play a key role in the application behavior,
+				// the strategy described above can be followed.
+				return;
+			
+				// If punctuations are important for a given application,
+				// the return statement above can be commented out followed by
+				// uncommenting of the code block below.
+				/*
+				// We will send only one window and one final punctuation.
+				if (currentPunct() == Sys.WindowMarker) {
+					if (++_numberOfWindowPunctuations == 2) {
+						// Forward a single window punctuation.
+						submit(currentPunct(), SD);
+					}
+				}
+				
+				if (currentPunct() == Sys.FinalMarker) {
+					if (++_numberOfFinalPunctuations == 2) {
+						// Forward a single final punctuation.
+						submit(currentPunct(), SD);
+					}
+				}
+				*/
+			}
+						
+			config
+				threadedPort: queue(D, Sys.Wait);
+		}
+		// ========= END OF THE CODE BLOCK WITH DATA RETRANSMISSION LOGIC =========
+		
+		// Send binary and text data to the remote WebSocket server and at the same time  
+		// receive binary data or text data or both from the remote WebSocket server.
+		// In our tests, we have made the remote WebSocket server simply 
+		// echo back whatever we send from here to there.
+		//
+		// Important
+		// ---------
+		// Whether the remote WebSocket server is active or not at any given time is 
+		// not in our control. If the remote WebSocket server goes away in the 
+		// middle of the operation, then the data item being input into this operator
+		// will not be considered for sending to the remote WebSocket server.
+		// It is important to check that every data item is successfully sent to the
+		// remote WebSocket server. This is done by checking the sendDataResult output
+		// stream and then trying to retransmit the data item if there was an error in sending.
+		// It will require a feedback loop logic as shown in the Custom operator above.
+		(stream<ReceivedData_t> ReceivedData as RD;
+		 stream<SendDataResult_t> SendDataResult as SDR) 
+			as WebSocketDataSenderReceiver = WebSocketSendReceive(SendData) {
+			param
+				url: $url;
+				certificateFileName: $certificateFileName;
+				trustedServerCertificateFileName: $trustedServerCertificateFileName;
+				// Use this only when you have trouble authenticating a server that 
+				// has a self signed certificate.
+				trustedServerX509SubjectIdentifiers: $trustedServerX509SubjectIdentifiers;
+				websocketLiveMetricsUpdateNeeded: $websocketLiveMetricsUpdateNeeded;
+				websocketLoggingNeeded: $websocketLoggingNeeded;
+				wsConnectionLoggingNeeded: $wsConnectionLoggingNeeded;
+				wsClientSessionLoggingNeeded: $wsClientSessionLoggingNeeded;
+			
+			// Get these values via custom output functions	provided by this operator.
+			output
+			    // strData and/or blobData attributes will be automatically
+			    // assigned with received data values withing the operator logic.
+			    // Other attributes can be assigned manually as done below.
+				RD: totalDataItemsReceived = getTotalDataItemsReceived(),
+					totalDataBytesReceived = getTotalDataBytesReceived(),
+					totalDataItemsSent = getTotalDataItemsSent(),
+					totalDataBytesSent = getTotalDataBytesSent();
+			
+			// A MUST THING TO DO
+			// ------------------
+			// For the feedback loop logic to work as explained in the
+			// commentary above, you must have this placement directive to launch 
+			// this operator in its own PE (i.e. Linux process) that is away from 
+			// the Custom operator above which is at the other end of the feedback loop.
+			// This is done for a valid reason. Infinite recursion occurs when operators with 
+			// feedback loops are fused; when the operator submits a tuple to its output port, 
+			// the subsequent submit() calls lead to a loop of other submit() calls, 
+			// effectively overflowing the call stack. By avoiding this operator from getting 
+			// fused, we ensure that it will not lead to deadlocks or stack overflow due to 
+			// infinite recursion.
+			config
+				placement: partitionIsolation;
+		}
+
+		// Let us normalize the received data into string format before sending it
+		// to the sink operator below that is used for verifying the received data.
+		// In a real-life application, you will deal with the received data according to
+		// the needs of the application.
+		(stream<ReceivedData_t> NormalizedReceivedData as NRD)
+			as ReceivedDataNormalizer = Custom(ReceivedData as RD) {
+			logic
+				onTuple RD: {
+					// If we have received binary data, let us normalize it to
+					// string so that we can write it to a file in the
+					// sink operator below for verifying the results.
+					if (blobSize(RD.blobData) > 0ul) {
+						RD.strData = convertFromBlob(RD.blobData);
+						clearM(RD.blobData);
+					}
+					
+					submit(RD, NRD);
+				}
+		}		
+
+		// Let us write the data received from the remote server to a file.
+		() as MySink1 = FileSink(NormalizedReceivedData) {
+			param
+				file: "ws-received-data-" + 
+					(rstring)jobID() + "-" + getHostName() + ".txt";
+				flush: 1u;
+		}
+		
+		// Please note that we can also confirm whether the data we send from here
+		// successfully reached the remote server or not. That information is 
+		// written to its own sink file by the remote WebSocketServerApp that we started.
+		// Please check the SPL code for that application to see that particular sink operator.
+}

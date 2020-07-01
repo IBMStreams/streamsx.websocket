@@ -8,13 +8,13 @@
 /*
 ==============================================
 First created on: Feb/24/2020
-Last modified on: Apr/01/2020
+Last modified on: Jun/29/2020
 
 This C++ example below can be used to generate data traffic to test the
-streamsx.cppws toolkit example named WebSocketSourceTester.
+streamsx.websocket toolkit example named WebSocketSourceTester.
 This C++ application is useful to test the IBM Streams application mentioned above in the
 absence of a full fledged remote client test infrastructure. This C++ application
-can become handy to test the streamsx.cppws toolkit's WebSocketSource operator.
+can become handy to test the streamsx.websocket toolkit's WebSocketSource operator.
 So, this application will mimic the way a real client application will
 interact with the IBM Streams application that is ready to ingest data from remote WebSocket client.
 This data simulator does it by being able to send text (plain text, JSON or XML) or binary blob messages.
@@ -27,9 +27,9 @@ with the IBM Streams application that runs the WebSocketSource (server side) ope
 This example code can be built and run from a Linux terminal window by 
 using the steps shown below.
 
-1) Ensure that you have installed boost_1_69_0 as explained in the streamsx.cppws toolkit documentation.
+1) Ensure that you have installed boost_1_69_0 as explained in the streamsx.websocket toolkit documentation.
 
-2) Ensure that you have installed websocket++ v0.8.1 or higher as explained in the streamsx.cppws documentation.
+2) Ensure that you have installed websocket++ v0.8.1 or higher as explained in the streamsx.websocket documentation.
 
 3) Ensure that you have the OpenSSL installed on your Linux machine since we will need the OpenSSL crypto libraries in the compiler command used below.
 
@@ -425,7 +425,7 @@ private:
 // Entry point into this client application.
 int main(int argc, char *argv[]) {
     // We are going to make a single WebSocket connection to the IBM Streams application that
-	// invokes the streamsx.cppws WebSocketSource operator.
+	// invokes the streamsx.websocket WebSocketSource operator.
     if (argc < 7) {
        // User didn't give the required arguments.
        std::cout << "Usage: ./wsclient.o  <WebSocket Server URL> <Binary or text file name> <bin or txt> <Data content block size in bytes to send at a time> <Delay in milliseconds between sending data content blocks> <Number of messages to send between verifying an ack from the server> <Loop count for repeated sending of the same file content>" << std::endl;
