@@ -1,0 +1,190 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+============================================================
+First created on: Apr/08/2020
+Last modified on: Jun/29/2020
+
+This include file contains the necessary inclusion of 
+other C++ header files, declaration of member variables and
+output assignment functions for the WebSocketSendReceive operator.
+
+This file will be used in conjunction with the
+operator model file (WebSocketSendReceive.xml) and the operator
+implementation C++ file (WebSocketSendReceive_cpp.cgt).
+============================================================
+*/
+
+/* Additional includes go here */
+#include <websocketpp/config/asio_client.hpp>
+#include <websocketpp/config/asio_no_tls_client.hpp>
+#include <websocketpp/client.hpp>
+#include <iostream>
+#include <fstream>
+#include <iterator>
+#include <algorithm>
+#include <vector>
+// Operator metrics related include files.
+#include <SPL/Runtime/Common/Metric.h>
+#include <SPL/Runtime/Operator/OperatorMetrics.h>
+
+<%SPL::CodeGen::headerPrologue($model);%>
+
+class MY_OPERATOR : public MY_BASE_OPERATOR {
+public:
+	// Websocket related type definitions.
+	typedef websocketpp::client<websocketpp::config::asio_tls_client> tls_client;
+	typedef websocketpp::client<websocketpp::config::asio_client> non_tls_client;
+	// Pull out the type of messages sent by our config
+	typedef websocketpp::config::asio_tls_client::message_type::ptr tls_message_ptr;
+	typedef websocketpp::config::asio_client::message_type::ptr non_tls_message_ptr;
+	typedef websocketpp::lib::shared_ptr<boost::asio::ssl::context> context_ptr;
+
+	// Operator related member variables
+	std::string operatorPhysicalName;
+	SPL::int32 udpChannelNumber;
+	
+	// Websocket operations related member variables.
+	std::string certificateFileName;
+	std::string trustedServerCertificateFileName;
+	// Behind the scenes, an SPL list is nothing but a C++ std::vector.
+	SPL::list<SPL::rstring> trustedServerX509SubjectIdentifiers;	
+	bool wsConnectionEstablished;
+	bool makeNewWebsocketConnection;
+	bool websocketConnectionErrorOccurred;
+	SPL::rstring websocketConnectionErrorReason;
+	bool websocketLoggingNeeded;
+	bool wsConnectionLoggingNeeded;
+	bool wsClientSessionLoggingNeeded;
+	tls_client *tls_ws_client;
+	non_tls_client *non_tls_ws_client;
+	websocketpp::connection_hdl wsHandle;
+	
+	// WS Send/Receive operations related member variables.
+	SPL::boolean dataInputAsRString;
+	SPL::boolean dataInputAsBlob;
+	
+	std::vector<std::string> strDataToSend;
+	std::vector<unsigned char *> blobDataToSend;
+	std::vector<uint64_t> blobDataSize;
+	// This mutex is to control the multithreaded shared R/W access of the 
+	// three incoming tuple holding vectors declared just above here. 
+	SPL::Mutex wsMutex1;
+	SPL::uint64 numberOfDataItemsSent;
+	SPL::uint64 numberOfDataBytesSent;
+	SPL::uint64 numberOfDataItemsReceived;
+	SPL::uint64 numberOfDataBytesReceived;
+	std::string url;
+	bool websocketLiveMetricsUpdateNeeded;
+	SPL::float64 newDataCpuYieldTimeInSenderThread;
+	SPL::float64 noDataCpuYieldTimeInSenderThread;
+	SPL::float64 reconnectionInterval;
+		
+	// Custom metrics for this operator.
+	Metric *nDataItemsSentToRemoteServerMetric;
+	Metric *nDataBytesSentToRemoteServerMetric;
+	Metric *nDataItemsReceivedFromRemoteServerMetric;
+	Metric *nDataBytesReceivedFromRemoteServerMetric;
+	Metric *nWebsocketConnectionActiveStatusMetric;
+
+public:
+	// Constructor
+	MY_OPERATOR();
+	
+	// Destructor
+	virtual ~MY_OPERATOR(); 
+	
+	// Notify port readiness
+	void allPortsReady(); 
+	
+	// Notify pending shutdown
+	void prepareToShutdown(); 
+	
+	// Processing for source and threaded operators   
+	void process(uint32_t idx);
+	
+	// Tuple processing for mutating ports 
+	void process(Tuple & tuple, uint32_t port);
+	
+	// Tuple processing for non-mutating ports
+	void process(Tuple const & tuple, uint32_t port);
+	
+	// Punctuation processing
+	void process(Punctuation const & punct, uint32_t port);
+	
+	// Websocket connection open event handler for TLS clients.
+	void on_open_tls(tls_client* c, websocketpp::connection_hdl hdl);
+
+	// Websocket connection open event handler for non-TLS clients.
+	void on_open_non_tls(non_tls_client* c, websocketpp::connection_hdl hdl);
+
+	// Websocket connection common event handler.
+	void on_open(websocketpp::connection_hdl hdl, bool isTlsConnection);
+	
+	// Websocket message reception event handler for TLS clients.
+	void on_message_tls(tls_client* c, websocketpp::connection_hdl hdl, tls_message_ptr msg);
+	
+	// Websocket message reception event handler for non-TLS clients.
+	void on_message_non_tls(non_tls_client* c, websocketpp::connection_hdl hdl, non_tls_message_ptr msg);
+	
+	// Websocket message reception common event handler.
+	void on_message(websocketpp::connection_hdl hdl, tls_message_ptr tls_msg, 
+		non_tls_message_ptr non_tls_msg, bool isTlsConnection);	
+	
+	// Websocket connection close event handler for TLS clients.
+	void on_close_tls(tls_client* c, websocketpp::connection_hdl hdl);
+
+	// Websocket connection close event handler for non-TLS clients.
+	void on_close_non_tls(non_tls_client* c, websocketpp::connection_hdl hdl);
+	
+	// Websocket connection close common event handler.
+	void on_close(websocketpp::connection_hdl hdl, bool isTlsConnection);
+	
+	// Websocket TLS binding event handler
+	context_ptr on_tls_init(tls_client* c, websocketpp::connection_hdl);
+	
+	// Callback method needed within the TLS event handler.
+	std::string get_password();
+	
+	// Callback method to verify the presence of any application-specific 
+	// string in a peer's public certificate's subject field.
+	// This string could be any sub-field such as CN or an email address or the entire subject field.
+	// Following are some examples of the subject line as it appears in an X509 public certificate.
+	// /C=US/ST=NY/L=Yorktown Heights/O=IBM/OU=AI/CN=websocket.streams/emailAddress=websocket.streams@ibm.com
+	// /C=US/O=Let's Encrypt/CN=Let's Encrypt Authority X3
+	// /C=BE/O=GlobalSign nv-sa/CN=GlobalSign CloudSSL CA - SHA256 - G3
+	// /C=US/O=Google Trust Services/CN=GTS CA 1O1
+	// /C=US/O=DigiCert Inc/OU=www.digicert.com/CN=DigiCert Global Root CA	
+	// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
+	bool verify_peer_certificate(bool preverified, boost::asio::ssl::verify_context & ctx);
+	
+	// Webscoket connection failure event handler for TLS clients.
+	void on_fail_tls(tls_client* c, websocketpp::connection_hdl hdl);
+
+	// Webscoket connection failure event handler for nom-TLS clients.
+	void on_fail_non_tls(non_tls_client* c, websocketpp::connection_hdl hdl);
+		
+	// Webscoket connection failure common event handler.
+	void on_fail(websocketpp::connection_hdl hdl, bool isTlsConnection);
+	
+	// Websocket initialization thread method
+	void ws_init();  
+	
+	// Websocket data sender thread method
+	void ws_data_sender();
+  
+private:
+	// These are the output attribute assignment functions for this operator.
+	uint64_t getTotalDataItemsReceived(uint64_t const & totalDataItemsReceived);
+	uint64_t getTotalDataBytesReceived(uint64_t const & totalDataBytesReceived);
+	uint64_t getTotalDataItemsSent(uint64_t const & totalDataItemsSent);
+	uint64_t getTotalDataBytesSent(uint64_t const & totalDataBytesSent);
+}; 
+
+<%SPL::CodeGen::headerEpilogue($model);%>
+

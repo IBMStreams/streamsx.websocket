@@ -2,14 +2,14 @@
 <info:toolkitInfoModel xmlns:common="http://www.ibm.com/xmlns/prod/streams/spl/common" xmlns:info="http://www.ibm.com/xmlns/prod/streams/spl/toolkitInfo">
   <info:identity>
     <info:name>HttpPostTester</info:name>
-    <info:description>It is used for testing the HttpPost operator available in the streamsx.cppws toolkit.</info:description>
-    <info:version>1.0.3</info:version>
+    <info:description>It is used for testing the HttpPost operator available in the streamsx.websocket toolkit.</info:description>
+    <info:version>1.0.4</info:version>
     <info:requiredProductVersion>4.2.1.0</info:requiredProductVersion>
   </info:identity>
   <info:dependencies>
     <info:toolkit>
-      <common:name>com.ibm.streamsx.cppws</common:name>
-      <common:version>[1.0.5,7.0.0]</common:version>
+      <common:name>com.ibm.streamsx.websocket</common:name>
+      <common:version>[1.0.6,7.0.0]</common:version>
     </info:toolkit>
   </info:dependencies>
 </info:toolkitInfoModel>

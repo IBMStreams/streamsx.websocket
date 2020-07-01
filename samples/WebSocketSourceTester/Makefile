@@ -2,8 +2,8 @@
 # others. All Rights Reserved.                        
 .PHONY: build all distributed clean
 
-# Please point this to your correct CPPWS toolkit location.
-STREAMS_CPPWS_TOOLKIT ?= $(PWD)/../../com.ibm.streamsx.cppws
+# Please point this to your correct WEBSOCKET toolkit location.
+STREAMS_WEBSOCKET_TOOLKIT ?= $(PWD)/../../com.ibm.streamsx.websocket
 
 ifeq ($(STREAMS_STUDIO_BUILDING), 1)
     $(info Building from Streams Studio, use env vars set by studio)
@@ -19,11 +19,11 @@ else
     SPLC = $(STREAMS_INSTALL)/bin/sc
     DATA_DIR = data
     OUTPUT_DIR = output
-    TOOLKIT_PATH = $(STREAMS_CPPWS_TOOLKIT)
+    TOOLKIT_PATH = $(STREAMS_WEBSOCKET_TOOLKIT)
 endif
 
-SPL_MAIN_COMPOSITE1 = com.ibm.streamsx.cppws.sample::WebSocketSourceTester
-SPL_MAIN_COMPOSITE2 = com.ibm.streamsx.cppws.sample::HttpBinarySendToWebSocketSource
+SPL_MAIN_COMPOSITE1 = com.ibm.streamsx.websocket.sample::WebSocketSourceTester
+SPL_MAIN_COMPOSITE2 = com.ibm.streamsx.websocket.sample::HttpBinarySendToWebSocketSource
 SPLC_FLAGS = -a --c++std=c++11
 SPL_CMD_ARGS ?=
 
