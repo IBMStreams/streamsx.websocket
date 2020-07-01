@@ -2,7 +2,7 @@
 title: "Toolkit Usage Overview"
 permalink: /docs/user/overview/
 excerpt: "How to use this toolkit."
-last_modified_at: 2020-06-30T08:28:48+01:00
+last_modified_at: 2020-07-01T08:28:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -34,7 +34,7 @@ This toolkit requires the following two open source packages that are not shippe
        - (It is needed for a successful compilation of the Streams application that uses this toolkit. Please note that these include files will not bloat the size of that application's SAB file  since the `impl/include` directory will not be part of the SAB file.)
 
 3. Open SSL libraries in Linux
-On all your IBM Streams application machines, you have to ensure that the openssl-devel-1.0.2k-12 and openssl-libs-1.0.2k-12 (or a higher version) are installed. This can be verified via this command: `rpm -qa | grep -i openssl`
+   - On all your IBM Streams application machines, you have to ensure that the openssl-devel-1.0.2k-12 and openssl-libs-1.0.2k-12 (or a higher version) are installed. This can be verified via this command: `rpm -qa | grep -i openssl`
 
 ## Downloading the dependencies and building the toolkit
 This toolkit is packaged with a comprehensive build.xml automation file that will help the users in downloading and building the toolkit in order to make it ready for use. Users will need network connectivity to the Internet from their Linux Streams application development machine(s) along with the open source ant tool. All that a user needs to do is to download and extract an official release version of this toolkit from the [IBMStreams GitHub](https://github.com/IBMStreams/streamsx.websocket/releases) and then run the following commands in sequence from the top-level directory (e-g: streamsx.websocket) of this toolkit.
@@ -117,7 +117,7 @@ This toolkit ships with the following examples that can be used as reference app
 * [WebSocketSinkTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSinkTester)
 * [HttpPostTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/HttpPostTester)
 
-In the `etc` sub-directory of every example shown above, there is a shell script that can be used to run a given example with synthetic data and then verify the application behavior and the result. That shell script was originally written for running a given example in the IBM Streams lab in New York. It is easy to make minor changes in that shell script and use it in any other IBM Streams environment for running a given example.
+In the `etc` sub-directory of every example shown above, there is a shell script that can be used to run a given example with synthetic data and then verify the application behavior and the result. That shell script was originally written for running a given example in the IBM Streams lab in New York. It is easy to make minor changes in that shell script and use it in any other IBM Streams test environment for running a given example.
 
 There is also an example WebSocket C++ client application that can be run from a RHEL7 or CentOS7 machine to simulate data traffic to be sent to the WebSocketSourceTester application. That example client application is available in the streamsx.websocket/samples/WebSocketSourceTester/WSClientDataSimulator directory.
 
@@ -147,6 +147,6 @@ We will also show here the steps needed to import one of the built-in examples. 
 
 5. Now, expand your imported top-level project, expand the namespace below it and then right-click the main composite name below it and select `New->Build Configuration`. (You have to do it for every main composite present in a given example.)
 
-6. In the resulting dialog box, select Other and enter `--c++std=c++11` in the `Additional SPL compiler options` field. Click `OK`.
+6. In the resulting dialog box, select `Other` and enter `--c++std=c++11` in the `Additional SPL compiler options` field. Click `OK`.
 
 7. Your imported example project should build correctly now.
