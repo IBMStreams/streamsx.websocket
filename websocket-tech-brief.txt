@@ -1,6 +1,6 @@
 ============================================================
 First created on: February/22/2020
-Last modified on: June/30/2020
+Last modified on: July/13/2020
 
 Purpose of this toolkit
 -----------------------
@@ -108,7 +108,7 @@ Such requirements are explained below.
 1. This toolkit uses WebSocket, HTTP to communicate with the remote client and/or
 server applications. 
 
-2. On the IBM Streams application development machine (where the application code is 
+2. On the IBM Streams application development machine(s) (where the application code is 
 compiled to create the application bundle), it is necessary to download and install 
 the boost_1_73_0 as well as the websocketpp version 0.8.2. 
 Please note that this is not needed on the Streams application execution machines.
@@ -294,7 +294,7 @@ We will also show here the steps needed to import one of the built-in examples. 
 
 6) In the resulting dialog box, select Other and enter `--c++std=c++11` in the `Additional SPL compiler options` field. Click `OK`.
 
-7) Your imported example project should build correctly now.
+7) Your imported example project should build correctly now provided you meet all the other toolkit dependencies.
 
 Official documentation for this toolkit
 ---------------------------------------

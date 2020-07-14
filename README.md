@@ -32,20 +32,23 @@ At a very high level, this toolkit shares the same design goal as two other oper
 The three data access patterns highlighted above as promoted by the operators in this toolkit can be explained via the following real-life analogies.
 
 **Many to One**: On a happy occasion like birthday, many family members and friends send greeting messages to that one person who is enjoying the special day.
-![MTO](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSourceTester/etc/mto.png)
+
+![MTO](https://github.com/IBMStreams/streamsx.websocket/blob/develop/samples/WebSocketSourceTester/etc/mto.png)
 
 **One to One**: In a performance evaluation meeting, a manager and an employee exchange information back and forth about the work accomplished. 
-![OTO](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSendReceiveTester/etc/oto.png)
+
+![OTO](https://github.com/IBMStreams/streamsx.websocket/blob/develop/samples/WebSocketSendReceiveTester/etc/oto.png)
 
 **One to Many**: In an annual meeting, a CEO gives data points about the company's business performance to the curiously listening shareholders.
-![OTM](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSinkTester/etc/otm.png)
+
+![OTM](https://github.com/IBMStreams/streamsx.websocket/blob/develop/samples/WebSocketSinkTester/etc/otm.png)
 
 ## Requirements
 There are certain important requirements that need to be satisfied in order to use the IBM Streams websocket toolkit in Streams applications. Such requirements are explained below.
 
 1. This toolkit uses WebSocket, HTTP to communicate with the remote client and/or server applications. 
 
-2. On the IBM Streams application development machine (where the application code is compiled to create the application bundle), it is necessary to download and install the boost_1_73_0 as well as the websocketpp version 0.8.2. Please note that this is not needed on the Streams application execution machines. For the essential steps to meet this requirement, please refer to the above-mentioned documentation URL or a file named websocket-tech-brief.txt available in this toolkit's top-level directory.
+2. On the IBM Streams application development machine(s) (where the application code is compiled to create the application bundle), it is necessary to download and install the boost_1_73_0 as well as the websocketpp version 0.8.2. Please note that this is not needed on the Streams application execution machines. For the essential steps to meet this requirement, please refer to the above-mentioned documentation URL or a file named websocket-tech-brief.txt available in this toolkit's top-level directory.
 
 3. It is necessary to create a self-signed or Root CA signed TLS/SSL certificate in PEM format and point to that certificate file at the time of starting the IBM Streams application that invokes the server-based WebSocketSource and WebSocketSink operators present in this toolkit. If you don't want to keep pointing to your TLS/SSL certificate file every time you start the IBM Streams application, you can also copy the full certificate file to your Streams application's `etc` directory as ws-server.pem and compile your application which will then be used by default. The other two client-based operators WebSocketSendReceive and HttpPost can optionally be pointed to their own TLS/SSL certificate at the time of getting invoked mainly for the purpose of performing client (mutual) authentication. All the four operators in this toolkit can also be pointed with the public certificate of their remote party in order to do trusted server or client (two-way) TLS certificate verification/authentication.
 
