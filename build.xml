@@ -169,9 +169,6 @@
 		description="Clean up downloaded library sources and the libraries build artifacts from ext directory">
 		<delete includeemptydirs="true" failonerror="false">
 			<fileset dir="${ext.dir}"/>
-			<fileset dir="${lib.dir}">
-			   <include name="*.a"/>
-			</fileset>
 		</delete>
 	</target>
 
@@ -187,12 +184,13 @@
 			<arg value="cat /proc/cpuinfo | grep processor | wc -l"/>
 		</exec>
 		<exec executable="./b2" dir="${ext.dir}/boost-install-files/boost_${boost.version.name}" failonerror="true">
-			<arg value="--no-cmake-config"/>
+			<arg value="--no-cmake-config"/> <!-- do not create a cmake directory in the lib dir -->
 			<arg value="--with-chrono"/>
 			<arg value="--with-random"/>
 			<arg value="--with-system"/>
 			<arg value="--with-thread"/>
 			<arg value="-j${no.cpus}"/>
+			<arg value="link=shared"/> <!-- do not output static libraries -->
 			<arg value="install"/>
 		</exec>
 	</target>
