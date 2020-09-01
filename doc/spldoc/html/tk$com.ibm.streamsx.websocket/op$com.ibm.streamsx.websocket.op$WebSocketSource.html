@@ -22,7 +22,7 @@
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.0.6</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSource</p>
+<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.0.7</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSource</p>
 
 </div>
 
@@ -32,7 +32,7 @@
 
 <div class="section">
 
-<p class="p">      The server-based WebSocketSource operator is designed to receive        text (plain text, JSON or XML) or binary data from the remote WebSocket and HTTP clients.        This operator can also accept HTTP GET, HTTP PUT and HTTP POST requests from the remote HTTP clients.       One or more remote clients can connect to this operator either via plain WebSocket/HTTP (ws or http) or       via TLS WebSocket/HTTP (wss or https). For a TLS WebSocket/HTTP, a server side certificate must be       generated first and the text file available in the etc directory of this toolkit provides        useful details on that topic. For a HTTP(S) GET/PUT/POST client to send text based data, it can have       its Content-Type header as text/plain or application/xml or application/json. To send        binary based data, a HTTP(S) PUT/POST client must have its Content-Type header as        application/octet-stream and it can use a standard mechanism available in many web frameworks       for including multipart MIME content.
+<p class="p">      The server-based WebSocketSource operator is designed to receive        text (plain text, JSON or XML) or binary data from the remote WebSocket and HTTP clients.        This operator can also accept HTTP GET, HTTP PUT and HTTP POST requests from the remote HTTP clients.       One or more remote clients can connect to this operator either via plain WebSocket/HTTP (ws or http) or       via TLS WebSocket/HTTP (wss or https). For a TLS WebSocket/HTTP, a server side certificate must be       generated first and the text file available in the etc directory of this toolkit provides        useful details on that topic. For a HTTP(S) GET/PUT/POST client to send text based data, it can have       its Content-Type header as text/plain or application/xml or application/json. To send        binary based data, a HTTP(S) PUT/POST client must have its Content-Type header as        application/octet-stream and it can use a standard mechanism available in many web frameworks       for including multipart MIME content. WebSocket connections established with this operator are       always persistent and long running. HTTP connections established with this operator can also       be made persistent (Keep-Alive) by configuring it to do so. Persistent (Keep-Alive) HTTP       connections will be useful in improving throughput for non-browser based client applications with a        need to send data items iteratively in a tight loop.
 </p>
 
 <p class="p">      This operator can also be optionally configured to send an ack back to the remote WebSocket clients after receiving a       certain number of data items (tuples) from a given client. This is configured by one of the operator parameters explained below.       This feature can be used by a remote WebSocket client to wait for an ack after sending a certain number of data items.       A missing ack can indicate the remote client about a server side network error or an operator crash/error and make that       remote WebSocket client to retransmit the previously sent, but unacknowledged data items (tuples).
@@ -99,9 +99,9 @@
  
   <dt class="dt dlterm">Parameters</dt>
 
-  <dd class="dd">This operator supports 21 parameters.
+  <dd class="dd">This operator supports 23 parameters.
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__allowHttpPost">allowHttpPost</a>, <a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__initDelay">initDelay</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__numberOfMessagesToReceiveBeforeAnAck">numberOfMessagesToReceiveBeforeAnAck</a>, <a class="xref" href="#spldoc_operator__parameter__responseTimeout">responseTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__allowHttpPost">allowHttpPost</a>, <a class="xref" href="#spldoc_operator__parameter__allowPersistentHttpConnections">allowPersistentHttpConnections</a>, <a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__initDelay">initDelay</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__numberOfMessagesToReceiveBeforeAnAck">numberOfMessagesToReceiveBeforeAnAck</a>, <a class="xref" href="#spldoc_operator__parameter__responseTimeout">responseTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 </dd>
@@ -448,6 +448,30 @@
 
             </dd>
 
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getFullUrlBeingAccessedByTheClient()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the full URL being accessed by the remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getFileNameInUrlForHttpGet()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the file name in the URL for HTTP GET based requests.
+</p>
+              <p class="p"/>
+
+            </dd>
+
                       </dl>
         </dd>
 
@@ -544,9 +568,9 @@
 
 <div class="section">
 <p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters">Parameters</a></strong></p>
-This operator supports 21 parameters.
+This operator supports 23 parameters.
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__allowHttpPost">allowHttpPost</a>, <a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__initDelay">initDelay</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__numberOfMessagesToReceiveBeforeAnAck">numberOfMessagesToReceiveBeforeAnAck</a>, <a class="xref" href="#spldoc_operator__parameter__responseTimeout">responseTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__allowHttpPost">allowHttpPost</a>, <a class="xref" href="#spldoc_operator__parameter__allowPersistentHttpConnections">allowPersistentHttpConnections</a>, <a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__initDelay">initDelay</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__numberOfMessagesToReceiveBeforeAnAck">numberOfMessagesToReceiveBeforeAnAck</a>, <a class="xref" href="#spldoc_operator__parameter__responseTimeout">responseTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 <dl class="dl">
@@ -586,10 +610,80 @@ This operator supports 21 parameters.
 
   
   
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__allowPersistentHttpConnections"><!-- --></a><tt class="ph tt">allowPersistentHttpConnections</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter indicates whether this operator will allow the client applications to make persistent (Keep-Alive) HTTP connections. It is better to allow this only for non-browser based client applications. (Default is false)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
      <dt class="dt dlterm"><a name="spldoc_operator__parameter__certificateFileName"><!-- --></a><tt class="ph tt">certificateFileName</tt></dt>
 
      <dd class="dd">
 <p class="p">This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. Default is to read ws-server.pem from the etc sub-directory of the application that is invoking this operator.
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__certificatePassword"><!-- --></a><tt class="ph tt">certificatePassword</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies a password needed for decrypting the WebSocket server's private key in the PEM file. Default is an empty string.
 </p>
 
   <dl class="dl">

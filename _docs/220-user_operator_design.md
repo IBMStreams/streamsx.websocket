@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the streamsx.websocket toolkit operators."
-last_modified_at: 2020-06-30T23:12:48+01:00
+last_modified_at: 2020-08-31T10:20:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -45,6 +45,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | --- | --- | --- | --- |
 | tlsPort | `uint32` | `443` | This parameter specifies the WebSocket TLS port number. |
 | certificateFileName | `rstring` | `etc/ws-server.pem present inside the Streams application` | This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. |
+| certificatePassword | `rstring` | `Empty string` | This parameter specifies a password needed for decrypting the WebSocket server's private key in the PEM file. |
 | trustedClientCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. |
 | trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"] |
 | nonTlsEndpointNeeded | `boolean` | `false` | This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. |
@@ -64,6 +65,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | clientWhitelist | `list<rstring>` | `An empty list` | This parameter specifies a list of client IP addresses to accept connections only from those clients. Default is an empty list to have no client connection restrictions. |
 | maxClientConnectionsAllowed | `uint32` | `32` | This parameter specifies the maximum number of concurrent clients allowed to connect with this operator. After this limit is reached, new client connections will be denied until any existing clients close their connections. |
 | responseTimeout | `uint32` | `20` | This parameter specifies the time in seconds before which the application logic should send its pending response to a remote client. If this time expires, a timeout handler thread in this operator will do the necessary internal clean-up work. |
+| allowPersistentHttpConnections | `boolean` | `false` | This parameter indicates whether this operator will allow the client applications to make persistent (Keep-Alive) HTTP connections. It is better to allow this only for non-browser based client applications. |
 
 ### WebSocketSource operator's custom output functions
 Following are the custom output functions supported by the WebSocketSource operator. These functions can be called as needed within the output clause of this operator's SPL invocation code.
@@ -83,6 +85,8 @@ Following are the custom output functions supported by the WebSocketSource opera
 | `map<rstring, rstring> getHttpRequestHeaders()` | Returns an SPL map holding the HTTP headers that were part of a client's HTTP GET/PUT/POST request. |
 | `rstring getHttpRequestMethodName()` | Returns a string indicating the method name (GET, PUT or POST) found in the client's HTTP request. |
 | `map<rstring, rstring> getUrlQueryStringKeyValuePairs()` | Returns an SPL map holding the key/value pairs found in the URL query string of a client's HTTP GET request. |
+| `rstring getFullUrlBeingAccessedByTheClient()` | Returns a string indicating the full URL being accessed by the remote client. |
+| `rstring getFileNameInUrlForHttpGet()` | Returns a string indicating the file name in the URL for HTTP GET based requests. |
 
 *******************************
 
@@ -99,6 +103,7 @@ Following are the parameters accepted by the WebSocketSendReceive operator. Some
 | --- | --- | --- | --- |
 | url | `rstring` | `An empty string` | This parameter specifies the URL of the remote WebSocket server. |
 | certificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the WebSocket client's private key and public certificate holding PEM file name. |
+| certificatePassword | `rstring` | `Empty string` | This parameter specifies a password needed for decrypting the WebSocket client's private key in the PEM file. |
 | trustedServerCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that contains the public certificate of the trusted remote server. This allows for the server authentication. If this parameter is not used or empty, then there will be no server authentication. |
 | trustedServerX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted server's public certificate. It is helpful in performing the server authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: \["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"\] |
 | websocketLiveMetricsUpdateNeeded | `boolean` | `true` | This parameter specifies whether live update for this operator's custom metrics is needed. |
@@ -134,6 +139,7 @@ Following are the parameters accepted by the WebSocketSink operator. Some parame
 | --- | --- | --- | --- |
 | tlsPort | `uint32` | `443` | This parameter specifies the WebSocket TLS port number. |
 | certificateFileName | `rstring` | `etc/ws-server.pem present inside the Streams application` | This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. |
+| certificatePassword | `rstring` | `Empty string` | This parameter specifies a password needed for decrypting the WebSocket server's private key in the PEM file. |
 | trustedClientCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. |
 | trustedClientX509SubjectIdentifiers | `list<rstring>` | `An empty list` | This parameter specifies a list of verifiable identifiers present in the subject field of the trusted client's public certificate. It is helpful in performing the client (mutual) authentication using the unsupported certificate types such as the self-signed ones. Some examples of such identifiers: ["ST=New York","L=Armonk","O=IBM","CN=www.ibm.com","emailAddress=websocket.streams@ibm.com"] |
 | nonTlsEndpointNeeded | `boolean` | `false` | This parameter specifies whether a WebSocket (plain) non-TLS endpoint is needed. |
@@ -170,5 +176,6 @@ Following are the parameters accepted by the HttpPost operator. Some parameters 
 | tlsKeyPassword | `rstring` | `An empty string` | This parameter specifies the the password for the keys stored in the key store. |
 | tlsTrustStoreFile | `rstring` | `An empty string` | This parameter if present should point to a trust store file in JKS format which will be used for authenticating the remote web server. This store should have server's "public certificate to verify its identity. When this parameter is present, then the tlsTrustStorePassword can be optional. |
 | tlsTrustStorePassword | `rstring` | `An empty string` | This parameter specifies the password for the trust store. |
+| createPersistentHttpConnection | `boolean` | `false` | This parameter specifies if we have to a create a persistent (Keep-Alive) HTTP connection or not. |
 
 *******************************

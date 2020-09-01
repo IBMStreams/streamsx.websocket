@@ -2,7 +2,7 @@
 title: "Toolkit Usage Overview"
 permalink: /docs/user/overview/
 excerpt: "How to use this toolkit."
-last_modified_at: 2020-07-01T08:28:48+01:00
+last_modified_at: 2020-08-30T11:59:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -23,15 +23,15 @@ This toolkit requires the following two open source packages that are not shippe
    - Obtain the official boost version boost_1_73_0 from here:
            https://www.boost.org/users/history/version_1_73_0.html
    
-   - A few .so files from the boost_1_73_0/lib directory are copied into the `impl/lib` directory of this toolkit.
+   - A few .so files from the boost_1_73_0/lib directory are copied into the `lib` directory of this toolkit.
        - (It is needed for the dynamic loading of these .so files when the Streams application using this toolkit is launched.)
        
-   - The entire boost_1_73_0/include directory is copied into the `impl/include` directory of this toolkit. [Around 200 MB in size]
-       - (It is needed for a successful compilation of the Streams application that uses this toolkit. Please note that these include files will not bloat the size of that application's SAB file since the `impl/include` directory will not be part of the SAB file.)
+   - The entire boost_1_73_0/include directory is copied into the `include` directory of this toolkit. [Around 200 MB in size]
+       - (It is needed for a successful compilation of the Streams application that uses this toolkit. Please note that these include files will not bloat the size of that application's SAB file since the `include` directory will not be part of the SAB file.)
        
 2. websocketpp v0.8.2
-   - The entire websocketpp directory is copied into the `impl/include` directory of this toolkit. [Around 1.5 MB in size]
-       - (It is needed for a successful compilation of the Streams application that uses this toolkit. Please note that these include files will not bloat the size of that application's SAB file  since the `impl/include` directory will not be part of the SAB file.)
+   - The entire websocketpp directory is copied into the `include` directory of this toolkit. [Around 1.5 MB in size]
+       - (It is needed for a successful compilation of the Streams application that uses this toolkit. Please note that these include files will not bloat the size of that application's SAB file  since the `include` directory will not be part of the SAB file.)
 
 3. Open SSL libraries in Linux
    - On all your IBM Streams application machines, you have to ensure that the openssl-devel-1.0.2k-12 and openssl-libs-1.0.2k-12 (or a higher version) are installed. This can be verified via this command: `rpm -qa | grep -i openssl`
@@ -44,6 +44,8 @@ This toolkit is packaged with a comprehensive build.xml automation file that wil
 3. `ant download-clean`        [Approximately 2 minutes]
 
 If all those commands ran successfully, this toolkit is ready for use.
+
+If there is no direct Internet access from the IBM Streams machine and if there is a need to go through a proxy server, then the `ant all` command may not work. In that case, you can try this command instead. `ant all -Dwebsocket.archive=file://localhost$(pwd)/ext -Dwebsocket.version=0.8.2 -Dboost.archive.src0=file://localhost$(pwd)/ext/boost-install-files/boost_1_73_0.tar.gz`
 
 ## A must do in the Streams applications that will use this toolkit
 i. You must add this toolkit as a dependency in your application.
@@ -111,11 +113,11 @@ st  submitjob  -d  <YOUR_STREAMS_DOMAIN>  -i  <YOUR_STREAMS_INSTANCE>  com.ibm.s
 ## Examples that showcase this toolkit's features
 This toolkit ships with the following examples that can be used as reference applications. These examples showcase the full feature set of the WebSocketSource, WebSocketSendReceive, WebSocketSink and the HttpPost operators that are available within this toolkit. Every example below will have the client and server-side application needed to test it. All the examples went through extensive testing in the IBM Streams lab in New York and they include excellent code documentation in the source files to guide the application/solution development engineers. More details about these examples can be obtained in a following section.
 
-* [WebSocketSourceTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSourceTester)
-* [WebSocketSourceWithResponseTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSourceWithResponseTester)
-* [WebSocketSendReceiveTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSendReceiveTester)
-* [WebSocketSinkTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/WebSocketSinkTester)
-* [HttpPostTester](https://github.com/IBMStreams/streamsx.websocket/tree/master/samples/HttpPostTester)
+* [WebSocketSourceTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/WebSocketSourceTester)
+* [WebSocketSourceWithResponseTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/WebSocketSourceWithResponseTester)
+* [WebSocketSendReceiveTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/WebSocketSendReceiveTester)
+* [WebSocketSinkTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/WebSocketSinkTester)
+* [HttpPostTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/HttpPostTester)
 
 In the `etc` sub-directory of every example shown above, there is a shell script that can be used to run a given example with synthetic data and then verify the application behavior and the result. That shell script was originally written for running a given example in the IBM Streams lab in New York. It is easy to make minor changes in that shell script and use it in any other IBM Streams test environment for running a given example.
 
