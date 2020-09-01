@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: May/28/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/31/2020
 
 This is an example that shows how binary data can be transferred
 from a HTTP client to a WebSocketSource operator. It shows 
@@ -92,7 +92,7 @@ composite HttpBinarySendToWebSocketSource {
         // Default is an empty list to indicate no url context path.
         // You can expose any number of context paths for the 
         // remote clients to access this WebSocket server endpoint. 
-        // e-g: []    (OR)    ["Orders", "", "MyServices/Banking/Deposit"]
+        // e-g: []    (OR)    ['Orders', '', 'MyServices/Banking/Deposit']
 		expression<list<rstring>> $urlContextPath : (list<rstring>)
 			getSubmissionTimeValue("urlContextPath", "[]");
 		// Server side certificate (.pem) file for the WebSocket server.
@@ -113,6 +113,9 @@ composite HttpBinarySendToWebSocketSource {
 		// etc/creating-a-self-signed-certificate.txt
 		expression<rstring> $certificateFileName :
 			getSubmissionTimeValue("certificateFileName", "");
+		// Is a password needed for the private key in the certificate file?
+		expression<rstring> $certificatePassword : 
+			getSubmissionTimeValue("certificatePassword", "");
 		// Do you want to specifiy a file name that contains the public certificates of
 		// the trusted client(s). If this file name is not empty, then the
 		// WebSocketSource operator will perform a client (mutual) authentication.
@@ -132,7 +135,7 @@ composite HttpBinarySendToWebSocketSource {
 		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
 		//
 		// So your value for this submission time parameter can be as shown here.
-		// ["emailAddress=websocket.streams@ibm.com", "CN=www.ibm.com"]
+		// ['emailAddress=websocket.streams@ibm.com', 'CN=www.ibm.com']
 		expression<list<rstring>> $trustedClientX509SubjectIdentifiers :
 			(list<rstring>)getSubmissionTimeValue("trustedClientX509SubjectIdentifiers", "[]");		
 		// Is live metrics needed for the WebSocketSource operator?
@@ -230,6 +233,10 @@ composite HttpBinarySendToWebSocketSource {
 		// Do we want to impose a tiny delay in milliseconds between consecutive HTTP Posts?
 		expression<int32> $delayBetweenConsecutiveHttpPosts : 
 			(int32)getSubmissionTimeValue("delayBetweenConsecutiveHttpPosts", "0");
+			
+		// Do you want to create a persistent (Keep-Alive) HTTP connection?
+		expression<boolean> $createPersistentHttpConnection :
+			(boolean)getSubmissionTimeValue("createPersistentHttpConnection", "false");	
 		// =============================================================
 
 	type
@@ -355,6 +362,9 @@ composite HttpBinarySendToWebSocketSource {
 				// Do you want to accept all the TLS server certificates (an insecure option)?
 				tlsAcceptAllCertificates: $tlsAcceptAllCertificates;
 				//
+				// Do you want to create a persistent (Keep-Alive) HTTP connection?
+				createPersistentHttpConnection: $createPersistentHttpConnection;
+				//
 				/*
 				// =============== START OF TLS CONFIGURATION ===============
 				// You can enable or disable trust store and key store features of
@@ -432,6 +442,7 @@ composite HttpBinarySendToWebSocketSource {
 			param
 				tlsPort: $tlsPort;
 				certificateFileName: _certificateFileName;
+				certificatePassword: $certificatePassword;
 				trustedClientCertificateFileName: $trustedClientCertificateFileName;
 				// Use this only when you have trouble authenticating clients that 
 				// have self signed certificates.

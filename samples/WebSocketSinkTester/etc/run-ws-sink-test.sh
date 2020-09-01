@@ -2,7 +2,7 @@
 #
 #--------------------------------------------------------------------
 # First created on: May/15/2020
-# Last modified on: Jun/29/2020
+# Last modified on: Aug/31/2020
 #
 # This is a script that I used to test the WebSocketSink operator in
 # our IBM Streams lab in New York. You can make minor changes here and
@@ -81,4 +81,4 @@ sleep 20
 echo Starting WebSocketSinkTester.
 # Start the WebSocketSink server on instance i1
 # [Please note that this application offers many submission time parameters. We are using only a few here.]
-streamtool submitjob -d d1 -i i1 ~/workspace32/WebSocketSinkTester/output/com.ibm.streamsx.websocket.sample.WebSocketSinkTester.sab -P nonTlsEndpointNeeded=true -P clientWhitelist='["10.6.33.13", "10.6.33.17", "10.6.100.124", "10.6.100.168", "10.6.100.169", "10.6.100.170", "10.6.100.171"]' -P urlContextPath='["MyServices/Banking/Deposit", "", "Test/This/Context", "Work/Is/Worship"]'
+streamtool submitjob -d d1 -i i1 ~/workspace32/WebSocketSinkTester/output/com.ibm.streamsx.websocket.sample.WebSocketSinkTester.sab -P certificatePassword=  -P nonTlsEndpointNeeded=true -P clientWhitelist='["10.6.33.13", "10.6.33.17", "10.6.100.124", "10.6.100.168", "10.6.100.169", "10.6.100.170", "10.6.100.171"]' -P urlContextPath='["MyServices/Banking/Deposit", "", "Test/This/Context", "Work/Is/Worship"]'

@@ -9,7 +9,7 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/30/2020
 
 This Java operator is an utility operator available in the
 streamsx.websocket toolkit. It can be used to do HTTP(S) post of
@@ -177,6 +177,15 @@ public class HttpPost extends AbstractOperator {
 	private String tlsKeyPassword = "";
 	private String tlsTrustStoreFile = "";
 	private String tlsTrustStorePassword = "";
+	// This tells us if we have to a create a persistent (Keep-Alive) HTTP connection or not.
+	private boolean createPersistentHttpConnection = false;
+
+    // Create a HTTP put or post object.
+	// As of May/24/2020, this operator supports the posting of 
+	// both text data and binary data.
+	org.apache.http.client.methods.HttpPut httpPut = null;
+	org.apache.http.client.methods.HttpPost httpPost = null;
+	org.apache.http.client.methods.HttpGet httpGet = null;
 	
 	private long httpPostCnt = 0;
 	
@@ -231,6 +240,16 @@ public class HttpPost extends AbstractOperator {
     	if(lsi.get(0).getStreamSchema().getAttribute("urlQueryString") != null) {
     		urlQueryStringInputAttributePresent = true;
     	}
+    	
+    	// Let us create the HTTP request objects for PUT and POST only once and
+    	// use them throughout the entire life of this operator. Because, URL is
+    	// the same inside this operator across all PUT and POST requests.
+		httpPut = new org.apache.http.client.methods.HttpPut(url); 
+    	httpPost = new org.apache.http.client.methods.HttpPost(url); 
+    	// For GET, we will create a request object here for now.
+    	// However, we have to create it as needed in the GET logic later 
+    	// depending on whether the URL contains query string or not.
+    	httpGet = new org.apache.http.client.methods.HttpGet(url);
 	} // End of initialize method.
 
     /**
@@ -408,19 +427,11 @@ public class HttpPost extends AbstractOperator {
         if(httpMethod.equalsIgnoreCase("PUT") == true || 
            httpMethod.equalsIgnoreCase("POST") == true) {
 	        // ============= START OF HTTP PUT/POST PROCESSING =============
-	        // Create a HTTP put or post object.
-	    	// As of May/24/2020, this operator supports the posting of 
-	    	// both text data and binary data.
-        	org.apache.http.client.methods.HttpPut httpPut = null;
-	    	org.apache.http.client.methods.HttpPost httpPost = null;
-	    	
 	    	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	    		httpPut = new org.apache.http.client.methods.HttpPut(url); 
 		    	// At this time, the incoming tuple must have its string or 
 		    	// blob PUT content in one of its attributes. 
 		    	httpPut.setHeader("Content-Type", contentType);
 	    	} else {
-		    	httpPost = new org.apache.http.client.methods.HttpPost(url);  
 		    	// At this time, the incoming tuple must have its string or 
 		    	// blob POST content in one of its attributes. 
 		    	httpPost.setHeader("Content-Type", contentType);
@@ -507,9 +518,21 @@ public class HttpPost extends AbstractOperator {
 	        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
 	        //
 	        if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        	httpPut.setHeader("connection", "close");
+	        	if(createPersistentHttpConnection == true) {
+	        		// If user opted for a persistent HTTP connection, we can
+	        		// send this header to the server. It is upto the server to honor this option.
+	        		httpPut.setHeader("connection", "Keep-Alive");
+	        	} else {
+	        		httpPut.setHeader("connection", "close");
+	        	}
 	        } else {
-	        	httpPost.setHeader("connection", "close");
+	        	if(createPersistentHttpConnection == true) {
+	        		// If user opted for a persistent HTTP connection, we can
+	        		// send this header to the server. It is upto the server to honor this option.
+	        		httpPost.setHeader("connection", "Keep-Alive");
+	        	} else {
+	        		httpPost.setHeader("connection", "close");
+	        	}
 	        }
 	        
 	        // We will now set the application-specific custom HTTP request headers if any sent via
@@ -655,10 +678,8 @@ public class HttpPost extends AbstractOperator {
 	        // next HTTP GET/PUT/POST for the next incoming tuple.
 	        if(httpMethod.equalsIgnoreCase("PUT") == true) {
 		        httpPut.releaseConnection();
-		        httpPut = null;	        	
 	        } else {
 		        httpPost.releaseConnection();
-		        httpPost = null;	        	
 	        }
 	        
 	        outTuple.setInt("statusCode", responseStatusCode);
@@ -696,7 +717,6 @@ public class HttpPost extends AbstractOperator {
         	// key=value pairs. The content type application/x-www-form-urlencoded is
         	// not applicable for HTTP GET since that particular content type is associated 
         	// only with putting/posting data from HTML forms or in a programmatic way.
-        	org.apache.http.client.methods.HttpGet httpGet = null;
         	String urlQueryString = "";
 
         	if(urlQueryStringInputAttributePresent == true) {
@@ -704,7 +724,7 @@ public class HttpPost extends AbstractOperator {
         		urlQueryString = tuple.getString("urlQueryString");
         	}
         	
-        	if(urlQueryString.equalsIgnoreCase("") == true) {
+        	if(urlQueryString.equalsIgnoreCase("") == false) {
         		// No URL query string specified by the user.
         		// We can use just the URL that is configured and
         		// get a new http GET object for us to work with.
@@ -736,7 +756,17 @@ public class HttpPost extends AbstractOperator {
 	        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
 	        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
 	        //
-	        httpGet.setHeader("connection", "close");
+	        // For GET, we will not do persistent connections even if the user opted for it.
+	        // Because, it is not clear whether persistent connection brings us a great benefit as 
+	        // GET URLs can keep changing with new query strings. So, we will always send this header.
+	        // httpGet.setHeader("connection", "close");
+        	if(createPersistentHttpConnection == true) {
+        		// If user opted for a persistent HTTP connection, we can
+        		// send this header to the server. It is upto the server to honor this option.
+        		httpGet.setHeader("connection", "Keep-Alive");
+        	} else {
+        		httpGet.setHeader("connection", "close");
+        	}
 	        
 	        // We will now set the application-specific custom HTTP request headers if any sent via
 	        // the requestHeaders attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
@@ -776,7 +806,7 @@ public class HttpPost extends AbstractOperator {
 	            // Release the HTTP connection which is a must after 
 	            // consuming the response from the remote web server.
 	            // If we don't do this, it will start hanging when doing the 
-	            // next HTTP GET/PUT/POST for the next incoming  tuple.
+	            // next HTTP GET/PUT/POST for the next incoming tuple.
 	            httpGet.releaseConnection();
 	            // Update the operator metrics.
 	            nHttpPostFailed.increment();
@@ -855,9 +885,8 @@ public class HttpPost extends AbstractOperator {
 	        // Release the HTTP connection which is a must after 
 	        // consuming the response from the remote web server.
 	        // If we don't do this, it will start hanging when doing the 
-	        // next HTTP POST for the next incoming tuple.
+	        // next HTTP GET/PUT/POST for the next incoming tuple.
 		    httpGet.releaseConnection();
-		    httpGet = null;	        	
 	        
 	        outTuple.setInt("statusCode", responseStatusCode);
 	        outTuple.setString("statusMessage", responseStatusReason);
@@ -1004,10 +1033,17 @@ public class HttpPost extends AbstractOperator {
     public void setTlsTrustStorePassword(String val) {
     	tlsTrustStorePassword = val;
     }
+
+    @Parameter (name="createPersistentHttpConnection", 
+		description="This parameter specifies if we have to a create a persistent " +
+			"(Keep-Alive) HTTP connection or not. (Default: false)", optional=true)
+    public void setCreatePersistentHttpConnection(boolean val) {
+    	createPersistentHttpConnection= val;
+    }
         
     public static final String DESC = "This operator posts/sends the incoming tuple's text or binary content to a " +
-    		"HTTP or HTTPS endpoint specified in the operator parameter named url. If needed, this operator can also be " +
-    		"made to perform GET and PUT HTTP request activities as explained here." +
+    		"HTTP or HTTPS persistent (Keep-Alive) or non-persistent endpoint specified in the operator parameter named url. " + 
+    		"If needed, this operator can also be made to perform GET and PUT HTTP request activities as explained here. " +
     		"Every incoming tuple must have an `rstring strData` attribute whose text content (Plain text or XML or JSON) or " +
     		"a `blob blobData` attribute whose binary content that needs to be sent as the HTTP(S) PUT or POST payload. " +
     		"So, one of the input tuple's attributes should be of type `rstring` carrying the text payload if any to be sent, " +

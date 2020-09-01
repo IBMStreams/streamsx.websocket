@@ -17,7 +17,11 @@
       its Content-Type header as text/plain or application/xml or application/json. To send 
       binary based data, a HTTP(S) PUT/POST client must have its Content-Type header as 
       application/octet-stream and it can use a standard mechanism available in many web frameworks
-      for including multipart MIME content.
+      for including multipart MIME content. WebSocket connections established with this operator are
+      always persistent and long running. HTTP connections established with this operator can also
+      be made persistent (Keep-Alive) by configuring it to do so. Persistent (Keep-Alive) HTTP
+      connections will be useful in improving throughput for non-browser based client applications with a 
+      need to send data items iteratively in a tight loop.
             
       This operator can also be optionally configured to send an ack back to the remote WebSocket clients after receiving a
       certain number of data items (tuples) from a given client. This is configured by one of the operator parameters explained below.
@@ -213,6 +217,14 @@
             <description>Returns an SPL map holding the key/value pairs found in the URL query string of a client's HTTP GET request.</description>
             <prototype><![CDATA[map<rstring, rstring> getUrlQueryStringKeyValuePairs()]]></prototype>
           </function>
+           <function>
+            <description>Returns a string indicating the full URL being accessed by the remote client.</description>
+            <prototype><![CDATA[rstring getFullUrlBeingAccessedByTheClient()]]></prototype>
+          </function>
+           <function>
+            <description>Returns a string indicating the file name in the URL for HTTP GET based requests.</description>
+            <prototype><![CDATA[rstring getFileNameInUrlForHttpGet()]]></prototype>
+          </function>
 		</customOutputFunction>
       </customOutputFunctions>
 
@@ -256,6 +268,16 @@
       <parameter>
         <name>certificateFileName</name>
         <description>This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. Default is to read ws-server.pem from the etc sub-directory of the application that is invoking this operator.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>certificatePassword</name>
+        <description>This parameter specifies a password needed for decrypting the WebSocket server's private key in the PEM file. Default is an empty string.</description>
         <optional>true</optional>
         <rewriteAllowed>true</rewriteAllowed>
         <expressionMode>AttributeFree</expressionMode>
@@ -450,6 +472,16 @@
         <rewriteAllowed>true</rewriteAllowed>
         <expressionMode>AttributeFree</expressionMode>
         <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>allowPersistentHttpConnections</name>
+        <description>This parameter indicates whether this operator will allow the client applications to make persistent (Keep-Alive) HTTP connections. It is better to allow this only for non-browser based client applications. (Default is false)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
         <cardinality>1</cardinality>
       </parameter>
     </parameters>

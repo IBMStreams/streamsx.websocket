@@ -41,6 +41,74 @@ implementation C++ file (WebSocketSource_cpp.cgt).
 #define CLIENT_STARTED_A_WS_SESSION 2
 #define CLIENT_ENDED_AN_STT_SESSION 3
 
+/*
+Please read this if you want to support persistent HTTP connections
+-------------------------------------------------------------------
+websocket++ library's support of persistent HTTP client connections has not 
+yet been pulled into its main release as of Aug/2020. However, that feature has 
+already been built, fully tested and available in a separate branch which is
+an incremental update to the official release v0.8.2. You can read more
+about this in these URLs.
+
+https://github.com/zaphoyd/websocketpp/issues/513
+https://github.com/zaphoyd/websocketpp/pull/541
+
+Look at the http_echo_server.cpp file in this URL for how the new feature gets used in an application.
+https://github.com/zaphoyd/websocketpp/pull/541/commits/b8139e4bf1c2013c79621acc8ee1e3cd5b275813
+
+Persistent HTTP connection feature may be an overkill for the client applications that 
+send data sporadically (e-g: Browser-based applications). However, this feature is beneficial 
+for the non-browser based client applications that plan to send hundreds of data items 
+continuously in a tight loop or to send periodic heavy bursts of data items.  
+
+Until this feature is made available in a future release of the websocketpp library, 
+any streamsx.websocket toolkit user who wants to support the persistent HTTP (Keep-Alive) 
+client connections in their application(s) can follow these simple instructions.
+
+1) Download the streamsx.websocket toolkit v1.0.7 or later from the IBMStreams GitHub.
+2) Get it built and installed via the ant tool as explained in the documentation.
+3) Manually download the websocketpp library from this URL that has the 
+   persistent HTTP connection feature.
+   https://github.com/sergeyroots/websocketpp/tree/feature/enable-persistent-http-requests
+   [Click on the green color "Code" button and download the ZIP.]
+4) Unzip the downloaded file on your IBM Streams Linux machine.
+5) Inside your com.ibm.streamsx.websocketpp/include directory, delete the 
+   entire websocketpp sub-directory automatically installed by step (2).
+6) From the resulting unzipped directory in step (4), move the entire websocketpp
+   sub-directory to your com.ibm.streamsx.websocketpp/include directory.
+7) Inside your com.ibm.streamsx.websocketpp/com.ibm.streamsx.websocket.op/WebSocketSource 
+   sub-directory, run the following two copy commands.
+   a) cp  WebSocketSource_h.cgt.persistent-http   WebSocketSource_h.cgt
+   b) cp  WebSocketSource_cpp.cgt.persistent-http   WebSocketSource_cpp.cgt
+   c) rm  -f   *.pm
+8) You can compile your application(s) now after which it will be able to  
+   handle the persistent HTTP (Keep-Alive) client connections.
+   --> A new operator parameter "allowPersistentHttpConnections" gives 
+   control to the user to tell this operator whether to allow or not allow
+   persistent HTTP connections from clients. By default, this parameter is
+   set to false. User can override it via job submission time parameter.
+   --> When this operator serves web-browser based client applications,
+   it is better to set allowPersistentHttpConnections to false in order to
+   avoid web page rendering issues. When it serves non-browser based client
+   applications, it is fine to set allowPersistentHttpConnections to true.
+   --> When enabled, this feature will keep the client's connection alive 
+   as long as there is data arriving from the client continuously.
+*/
+
+// This is needed for supporting persistent HTTP connections.
+// Activate the processing of the persistent HTTP connections.
+class persistent_config_asio : public websocketpp::config::asio
+{
+public:
+    static bool const enable_persistent_connections = true;
+};
+
+class persistent_config_asio_tls : public websocketpp::config::asio_tls
+{
+public:
+    static bool const enable_persistent_connections = true;
+};
+
 class MY_OPERATOR : public MY_BASE_OPERATOR 
 {
 public:
@@ -48,9 +116,14 @@ public:
 	// Define types for two different server endpoints, 
 	// one for each config we are using.
 	// This operator supports both non_tls http and https (TLS) server endpoints.
+	// This is needed for supporting persistent HTTP connections.
+	/*
 	typedef websocketpp::server<websocketpp::config::asio> server_non_tls;
 	typedef websocketpp::server<websocketpp::config::asio_tls> server_tls;
-
+	*/
+	typedef websocketpp::server<persistent_config_asio> server_non_tls;
+	typedef websocketpp::server<persistent_config_asio_tls> server_tls;
+	
 	// Alias some of the bind related functions as they are a bit long
 	// Type of the ssl context pointer is long so alias it
 	typedef websocketpp::lib::shared_ptr<boost::asio::ssl::context> context_ptr;
@@ -78,6 +151,8 @@ public:
 	// This variable is set via an operator parameter to
 	// indicate whether this operator will allow HTTP(S) GET/PUT/POST from remote clients.
 	bool allowHttpPost;
+	// This is needed for supporting persistent HTTP connections.
+	bool allowPersistentHttpConnections;
 	SPL::int64 timeOfPreviousStaleConnectionRemoval;
 	SPL::uint32 numberOfMessagesToReceiveBeforeAnAck;
 	SPL::float64 newDataCpuYieldTimeInSenderThread;
@@ -86,6 +161,7 @@ public:
 	SPL::list<SPL::rstring> clientWhitelist;	
 	SPL::uint32 maxClientConnectionsAllowed;
 	SPL::uint32 responseTimeout;
+	SPL::uint32 persistentConnectionTimeout;
 	// WebSocket endpoint related variables.
 	server_non_tls endpoint_non_tls;
 	server_tls endpoint_tls;
@@ -139,6 +215,13 @@ public:
 	    bool isTlsConnection;
 	    // Is this a connection made from a WS or HTTP client?
 	    bool isHttpConnection;
+	    // Is this a persistent (Keep-Alive) HTTP connection?
+	    bool isPersistentHttpConnection;
+	    // This field is used to terminate any peristent HTTP connection that
+	    // has not received any request from the client for a period of time.
+	    // It works in the same ways as the responseTimeoutCounter field below.
+	    // Read the commentary there to get more details.
+	    int32_t persistentConnectionTimeoutCounter;
 	    // This is a unique websocket++ handle assigned for this connection.
 	    websocketpp::connection_hdl hdl;
 	    // The following two are the connection pointers which will get used only 
@@ -152,10 +235,10 @@ public:
 		// 3 = Client ended the data exchange.
 	    int32_t wsSessionStatus;
 	    int64_t wsSessionStartTime;
-	    // This field has no effect when this operator doesn't have the
-	    // "result/response back to the client" input port. Otherwise,
-	    // it is set to -1 when no response is due for this client.
-	    // It is set to 0 when a new data item arrives from this client.
+	    // This field has effect when this operator has the
+	    // "result/response back to the client" input port. 
+	    // While being used, it is set to -1 when no response is due for this client.
+	    // It is set to 0 whenever a new data item arrives from this client.
 	    // It will get incremented every second until the response is sent or
 	    // until this counter reaches the configured response timeout value.
 	    // If the response times out, appropriate action will take place and
@@ -294,8 +377,8 @@ public:
 	// Websocket data sender thread method
 	void ws_data_sender();
 	
-	// Websocket response timeout handler thread method.
-	void ws_response_timeout_handler();
+	// Websocket request and response timeout handler thread method.
+	void ws_request_response_timeout_handler();
 	
 	// Method that looks up connection metadata for a given connection handle in our associate container.
 	MY_OPERATOR::connection_metadata & get_con_metadata_from_hdl(websocketpp::connection_hdl hdl);

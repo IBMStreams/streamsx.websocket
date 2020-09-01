@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: May/20/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/31/2020
 
 This application is a companion application that must be used while
 demonstrating the "result/response to the remote WS/HTTP clients"
@@ -73,9 +73,12 @@ composite WebSocketHttpClientApp {
 		// etc/creating-a-self-signed-certificate.txt
 		expression<rstring> $certificateFileName :
 			getSubmissionTimeValue("certificateFileName", "");
+		// Is a password needed for the private key in the certificate file?
+		expression<rstring> $certificatePassword : 
+			getSubmissionTimeValue("certificatePassword", "");
 		// Do you want to specifiy a file name that contains the public certificate of
 		// the trusted remote server. If this file name is not empty, then the
-		// WebSocketSource operator will perform a server authentication.
+		// WebSocketSendReceive operator will perform a server authentication.
 		expression<rstring> $trustedServerCertificateFileName :
 			getSubmissionTimeValue("trustedServerCertificateFileName", "");	
 		// Do you want to specify a list of identifiers present in the 
@@ -92,10 +95,10 @@ composite WebSocketHttpClientApp {
 		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
 		//
 		// So your value for this submission time parameter can be as shown here.
-		// ["emailAddress=websocket.streams@ibm.com", "CN=www.ibm.com"]
+		// ['emailAddress=websocket.streams@ibm.com', 'CN=www.ibm.com']
 		expression<list<rstring>> $trustedServerX509SubjectIdentifiers :
 			(list<rstring>)getSubmissionTimeValue("trustedServerX509SubjectIdentifiers", "[]");
-		// Is live metrics needed for the WebSocketSource operator?
+		// Is live metrics needed for the WebSocketSendReceive operator?
 		expression<boolean> $websocketLiveMetricsUpdateNeeded : 
 			(boolean)getSubmissionTimeValue("websocketLiveMetricsUpdateNeeded", "true");
 		// Is WebSocket library low level logging needed?
@@ -136,6 +139,9 @@ composite WebSocketHttpClientApp {
 		// Do we want to impose a tiny delay in milliseconds between consecutive HTTP Posts?
 		expression<int32> $delayBetweenConsecutiveHttpPosts : 
 			(int32)getSubmissionTimeValue("delayBetweenConsecutiveHttpPosts", "0");
+		// Do you want to create a persistent (Keep-Alive) HTTP connection?
+		expression<boolean> $createPersistentHttpConnection :
+			(boolean)getSubmissionTimeValue("createPersistentHttpConnection", "false");		
 
 	type
 		// The following is the schema of the first output stream for the
@@ -348,7 +354,7 @@ composite WebSocketHttpClientApp {
 				// In general, it is a good idea for the WebSocketSendReceive operator below to 
 				// keep its persistent WebSocket client connection open until this application is
 				// cancelled/stopped/shut down. That will help in receiving the data sent by the
-				// remote server based WebSocketSink operator.
+				// remote server based WebSocketSource operator.
 				//				
 				// Unless the punctuations play a key role in the application behavior,
 				// the strategy described above can be followed.
@@ -362,13 +368,14 @@ composite WebSocketHttpClientApp {
 		
 		// Send a single data item (tuple) to establish a persistent connection with the
 		// remote WebSocket server and then start receiving binary data or text data or both 
-		// from the remote WebSocketSink operator.
+		// from the remote WebSocketSource operator.
 		(stream<ReceivedData_t> ReceivedData as RD;
 		 stream<SendDataResult_t> SendDataResult as SDR) 
 			as WebSocketDataSenderReceiver = WebSocketSendReceive(SendData) {
 			param
 				url: $url;
 				certificateFileName: $certificateFileName;
+				certificatePassword: $certificatePassword;
 				trustedServerCertificateFileName: $trustedServerCertificateFileName;
 				// Use this only when you have trouble authenticating a server that 
 				// has a self signed certificate.
@@ -525,6 +532,9 @@ composite WebSocketHttpClientApp {
 				//
 				// Do you want to accept all the TLS server certificates (an insecure option)?
 				tlsAcceptAllCertificates: $tlsAcceptAllCertificates;
+				//
+				// Do you want to create a persistent (Keep-Alive) HTTP connection?
+				createPersistentHttpConnection: $createPersistentHttpConnection;
 				//
 				/*
 				// =============== START OF TLS CONFIGURATION ===============

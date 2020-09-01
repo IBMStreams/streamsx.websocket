@@ -605,6 +605,12 @@ $maxClientConnectionsAllowed = $maxClientConnectionsAllowed ? $maxClientConnecti
 my $responseTimeout = $model->getParameterByName("responseTimeout");
 # Default: 20 seconds
 $responseTimeout = $responseTimeout ? $responseTimeout->getValueAt(0)->getCppExpression() : 20;
+
+# This is needed for supporting persistent HTTP connections.
+my $allowPersistentHttpConnections = $model->getParameterByName("allowPersistentHttpConnections");
+# Default: 0
+$allowPersistentHttpConnections = 
+	$allowPersistentHttpConnections ? $allowPersistentHttpConnections->getValueAt(0)->getCppExpression() : 0;
 %>
 
 <%SPL::CodeGen::implementationPrologue($model);%>
@@ -728,6 +734,8 @@ MY_OPERATOR::MY_OPERATOR() {
 	<%}%>
 	
 	allowHttpPost = <%=$allowHttpPost%>;
+	// This is needed for supporting persistent HTTP connections.
+	allowPersistentHttpConnections = <%=$allowPersistentHttpConnections%>;
 	
 	// For string based assignment using a perl variable, it can't be
 	// assigned directly to the value of that perl variable. If we do that,
@@ -753,7 +761,7 @@ MY_OPERATOR::MY_OPERATOR() {
 	<% } else { %>
 	certificatePassword = <%=$certificatePassword%>;
 	<%}%>	
-	
+
 	<% if ($trustedClientCertificateFileName eq "") { %>	
 	trustedClientCertificateFileName = "";
 	<% } else { %>
@@ -795,7 +803,16 @@ MY_OPERATOR::MY_OPERATOR() {
 			" Valid value must be greater than or equal to 0.");		
 	}	
 	
+	// This is the time period before which the server-side application is
+	// expected to send a response back to the remote client.
 	responseTimeout = <%=$responseTimeout%>;
+	// This is the time period before which a remote HTTP client is expected
+	// to send a request on a persistent connection. A remote client is allowed to
+	// send as many requests as it wants on a given persistent (Keep-Alive) 
+	// HTTP connection. However, if no request is received from a client for this
+	// duration, then this operator will close that persistent HTTP connection.
+	// We will keep this value 10 seconds more than the previously configured variable.
+	persistentConnectionTimeout = responseTimeout + 10;
 	
 	// We need the following check only if there is a 
 	// data response to client input port.
@@ -837,6 +854,7 @@ MY_OPERATOR::MY_OPERATOR() {
 		", ipv6Available="  << ipv6Available <<
 		", numberOfMessagesToReceiveBeforeAnAck=" << numberOfMessagesToReceiveBeforeAnAck <<
 		", allowHttpPost=" << allowHttpPost <<
+		", allowPersistentHttpConnections=" << allowPersistentHttpConnections <<
 		", newDataCpuYieldTimeInSenderThread=" << newDataCpuYieldTimeInSenderThread <<
 		", noDataCpuYieldTimeInSenderThread=" << noDataCpuYieldTimeInSenderThread <<
 		", clientWhitelist=" << clientWhitelist <<
@@ -888,23 +906,23 @@ void MY_OPERATOR::allPortsReady() {
     	// We can't do much without this thread. Abort this operator now.
     	SPL::Functions::Utility::abort(__FILE__, __LINE__);
     }
+    <%}%>
     
     // Create a thread to periodically detect any missed 
     // responses within a configured timeout period that are 
     // due from the application logic to the remote clients and 
     // perform necessary clean-up.
     try {
-    	auto callback2 = std::bind(&MY_OPERATOR::ws_response_timeout_handler, this);
+    	auto callback2 = std::bind(&MY_OPERATOR::ws_request_response_timeout_handler, this);
     	boost::thread* myThread2 = new boost::thread(callback2);
     } catch(std::exception& e) {
     	SPLAPPTRC(L_ERROR, "Operator " << operatorPhysicalName <<
 			"-->Channel " << boost::to_string(udpChannelNumber) <<
-			"-->Exception in creating the ws_response_timeout_handler thread. " << 
+			"-->Exception in creating the ws_request_response_timeout_handler thread. " << 
 			e.what(), "allPortsReady");
     	// We can't do much without this thread. Abort this operator now.
     	SPL::Functions::Utility::abort(__FILE__, __LINE__);
     }    
-    <%}%>
 } // End of allPortsReady.
 
 // Notify pending shutdown
@@ -1657,10 +1675,22 @@ void MY_OPERATOR::ws_data_sender() {
 										std::string("application/octet-stream"));
 								}
 								
-								// It is a good practice to send a Connection: close header in the 
-								// response when we are not keeping a persistent (Keep-Alive) connection. 
-								con_non_tls->replace_header(std::string("Connection"),
-									std::string("close"));
+								// This is needed for supporting persistent HTTP connections.
+								if(con_metadata.isPersistentHttpConnection == false) {
+									// If it is not a Keep-Alive connection, it is a good practice to 
+									// send a Connection: close header in the response. 
+									con_non_tls->replace_header(std::string("Connection"),
+										std::string("close"));
+								} else {
+									// Let us add a header to tell the
+									// client about our persistent connection policy.
+									con_non_tls->replace_header(std::string("Connection"),
+										std::string("Keep-Alive"));
+									con_non_tls->replace_header(std::string("Keep-Alive"),
+										std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+										std::string(", max=100"));
+								}
+								
 								con_non_tls->set_body(std::string((const char*)buffer, payloadSize));
 								con_non_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
@@ -1721,10 +1751,22 @@ void MY_OPERATOR::ws_data_sender() {
 										std::string("application/octet-stream"));
 								}
 								
-								// It is a good practice to send a Connection: close header in the 
-								// response when we are not keeping a persistent (Keep-Alive) connection. 
-								con_tls->replace_header(std::string("Connection"),
-									std::string("close"));
+								// This is needed for supporting persistent HTTP connections.
+								if(con_metadata.isPersistentHttpConnection == false) {
+									// If it is not a Keep-Alive connection, it is a good practice to 
+									// send a Connection: close header in the response. 
+									con_tls->replace_header(std::string("Connection"),
+										std::string("close"));
+								} else {
+									// Let us add a header to tell the
+									// client about our persistent connection policy.
+									con_tls->replace_header(std::string("Connection"),
+										std::string("Keep-Alive"));
+									con_tls->replace_header(std::string("Keep-Alive"),
+										std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+										std::string(", max=100"));
+								}
+								
 								con_tls->set_body(std::string((const char*)buffer, payloadSize));
 								con_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
@@ -1830,11 +1872,23 @@ void MY_OPERATOR::ws_data_sender() {
 										}
 									}									
 								}
-								
-								// It is a good practice to send a Connection: close header in the 
-								// response when we are not keeping a persistent (Keep-Alive) connection. 
-								con_non_tls->replace_header(std::string("Connection"),
-									std::string("close"));
+
+								// This is needed for supporting persistent HTTP connections.
+								if(con_metadata.isPersistentHttpConnection == false) {
+									// If it is not a Keep-Alive connection, it is a good practice to 
+									// send a Connection: close header in the response. 
+									con_non_tls->replace_header(std::string("Connection"),
+										std::string("close"));
+								} else {
+									// Let us add a header to tell the
+									// client about our persistent connection policy.
+									con_non_tls->replace_header(std::string("Connection"),
+										std::string("Keep-Alive"));
+									con_non_tls->replace_header(std::string("Keep-Alive"),
+										std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+										std::string(", max=100"));
+								}
+
 								con_non_tls->set_body(strDataToSend.at(0));
 								con_non_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
@@ -1882,10 +1936,22 @@ void MY_OPERATOR::ws_data_sender() {
 									}
 								}
 
-								// It is a good practice to send a Connection: close header in the 
-								// response when we are not keeping a persistent (Keep-Alive) connection. 
-								con_tls->replace_header(std::string("Connection"),
-									std::string("close"));
+								// This is needed for supporting persistent HTTP connections.
+								if(con_metadata.isPersistentHttpConnection == false) {
+									// If it is not a Keep-Alive connection, it is a good practice to 
+									// send a Connection: close header in the response. 
+									con_tls->replace_header(std::string("Connection"),
+										std::string("close"));
+								} else {
+									// Let us add a header to tell the
+									// client about our persistent connection policy.
+									con_tls->replace_header(std::string("Connection"),
+										std::string("Keep-Alive"));
+									con_tls->replace_header(std::string("Keep-Alive"),
+										std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+										std::string(", max=100"));
+								}
+								
 								con_tls->set_body(strDataToSend.at(0));
 								con_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
@@ -1926,6 +1992,14 @@ void MY_OPERATOR::ws_data_sender() {
 				// Let us reset the response timeout counter to indicate that
 				// there is no response due at this time.
 				con_metadata.responseTimeoutCounter = -1;
+				
+				// If it is a persistent HTTP connection, let us set the
+				// following counter to 0 so that the request timeout
+				// countup can start fresh.
+				if(con_metadata.isPersistentHttpConnection == true) {
+					con_metadata.persistentConnectionTimeoutCounter = 0;
+				}
+				
 				// Store the updated con_metadata into our associative container.
 				client_connections_map[con_metadata.hdl] = con_metadata;
 			}
@@ -1968,11 +2042,12 @@ void MY_OPERATOR::ws_data_sender() {
 			}
 			
 			if(con_metadata_valid == true) {
-				if(con_metadata.isHttpConnection == true) {
+				if(con_metadata.isHttpConnection == true && 
+					con_metadata.isPersistentHttpConnection == false) {
 					// If we just now finished dealing with a HTTP based remote client, 
-					// then we must do an in-memory clean-up for that client connection.
-					// HTTP POST client connections are made fresh for every message exchange.
-					// So, we are done with this particular HTTP client connection.
+					// then we must do an in-memory clean-up for that non-persistent client connection.
+					// HTTP POST client non-persistent connections are made fresh for every message exchange.
+					// So, we are done with this particular HTTP client non-persistent connection.
 					// Delete this client session id from the map we maintain to do a
 					// faster search of a connection handle by using a client session id.
 					client_id_to_hdl_map.erase(con_metadata.clientSessionId);
@@ -2012,9 +2087,13 @@ void MY_OPERATOR::ws_data_sender() {
 		} // End of if (blobDataVectorSize > 0 ||
 	} // End of the while loop	
 } // End of ws_data_sender
+<%}%>
 
 // This method provides a thread for handling the 
-// Websocket/HTTP response timeout occurrences.
+// Websocket/HTTP request and response timeout occurrences.
+// Request timeout here is mainly for persistent HTTP connections and
+// response timeout is for both the WebSocket and HTTP 
+// persistent/non-persistent connections.
 // Practically speaking, there is no such thing called
 // timeout for WebSocket connections as they are persistent and
 // full duplex (bidirectional). That connection allows both
@@ -2028,7 +2107,7 @@ void MY_OPERATOR::ws_data_sender() {
 // So, it is important to note that the logic below will be able to
 // detect response timeout conditions for every single HTTP message
 // received from a client. That is easy since every HTTP message from a
-// client arrives on a separate HTTP connection which results in a unique
+// client arrives on a separate non-persistent HTTP connection which results in a unique
 // connection handle. We can't do the same for the messages received from a 
 // client via a pure WebSocket connection since there will be only one
 // long running persistent full duplex connection over which messages can be
@@ -2037,11 +2116,15 @@ void MY_OPERATOR::ws_data_sender() {
 // that all happen to miss the responses from the application logic. As explained
 // above, that practice is fine for a WebSocket based connection since there are other 
 // ways in which response timeout can be detected and handled in the applications
-// running on both ends. But, for the HTTP POST client connections, it is necessary
+// running on both ends. But, for the HTTP client connections, it is necessary
 // to handle response timeout conditions on connection by connection basis.
-void MY_OPERATOR::ws_response_timeout_handler() {
+// Since we started supporting persistent (Keep-Alive) HTTP connections in Aug/2020,
+// let us also use the method below to do the clean-up of any persistent HTTP
+// connection where the client stopped sending data for a period of time.
+void MY_OPERATOR::ws_request_response_timeout_handler() {
 	websocketpp::lib::error_code ec;
 	std::list<websocketpp::connection_hdl> response_timed_out_handles;
+	std::list<websocketpp::connection_hdl> persistent_http_timed_out_handles;
 	std::string msg = 
 		std::string("Application logic timed out without sending a required response. ") +
 		std::string("You may retransmit your data item.");
@@ -2059,9 +2142,19 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 		{
 			// Start with an empty result list.
 			response_timed_out_handles.clear();
+			persistent_http_timed_out_handles.clear();
 			// Mutex for the safe shared accessing of the client connections map.
 			SPL::AutoMutex autoMutex3(wsMutex3);
-
+			
+			// We are going to do two different timeout checks.
+			// 1) Response timeout when the server-side application is taking
+			//    too much time send a response via this operator's response input port.
+			//
+			// 2) Request timeout on a persistent (Keep-Alive) HTTP connection where
+			//    a client has stopped sending requests for a period of time.
+			//
+			// Let us first peform (1) as described above.
+			<% if (defined($dataResponseToClientPortFound)) { %>
 			for (con_map::iterator it = client_connections_map.begin();
 				it != client_connections_map.end(); it++) {
 				// it->first points to the key of the map and it->second to the value.
@@ -2107,10 +2200,22 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 
 						if (con_non_tls != NULL) {
 							try {
-								// It is a good practice to send a Connection: close header in the 
-								// response when we are not keeping a persistent (Keep-Alive) connection. 
-								con_non_tls->replace_header(std::string("Connection"),
-									std::string("close"));
+								// This is needed for supporting persistent HTTP connections.
+								if(cmd.isPersistentHttpConnection == false) {
+									// If it is not a Keep-Alive connection, it is a good practice to 
+									// send a Connection: close header in the response. 
+									con_non_tls->replace_header(std::string("Connection"),
+										std::string("close"));
+								} else {
+									// Let us add a header to tell the
+									// client about our persistent connection policy.
+									con_non_tls->replace_header(std::string("Connection"),
+										std::string("Keep-Alive"));
+									con_non_tls->replace_header(std::string("Keep-Alive"),
+										std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+										std::string(", max=100"));
+								}
+
 								con_non_tls->set_body(msg);
 								con_non_tls->set_status(websocketpp::http::status_code::im_a_teapot);
 								// This is a deferred response to a remote HTTP client.
@@ -2127,10 +2232,22 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 						
 						if (con_tls != NULL) {
 							try {
-								// It is a good practice to send a Connection: close header in the 
-								// response when we are not keeping a persistent (Keep-Alive) connection. 
-								con_tls->replace_header(std::string("Connection"),
-									std::string("close"));
+								// This is needed for supporting persistent HTTP connections.
+								if(cmd.isPersistentHttpConnection == false) {
+									// If it is not a Keep-Alive connection, it is a good practice to 
+									// send a Connection: close header in the response. 
+									con_tls->replace_header(std::string("Connection"),
+										std::string("close"));
+								} else {
+									// Let us add a header to tell the
+									// client about our persistent connection policy.
+									con_tls->replace_header(std::string("Connection"),
+										std::string("Keep-Alive"));
+									con_tls->replace_header(std::string("Keep-Alive"),
+										std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+										std::string(", max=100"));
+								}
+								
 								con_tls->set_body(msg);
 								con_tls->set_status(websocketpp::http::status_code::im_a_teapot);
 								// This is a deferred response to a remote HTTP client.
@@ -2181,17 +2298,21 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 						<< ", nClientsConnected=" << nClientsConnected
 						<< ", total data items sent to all clients=" << nDataItemsSentToRemoteClients
 						<< ", total data bytes sent to all clients=" << nDataBytesSentToRemoteClients,
-						"ws_response_timeout_handler");				
+						"ws_request_response_timeout_handler");				
 				}
 				
 				// Reset it to indicate that there is no response pending at this time.
 				client_connections_map[*it].responseTimeoutCounter = -1;
 
-				if(client_connections_map[*it].isHttpConnection == true) {
+				if(client_connections_map[*it].isHttpConnection == true &&
+					client_connections_map[*it].isPersistentHttpConnection == false) {
+					// Do this connection clean-up only for non-persistent HTTP client connections.
+					//
 					// If we just now finished dealing with a HTTP based remote client, 
-					// then we must do an in-memory clean-up for that client connection.
-					// HTTP POST client connections are made fresh for every message exchange.
-					// So, we are done with this particular HTTP client connection.
+					// then we must do an in-memory clean-up for that non-persistent client connection.
+					// HTTP POST client non-persistent connections are made fresh for 
+					// every message exchange. 
+					// So, we are done with this particular non-persistent HTTP client connection.
 					// Delete this client session id from the map we maintain to do a
 					// faster search of a connection handle by using a client session id.
 					client_id_to_hdl_map.erase(client_connections_map[*it].clientSessionId);
@@ -2222,7 +2343,7 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 						<< "-->Channel " << boost::to_string(udpChannelNumber)
 						<< ". A total of " <<  responseTimedOutCnt 
 						<< " response timeout conditions were detected and the necessary "
-						<< "clean-up was completed.", "ws_response_timeout_handler");
+						<< "clean-up was completed.", "ws_request_response_timeout_handler");
 				}
 				
 				nResponseTimeoutOccurrences += responseTimedOutCnt;
@@ -2232,12 +2353,116 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 					nResponseTimeoutOccurrencesMetric->setValueNoLock(nResponseTimeoutOccurrences);
 				}
 			}
+			<%}%>
+
+			// Let us now perform the clean-up of the persistent (Keep-Alive)
+			// HTTP connections that have not received any requests from the
+			// client for a period of time.
+			for (con_map::iterator it = client_connections_map.begin();
+				it != client_connections_map.end(); it++) {
+				// it->first points to the key of the map and it->second to the value.
+				if(client_connections_map[it->first].isPersistentHttpConnection == false) {
+					// No persistent connection timeout check requested for this HTTP connection..
+					continue;
+				} else {
+					// Increment the persistent connection time counter by the time we used above to sleep.
+					client_connections_map[it->first].persistentConnectionTimeoutCounter += 
+						sleepTimeInSeconds;
+				}
+
+				connection_metadata & cmd = client_connections_map[it->first];
+				
+				// It means, this persistent HTTP connection needs to be checked for request timeout.
+				// Let us see if it is still within the configured timeout period.
+				if(cmd.persistentConnectionTimeoutCounter > persistentConnectionTimeout)  {
+					// No request was received from the client on this 
+					// persistent connection within the expected period.
+					// We can do a clean-up and send a request timed out status to 
+					// the remote client.
+					//
+					if(cmd.isTlsConnection == false) {
+						// Please read the commentary in the create_new_connection_entry method below
+						// to learn why we stored the HTTP connection pointer in con_metadata.
+						server_non_tls::connection_ptr con_non_tls = cmd.http_con_non_tls;
+
+						if (con_non_tls != NULL) {
+							try {
+								// Due to no request activity from the client,
+								// we can close this persistent HTTP connection.
+								con_non_tls->replace_header(std::string("Connection"),
+									std::string("close"));
+								// Set the status as 408 request timed out.
+								con_non_tls->set_status(websocketpp::http::status_code::request_timeout);
+							} catch (websocketpp::exception const & e) {
+								// Do nothing here.
+							}
+						}
+					} else {
+						// Please read the commentary in the create_new_connection_entry method below
+						// to learn why we stored the HTTP connection pointer in con_metadata.
+						server_tls::connection_ptr con_tls = cmd.http_con_tls;
+						
+						if (con_tls != NULL) {
+							try {
+								// Due to no request activity from the client,
+								// we can close this persistent HTTP connection.
+								con_tls->replace_header(std::string("Connection"),
+									std::string("close"));
+								// Set the status as 408 request timed out.
+								con_tls->set_status(websocketpp::http::status_code::request_timeout);
+							} catch (websocketpp::exception const & e) {
+								// Do nothing here.
+							}
+						}
+					}
+					
+					// We can add this connection entry to our list of timed out handles.
+					// After this for loop ends, we can do the clean-up below.
+					// it->first points to the key of the map and it->second to the value.
+					persistent_http_timed_out_handles.push_back(it->first);
+				} // End of if(cmd.responseTimeoutCounter > persistentConnectionTimeout)
+			} // End of the for loop.
+			
+			int32_t persistentConnectionTimedoutCnt = 0;
+			
+			// Let us now delete the persistent HTTP connection data structures for
+			// those timed out handles.
+			for (std::list<websocketpp::connection_hdl>::iterator it = persistent_http_timed_out_handles.begin(); 
+				it != persistent_http_timed_out_handles.end(); it++) {
+				persistentConnectionTimedoutCnt++;
+
+				// If we just now finished dealing with a request timeout, 
+				// then we must do an in-memory clean-up for that persistent HTTP connection.
+				client_id_to_hdl_map.erase(client_connections_map[*it].clientSessionId);
+	
+				// Delete this handle from our associative container.        
+				client_connections_map.erase(*it);
+				
+				// We are now with one less client connection.
+				nClientsConnected -= 1;
+				
+				// Update the operator metric only if the user asked for a live update.
+				if (websocketLiveMetricsUpdateNeeded == true) {
+					nClientsConnectedMetric->setValueNoLock(nClientsConnected);
+				}					
+			} // End of for loop that iterates over the response timed out handles.
+			
+			if(persistentConnectionTimedoutCnt > 0) {
+				if(wsClientSessionLoggingNeeded == true) {
+					SPLAPPTRC(L_ERROR,
+						"Operator "
+						<< operatorPhysicalName
+						<< "-->Channel " << boost::to_string(udpChannelNumber)
+						<< ". A total of " <<  persistentConnectionTimedoutCnt 
+						<< " persistent HTTP request timeout conditions were detected and the necessary "
+						<< "clean-up was completed.", "ws_request_response_timeout_handler");
+				}				
+			}
 			
 			//  We are done.
 		} // End of the local block that provides the life scope for wsMutex3.		
 	} // End of the outer while loop.
-} // End of ws_response_timeout_handler
-<%}%>
+} // End of ws_request_response_timeout_handler
 
 // This method sets up the TLS for a given client connection handle.
 // WebSocket++ library calls this handler ahead of time before a
@@ -2345,8 +2570,8 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(
 			std::string("WebSocketSource_cpp.cgt: Exception in on_tls_init: ") +
 			e.what() +
 			". Reason for this error could be an invalid wss, https URL or a " +
-			"missing server certificate file or a missing trusted client certificate file or an " +
-			"incorrect private key password. Please check.");
+			"missing server certificate file or a missing trusted client certificate file. " +
+			"Please check.");
 	}
 	
 	return ctx;
@@ -3492,26 +3717,45 @@ bool MY_OPERATOR::validate_http_connection(websocketpp::connection_hdl hdl,
 	if(valid_connection == true) {
 		// Mutex for the safe shared accessing of the client connections map.
 		SPL::AutoMutex autoMutex3(wsMutex3);
-		
-		// IMPORTANT NOTE
-		// --------------
-		// Once we leave from the http handler method below, hdl seems to get reset to NULL.
-		// So, we will have a null hdl in the ws_data_sender from where the response will
-		// get sent at a later time. That means, we can't rely on hdl to do a deferred 
-		// HTTP response when needed. That is why, we store below the con_non_tls or the 
-		// con_tls as part of this connection entry so that it can be used in the 
-		// ws_data_sender method to send a response later to a given remote HTTP client.
+
+		// This is needed for supporting persistent HTTP connections.
+		// It is a long running HTTP connection with Keep-Alive, then we will have  to
+		// create a new connection entry only when the very first HTTP request comes here.
+		// For the subsequent requests arriving on the same HTTP connection, we will
+		// skip creating a new connection entry.
 		//
-		// Create a new connection entry for this valid HTTP connection.
-		// We have to do it this way since HTTP connections are done once for 
-		// every message exchange. They don't go through the typical lifecycle of
-		// validate, on_open, on_message, on_close handlers that we are vey much 
-		// used to with the long running WebSocket connections.
-		// Third argument is set to true to indicate that it is a HTTP/S based connection.
-		create_new_connection_entry(hdl, isTlsConnection, 
-			true, server_non_tls_con, server_tls_con, 
-			std::string("validate_http_connection"));
-	}
+		// Note that we can't use a reference here without assigning it to a proper initial value.
+		connection_metadata con_metadata;
+		
+		try {
+			// Get the metadata details for this connection handle from our client connections map.
+			con_metadata = get_con_metadata_from_hdl(hdl);
+			// If we reach here, that means this HTTP request is arriving on an 
+			// existing persistent (Keep-Alive) HTTP connection.
+		} catch (const std::invalid_argument & e) {
+			// This connection doesn't exist already. That means, it is the first time this
+			// HTTP request/connection is made here. Let us create a new connection  entry.
+			//
+			// IMPORTANT NOTE
+			// --------------
+			// Once we leave from the http handler method below, hdl seems to get reset to NULL.
+			// So, we will have a null hdl in the ws_data_sender from where the response will
+			// get sent at a later time. That means, we can't rely on hdl to do a deferred 
+			// HTTP response when needed. That is why, we store below the con_non_tls or the 
+			// con_tls as part of this connection entry so that it can be used in the 
+			// ws_data_sender method to send a response later to a given remote HTTP client.
+			//
+			// Create a new connection entry for this valid HTTP connection.
+			// We have to do it this way since non-persistent HTTP connections are done once for 
+			// every message exchange. They don't go through the typical lifecycle of
+			// validate, on_open, on_message, on_close handlers that we are vey much 
+			// used to with the long running WebSocket connections.
+			// Third argument is set to true to indicate that it is a HTTP/S based connection.
+			create_new_connection_entry(hdl, isTlsConnection, 
+				true, server_non_tls_con, server_tls_con, 
+				std::string("validate_http_connection"));
+		} // End of try-catch.
+	} // End of if(valid_connection == true)
 	
 	return(valid_connection);
 } // End of validate_http_connection
@@ -3610,10 +3854,23 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			try {
 				server_non_tls_con->replace_header(std::string("Content-Type"),
 					std::string("text/plain"));
-				// It is a good practice to send a Connection: close header in the 
-				// response when we are not keeping a persistent (Keep-Alive) connection. 
-				server_non_tls_con->replace_header(std::string("Connection"),
-					std::string("close"));
+				
+				// This is needed for supporting persistent HTTP connections.
+				if(con_metadata.isPersistentHttpConnection == false) {
+					// If it is not a Keep-Alive connection, it is a good practice to 
+					// send a Connection: close header in the response. 
+					server_non_tls_con->replace_header(std::string("Connection"),
+						std::string("close"));
+				} else {
+					// Let us add a header to tell the
+					// client about our persistent connection policy.
+					server_non_tls_con->replace_header(std::string("Connection"),
+						std::string("Keep-Alive"));
+					server_non_tls_con->replace_header(std::string("Keep-Alive"),
+						std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+						std::string(", max=100"));
+				}
+
 				server_non_tls_con->set_body(std::string("Your HTTP ") +
 					httpRequestMethod + std::string(" request is not supported by ") +
 					std::string("the IBM Streams WebSocketSource operator."));
@@ -3625,10 +3882,23 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 			try {
 				server_tls_con->replace_header(std::string("Content-Type"),
 					std::string("text/plain"));
-				// It is a good practice to send a Connection: close header in the 
-				// response when we are not keeping a persistent (Keep-Alive) connection. 
-				server_tls_con->replace_header(std::string("Connection"),
-					std::string("close"));
+				
+				// This is needed for supporting persistent HTTP connections.
+				if(con_metadata.isPersistentHttpConnection == false) {
+					// If it is not a Keep-Alive connection, it is a good practice to 
+					// send a Connection: close header in the response. 
+					server_tls_con->replace_header(std::string("Connection"),
+						std::string("close"));
+				} else {
+					// Let us add a header to tell the
+					// client about our persistent connection policy.
+					server_tls_con->replace_header(std::string("Connection"),
+						std::string("Keep-Alive"));
+					server_tls_con->replace_header(std::string("Keep-Alive"),
+						std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+						std::string(", max=100"));
+				}
+
 				server_tls_con->set_body(std::string("Your HTTP ") +
 					httpRequestMethod + std::string(" request is not supported by ") +
 					std::string("the IBM Streams WebSocketSource operator."));
@@ -3749,10 +4019,23 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 				try {
 					server_non_tls_con->replace_header(std::string("Content-Type"),
 						std::string("text/plain"));
-					// It is a good practice to send a Connection: close header in the 
-					// response when we are not keeping a persistent (Keep-Alive) connection. 
-					server_non_tls_con->replace_header(std::string("Connection"),
-						std::string("close"));
+					
+					// This is needed for supporting persistent HTTP connections.
+					if(con_metadata.isPersistentHttpConnection == false) {
+						// If it is not a Keep-Alive connection, it is a good practice to 
+						// send a Connection: close header in the response. 
+						server_non_tls_con->replace_header(std::string("Connection"),
+							std::string("close"));
+					} else {
+						// Let us add a header to tell the
+						// client about our persistent connection policy.
+						server_non_tls_con->replace_header(std::string("Connection"),
+							std::string("Keep-Alive"));
+						server_non_tls_con->replace_header(std::string("Keep-Alive"),
+							std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+							std::string(", max=100"));
+					}
+					
 					server_non_tls_con->set_body(std::string("Received an ") + 
 						std::string("invalid MIME/Binary data content. ") +
 						std::string("Your binary data is not processed and is being ignored."));
@@ -3764,10 +4047,23 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 				try {
 					server_tls_con->replace_header(std::string("Content-Type"),
 						std::string("text/plain"));
-					// It is a good practice to send a Connection: close header in the 
-					// response when we are not keeping a persistent (Keep-Alive) connection. 
-					server_tls_con->replace_header(std::string("Connection"),
-						std::string("close"));
+					
+					// This is needed for supporting persistent HTTP connections.
+					if(con_metadata.isPersistentHttpConnection == false) {
+						// If it is not a Keep-Alive connection, it is a good practice to 
+						// send a Connection: close header in the response. 
+						server_tls_con->replace_header(std::string("Connection"),
+							std::string("close"));
+					} else {
+						// Let us add a header to tell the
+						// client about our persistent connection policy.
+						server_tls_con->replace_header(std::string("Connection"),
+							std::string("Keep-Alive"));
+						server_tls_con->replace_header(std::string("Keep-Alive"),
+							std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+							std::string(", max=100"));
+					}
+
 					server_tls_con->set_body(std::string("Received an ") + 
 						std::string("invalid MIME/Binary data content. ") +
 						std::string("Your binary data is not processed and is being ignored."));
@@ -3942,18 +4238,46 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 	// That kind of "response back to the HTTP client" done by the application layer is
 	// sent in the ws_data_sender method above in this operator class.
 	<% if (!defined($dataResponseToClientPortFound)) { %>
+	std::string persistentHttpString = "";
 	// Send a response back to the HTTP client.
 	if(isTlsConnection == false) {
 		try {
 			server_non_tls_con->replace_header(std::string("Content-Type"),
 				std::string("text/plain"));
-			// It is a good practice to send a Connection: close header in the 
-			// response when we are not keeping a persistent (Keep-Alive) connection. 
-			server_non_tls_con->replace_header(std::string("Connection"),
-				std::string("close"));
+			
+			// This is needed for supporting persistent HTTP connections.
+			if(con_metadata.isPersistentHttpConnection == false) {
+				// If it is not a Keep-Alive connection, it is a good practice to 
+				// send a Connection: close header in the response. 
+				server_non_tls_con->replace_header(std::string("Connection"),
+					std::string("close"));
+				persistentHttpString = "non-persistent";
+			} else {
+				// Let us add a header to tell the
+				// client about our persistent connection policy.
+				// Remote client can make as many HTTP requests as it wants. The number 100
+				// that we specify below is just a good practice so as not to hog the 
+				// connection for a long time. We also expect the client to send a
+				// "Connection: close" header with its final request. Again, that is
+				// a good practice. If a client goes away without sending a proper
+				// Connection: close" header and when the specfied timeout (in seconds)
+				// elapses without receiving any client requests, then we will
+				// send a request timeout message and release everything associated with
+				// that connection. Please see above in the ws_request_response_timeout_handler
+				// method to see the request timeout logic.
+				// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Keep-Alive
+				server_non_tls_con->replace_header(std::string("Connection"),
+					std::string("Keep-Alive"));
+				server_non_tls_con->replace_header(std::string("Keep-Alive"),
+					std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+					std::string(", max=100"));
+				persistentHttpString = "persistent";
+			}
+
 			std::string response_text = 
 				std::string("Received ") + contentLengthString + 
-				std::string(" byte(s) of your data via a non-persistent, non-TLS HTTP ") + 
+				std::string(" byte(s) of your data via a ") + 
+				persistentHttpString + std::string(", non-TLS HTTP ") + 
 				httpRequestMethod + std::string(" connection.");
 			server_non_tls_con->set_body(response_text);
 			
@@ -3973,13 +4297,31 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 		try {
 			server_tls_con->replace_header(std::string("Content-Type"),
 				std::string("text/plain"));
-			// It is a good practice to send a Connection: close header in the 
-			// response when we are not keeping a persistent (Keep-Alive) connection. 
-			server_tls_con->replace_header(std::string("Connection"),
-				std::string("close"));
+			
+			// This is needed for supporting persistent HTTP connections.
+			if(con_metadata.isPersistentHttpConnection == false) {
+				// If it is not a Keep-Alive connection, it is a good practice to 
+				// send a Connection: close header in the response. 
+				server_tls_con->replace_header(std::string("Connection"),
+					std::string("close"));
+				persistentHttpString = "non-persistent";
+			} else {
+				// Let us add a header to tell the
+				// client about our persistent connection policy.
+				// [Please see at the other half of this if block for more implementation details.]
+				// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Keep-Alive
+				server_tls_con->replace_header(std::string("Connection"),
+					std::string("Keep-Alive"));
+				server_tls_con->replace_header(std::string("Keep-Alive"),
+					std::string("timeout=") + boost::to_string(persistentConnectionTimeout) +
+					std::string(", max=100"));
+				persistentHttpString = "persistent";
+			}
+
 			std::string response_text = 
 				std::string("Received ") + contentLengthString + 
-				std::string(" byte(s) of your data via a non-persistent, TLS HTTP ") + 
+				std::string(" byte(s) of your data via a ") + 
+				persistentHttpString + std::string(", TLS HTTP ") + 
 				httpRequestMethod + std::string(" connection.");
 			server_tls_con->set_body(response_text);
 			
@@ -4007,23 +4349,30 @@ void MY_OPERATOR::on_http_message(websocketpp::connection_hdl hdl,
 	// So, we are done with this particular HTTP client connection.
 	// Delete this client session id from the map that we maintain to do a
 	// faster search of a connection handle by using a client session id.
-	client_id_to_hdl_map.erase(con_metadata.clientSessionId);
-
-	// Delete this handle from our associative container.        
-	client_connections_map.erase(hdl);
+	//
+	// This is needed for supporting persistent HTTP connections.
+	// Do this connection clean-up only if it is a non-persistent HTTP connection.
+	// For a persistent HTTP connection, clean-up will happen at a 
+	// later time inside the ws_request_response_timeout_handler method.
+	if(con_metadata.isPersistentHttpConnection == false) {
+		client_id_to_hdl_map.erase(con_metadata.clientSessionId);
 	
-	// We are now with one less client connection.
-	nClientsConnected -= 1;
-	
-	// Update the operator metric only if the user asked for a live update.
-	if (websocketLiveMetricsUpdateNeeded == true) {
-		nClientsConnectedMetric->setValueNoLock(nClientsConnected);
+		// Delete this handle from our associative container.        
+		client_connections_map.erase(hdl);
+		
+		// We are now with one less client connection.
+		nClientsConnected -= 1;
+		
+		// Update the operator metric only if the user asked for a live update.
+		if (websocketLiveMetricsUpdateNeeded == true) {
+			nClientsConnectedMetric->setValueNoLock(nClientsConnected);
+		}
+		
+		// Please note that unlike in the on_close for WebSocket connections, we are not
+		// going to send an End of Client Session" signal on output port 1.
+		// Because, it will simply be too many of them for the 
+		// HTTP based request/response connections.
 	}
-	
-	// Please note that unlike in the on_close for WebSocket connections, we are not
-	// going to send an End of Client Session" signal on output port 1.
-	// Because, it will simply be too many of them for the 
-	// HTTP based request/response connections.
 	<%} else {%>
 	// We are going to defer the response for this HTTP client until at a later time.
 	// The received data item here will get processed by the application logic and
@@ -4120,6 +4469,39 @@ bool MY_OPERATOR::create_new_connection_entry(
 	connection_metadata con_metadata;
 	con_metadata.isTlsConnection = isTlsConnection;
 	con_metadata.isHttpConnection = isHttpConnection;
+
+	// This is needed for supporting persistent HTTP connections.
+	con_metadata.persistentConnectionTimeoutCounter = -1;
+	con_metadata.isPersistentHttpConnection = false;
+	
+	// We will allow the persistent (Keep-Alive) HTTP connection only if the user opted for it.
+	// It is better to allow persistent HTTP connections only for non-browser based 
+	// client applications. In my tests, I have seen browser page rendering abnormalities when
+	// this option is enabled. To avoid the page rendering issues, I had to turn off this option.
+	if(isHttpConnection == true && allowPersistentHttpConnections == true) {
+		if(isTlsConnection == false) {
+			if(SPL::Functions::String::findFirst(
+				SPL::Functions::String::lower(con_non_tls->get_request().raw_head()),
+				std::string("keep-alive")) != -1) {
+				// It is a persistent HTTP connection.
+				con_metadata.isPersistentHttpConnection = true;
+				// Start the timeout counter to take care of the 
+				// request timeout happening on a persistent HTTP connection.
+				con_metadata.persistentConnectionTimeoutCounter = 0;
+			}
+		} else {
+			if(SPL::Functions::String::findFirst(
+				SPL::Functions::String::lower(con_tls->get_request().raw_head()),
+				std::string("keep-alive")) != -1) {
+				// It is a persistent HTTP connection.
+				con_metadata.isPersistentHttpConnection = true;
+				// Start the timeout counter to take care of the 
+				// request timeout happening on a persistent HTTP connection.
+				con_metadata.persistentConnectionTimeoutCounter = 0;
+			}
+		}
+	}
+
 	con_metadata.hdl = hdl;
 	// IMPORTANT NOTE
 	// --------------
@@ -4404,9 +4786,19 @@ void MY_OPERATOR::submit_received_data_item(bool & isBinaryData, int32_t & paylo
 		// then we have to start the response timeout counter now by setting it to a
 		// value of 0. Response timeout counter starts now. It will get reset back to -1
 		// either inside the ws_data_sender method when a response is sent to this client or
-		// when a response timeout occurs in the ws_response_timeout_handler.
+		// when a response timeout occurs in the ws_request_response_timeout_handler.
 		con_metadata.responseTimeoutCounter = 0;
 	<%}%>
+	
+	// This is needed for supporting persistent HTTP connections.
+	// If it is a persistent HTTP connection, we will set the following counter to 0.
+	// That will help us to do clean-up of the connection related data structure when
+	// the HTTP client stops sending requests on that persistent connection.
+	if(con_metadata.isPersistentHttpConnection == true) {
+		// Reset the timeout counter to take care of the 
+		// request timeout happening on a persistent HTTP connection.
+		con_metadata.persistentConnectionTimeoutCounter = 0;
+	}
 	
 	// Update it in the client connections map.
 	client_connections_map[hdl] = con_metadata;

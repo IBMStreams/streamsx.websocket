@@ -1,6 +1,6 @@
 ============================================================
 First created on: February/22/2020
-Last modified on: July/13/2020
+Last modified on: September/01/2020
 
 Purpose of this toolkit
 -----------------------
@@ -28,12 +28,20 @@ supports having multiple URL context paths for a given endpoint
 listening on a particular port. By using this feature, remote clients 
 can connect to different URL context paths thereby letting the 
 IBM Streams applications to tailor the data processing logic
-based on which group(s) of remote clients sent the data. Thus, users 
-will get a five-in-one benefit (WebSocket, HTTP, plain, secure and 
-response-ready) from this operator. It can be configured to start a 
-plain or secure WebSocket or HTTP endpoint for the remote clients to 
-connect and start sending and (optionally) receiving data. This is 
-Receive-only with an option to make it a Receive-and-Send operator.
+based on which group(s) of remote clients sent the data. It supports 
+both persistent (Keep-Alive) and non-persistent HTTP client connections. 
+Persistent HTTP connection feature is beneficial for the non-browser based 
+client applications that need to send hundreds of data items continuously 
+in a tight loop or to send periodic heavy bursts of data items. 
+This feature will keep the client's HTTP connection alive as long as 
+there is data arriving from the client continuously. When HTTP support is 
+enabled, it can serve the web browser based client applications for 
+fetching html, css, js, image files etc. as well as REST-based client 
+applications. Thus, users will get a five-in-one benefit (WebSocket, HTTP, 
+plain, secure and response-ready) from this operator. It can be configured 
+to start a plain or secure WebSocket or HTTP endpoint for the remote 
+clients to connect and start sending and (optionally) receiving data. 
+This is Receive-only with an option to make it a Receive-and-Send operator. 
 This operator promotes the Many-To-One data access pattern.
 
 WebSocketSendReceive is an analytic operator that can be used to
@@ -209,6 +217,8 @@ ant all                   [Approximately 8 minutes]
 ant download-clean        [Approximately 2 minutes]
 
 If all those commands ran successfully, this toolkit is ready for use.
+
+If there is no direct Internet access from the IBM Streams machine and if there is a need to go through a proxy server, then the `ant all` command may not work. In that case, you can try this command instead. `ant all -Dwebsocket.archive=file://localhost$(pwd)/ext -Dwebsocket.version=0.8.2 -Dboost.archive.src0=file://localhost$(pwd)/ext/boost-install-files/boost_1_73_0.tar.gz`
 
 A must do in the Streams applications that will use this toolkit
 ----------------------------------------------------------------

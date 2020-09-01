@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: Feb/23/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/31/2020
 
 This example demonstrates the ingestion of text or binary data
 from one or more remote WebSocket clients. It also shows how to
@@ -100,7 +100,7 @@ composite WebSocketSourceTester {
         // Default is an empty list to indicate no url context path.
         // You can expose any number of context paths for the 
         // remote clients to access this WebSocket server endpoint. 
-        // e-g: []    (OR)    ["Orders", "", "MyServices/Banking/Deposit"]
+        // e-g: []    (OR)    ['Orders', '', 'MyServices/Banking/Deposit']
 		expression<list<rstring>> $urlContextPath : (list<rstring>)
 			getSubmissionTimeValue("urlContextPath", "[]");
 		// Server side certificate (.pem) file for the WebSocket server.
@@ -121,6 +121,9 @@ composite WebSocketSourceTester {
 		// etc/creating-a-self-signed-certificate.txt
 		expression<rstring> $certificateFileName :
 			getSubmissionTimeValue("certificateFileName", "");
+		// Is a password needed for the private key in the certificate file?
+		expression<rstring> $certificatePassword : 
+			getSubmissionTimeValue("certificatePassword", "");
 		// Do you want to specifiy a file name that contains the public certificates of
 		// the trusted client(s). If this file name is not empty, then the
 		// WebSocketSource operator will perform a client (mutual) authentication.
@@ -140,7 +143,7 @@ composite WebSocketSourceTester {
 		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
 		//
 		// So your value for this submission time parameter can be as shown here.
-		// ["emailAddress=websocket.streams@ibm.com", "CN=www.ibm.com"]
+		// ['emailAddress=websocket.streams@ibm.com', 'CN=www.ibm.com']
 		expression<list<rstring>> $trustedClientX509SubjectIdentifiers :
 			(list<rstring>)getSubmissionTimeValue("trustedClientX509SubjectIdentifiers", "[]");	
 		// Is live metrics needed for the WebSocketSource operator?
@@ -252,6 +255,7 @@ composite WebSocketSourceTester {
 			param
 				tlsPort: $tlsPort;
 				certificateFileName: _certificateFileName;
+				certificatePassword: $certificatePassword;
 				trustedClientCertificateFileName: $trustedClientCertificateFileName;
 				// Use this only when you have trouble authenticating clients that 
 				// have self signed certificates.

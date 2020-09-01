@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Apr/27/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/31/2020
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables 
@@ -58,6 +58,7 @@ public:
 	SPL::int32 udpChannelNumber;
 	SPL::uint32 tlsPort;
 	std::string certificateFileName;
+	std::string certificatePassword;
 	std::string trustedClientCertificateFileName;
 	// Behind the scenes, an SPL list is nothing but a C++ std::vector.
 	SPL::list<SPL::rstring> trustedClientX509SubjectIdentifiers;
@@ -200,7 +201,7 @@ public:
 	context_ptr on_tls_init(websocketpp::connection_hdl hdl);
 
 	// Callback method needed within the TLS event handler.
-	std::string get_password();
+	std::string get_private_key_password();
 
 	// Callback method to verify the presence of any application-specific 
 	// string in a peer's public certificate's subject field.

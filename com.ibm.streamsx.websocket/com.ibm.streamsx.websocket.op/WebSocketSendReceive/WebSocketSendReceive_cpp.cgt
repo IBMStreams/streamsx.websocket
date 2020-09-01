@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Apr/08/2020
- Last modified on: Jun/29/2020
+ Last modified on: Aug/31/2020
 
  This particular operator (WebSocketSendReceive) is used to
  send and receive either text data or binary data to and from a 
@@ -209,6 +209,10 @@ my $certificateFileName = $model->getParameterByName("certificateFileName");
 # Default: Default is an empty string.
 $certificateFileName = $certificateFileName ? $certificateFileName->getValueAt(0)->getCppExpression() : "";
 
+my $certificatePassword = $model->getParameterByName("certificatePassword");
+# Default: Empty string.
+$certificatePassword = $certificatePassword ? $certificatePassword->getValueAt(0)->getCppExpression() : "";
+
 my $trustedServerCertificateFileName = $model->getParameterByName("trustedServerCertificateFileName");
 # Default: Default is an empty string i.e. no server authentication performed.
 $trustedServerCertificateFileName = $trustedServerCertificateFileName ? $trustedServerCertificateFileName->getValueAt(0)->getCppExpression() : "";
@@ -302,6 +306,12 @@ MY_OPERATOR::MY_OPERATOR()
 	<% } else { %>
 	certificateFileName = <%=$certificateFileName%>;
 	<%}%>
+
+	<% if ($certificatePassword eq "") { %>	
+	certificatePassword = "";
+	<% } else { %>
+	certificatePassword = <%=$certificatePassword%>;
+	<%}%>	
 	
 	<% if ($trustedServerCertificateFileName eq "") { %>	
 	trustedServerCertificateFileName = "";
@@ -341,6 +351,7 @@ MY_OPERATOR::MY_OPERATOR()
 	}	
 	
 	operatorPhysicalName = getContext().getName();
+	udpChannelNumber = getContext().getChannel();
 	
 	SPLAPPTRC(L_ERROR, 
 		"Operator " <<
@@ -370,7 +381,6 @@ MY_OPERATOR::~MY_OPERATOR()
 void MY_OPERATOR::allPortsReady() 
 {
 	// This operator is usually part of a UDP parallel region in many application scenarios.
-	udpChannelNumber = getContext().getChannel();
 	wsConnectionEstablished = false;
 	makeNewWebsocketConnection = false;
 	websocketConnectionErrorOccurred = false;
@@ -1377,7 +1387,7 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(MY_OPERATOR::tls_client* c, we
        // holding PEM file, we can put it to use now. This will be useful if
        // client (mutual) authentication is configured by the user.
        if(certificateFileName != "") {
-    	   ctx->set_password_callback(bind(&MY_OPERATOR::get_password, this));
+    	   ctx->set_password_callback(bind(&MY_OPERATOR::get_private_key_password, this));
     	   ctx->use_certificate_chain_file(certificateFileName.c_str());
     	   ctx->use_private_key_file(certificateFileName.c_str(),
 			   boost::asio::ssl::context::pem);    	   
@@ -1425,8 +1435,8 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(MY_OPERATOR::tls_client* c, we
 			std::string("WebSocketSendReceive_cpp.cgt: Exception in on_tls_init: ") +
 			e.what() +
 			". Reason for this error could be an invalid wss, https URL or a " +
-			"missing client certificate file or a missing trusted server certificate file. " +
-			"Please check.");
+			"missing client certificate file or a missing trusted server certificate file or an " +
+			"incorrect private key password. Please check.");
     }
 		
 	return ctx;
@@ -1510,9 +1520,8 @@ void MY_OPERATOR::on_fail(websocketpp::connection_hdl hdl, bool isTlsConnection)
 // This is a callback that can return a password if the 
 // client-side key file is configured with a key password to be
 // provided at the time of loading it in the on_tls_init method.
-std::string MY_OPERATOR::get_password() {
-	// If needed, we can plan to get it via an operator parameter.
-	return ("test");
+std::string MY_OPERATOR::get_private_key_password() {
+	return (certificatePassword);
 }
 
 // Boost ASIO will not allow or pass the self-signed peer  

@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: May/01/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/31/2020
 
 This application is a companion application that must be used while
 demonstrating the use of the WebSocketSink operator available
@@ -68,9 +68,12 @@ composite WebSocketClientApp {
 		// etc/creating-a-self-signed-certificate.txt
 		expression<rstring> $certificateFileName :
 			getSubmissionTimeValue("certificateFileName", "");
+		// Is a password needed for the private key in the certificate file?
+		expression<rstring> $certificatePassword : 
+			getSubmissionTimeValue("certificatePassword", "");
 		// Do you want to specifiy a file name that contains the public certificate of
 		// the trusted remote server. If this file name is not empty, then the
-		// WebSocketSink operator will perform a server authentication.
+		// WebSocketSendReceive operator will perform a server authentication.
 		expression<rstring> $trustedServerCertificateFileName :
 			getSubmissionTimeValue("trustedServerCertificateFileName", "");	
 		// Do you want to specify a list of identifiers present in the 
@@ -87,10 +90,10 @@ composite WebSocketClientApp {
 		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
 		//
 		// So your value for this submission time parameter can be as shown here.
-		// ["emailAddress=websocket.streams@ibm.com", "CN=www.ibm.com"]
+		// ['emailAddress=websocket.streams@ibm.com', 'CN=www.ibm.com']
 		expression<list<rstring>> $trustedServerX509SubjectIdentifiers :
 			(list<rstring>)getSubmissionTimeValue("trustedServerX509SubjectIdentifiers", "[]");
-		// Is live metrics needed for the WebSocketSink operator?
+		// Is live metrics needed for the WebSocketSendReceive operator?
 		expression<boolean> $websocketLiveMetricsUpdateNeeded : 
 			(boolean)getSubmissionTimeValue("websocketLiveMetricsUpdateNeeded", "true");
 		// Is WebSocket library low level logging needed?
@@ -272,6 +275,7 @@ composite WebSocketClientApp {
 			param
 				url: $url;
 				certificateFileName: $certificateFileName;
+				certificatePassword: $certificatePassword;
 				trustedServerCertificateFileName: $trustedServerCertificateFileName;
 				// Use this only when you have trouble authenticating a server that 
 				// has a self signed certificate.

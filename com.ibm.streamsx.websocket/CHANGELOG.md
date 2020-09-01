@@ -1,5 +1,17 @@
 Changes
 =======
+## v1.0.7:
+* Sep/01/2020
+* Made the WebSocketSource operator friendlier to browser-based client applications so that they can do HTTP GET for fetching files such as html, css, js, png, gif, favicon etc.
+* Added two new custom output functions in the WebSocketSource operator: getFullUrlBeingAccessedByTheClient, getFileNameInUrlForHttpGet
+* In the HTTP response back to the client mode, removed setting the Content-Type header if it is already set by the underlying application logic.
+* Support for persistent (Keep-Alive) HTTP connections is new in this release.
+* Added a "Connection: Close" response header for non-persistent HTTP connections.
+* Added a new parameter `allowPersistentHttpConnections` for the WebSocketSource operator.
+* Added a new parameter `certificatePassword` for the WebSocketSource, WebSocketSendReceive and WebSocketSink operators to specify the PEM private key pass phrase.
+* Restructured the HttpPost operator code to create either persistent or non-persistent HTTP connection to the server based on the operator configuration.
+* Added a new parameter `createPersistentHttpConnection` for the HttpPost operator.
+
 ## v1.0.6:
 * Jun/30/2020
 * Changed the toolkit name from streamsx.cppws to streamsx.websocket.

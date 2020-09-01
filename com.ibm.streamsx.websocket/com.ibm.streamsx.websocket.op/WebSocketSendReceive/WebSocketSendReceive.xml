@@ -176,6 +176,16 @@
       </parameter>
 
       <parameter>
+        <name>certificatePassword</name>
+        <description>This parameter specifies a password needed for decrypting the WebSocket client's private key in the PEM file. Default is an empty string.</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
         <name>trustedServerCertificateFileName</name>
         <description>This parameter specifies the full path of the PEM file name that contains the public certificate of the trusted remote server. This allows for the server authentication. If this parameter is not used or empty, then there will be no server authentication. (Default is an empty string.)</description>
         <optional>true</optional>

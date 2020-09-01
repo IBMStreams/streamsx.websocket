@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Apr/08/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/31/2020
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables and
@@ -51,6 +51,7 @@ public:
 	
 	// Websocket operations related member variables.
 	std::string certificateFileName;
+	std::string certificatePassword;
 	std::string trustedServerCertificateFileName;
 	// Behind the scenes, an SPL list is nothing but a C++ std::vector.
 	SPL::list<SPL::rstring> trustedServerX509SubjectIdentifiers;	
@@ -149,7 +150,7 @@ public:
 	context_ptr on_tls_init(tls_client* c, websocketpp::connection_hdl);
 	
 	// Callback method needed within the TLS event handler.
-	std::string get_password();
+	std::string get_private_key_password();
 	
 	// Callback method to verify the presence of any application-specific 
 	// string in a peer's public certificate's subject field.

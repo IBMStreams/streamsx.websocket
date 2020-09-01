@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Apr/28/2020
- Last modified on: Jun/29/2020
+ Last modified on: Aug/31/2020
 
  This particular operator (WebSocketSink) is used to
  send text (plain text, JSON, XML) and/or binary data to
@@ -186,6 +186,10 @@ my $certificateFileName = $model->getParameterByName("certificateFileName");
 # Default: Default is to read ws-server.pem from the etc sub-directory of the application.
 $certificateFileName = $certificateFileName ? $certificateFileName->getValueAt(0)->getCppExpression() : "";
 
+my $certificatePassword = $model->getParameterByName("certificatePassword");
+# Default: Empty string.
+$certificatePassword = $certificatePassword ? $certificatePassword->getValueAt(0)->getCppExpression() : "";
+
 my $trustedClientCertificateFileName = $model->getParameterByName("trustedClientCertificateFileName");
 # Default: Default is an empty string i.e. no client (mutual) authentication performed.
 $trustedClientCertificateFileName = $trustedClientCertificateFileName ? $trustedClientCertificateFileName->getValueAt(0)->getCppExpression() : "";
@@ -352,6 +356,12 @@ MY_OPERATOR::MY_OPERATOR() {
 			+ "/etc/ws-server.pem";
 	}
 
+	<% if ($certificatePassword eq "") { %>	
+	certificatePassword = "";
+	<% } else { %>
+	certificatePassword = <%=$certificatePassword%>;
+	<%}%>	
+	
 	<% if ($trustedClientCertificateFileName eq "") { %>	
 	trustedClientCertificateFileName = "";
 	<% } else { %>
@@ -394,6 +404,11 @@ MY_OPERATOR::MY_OPERATOR() {
 	}	
 
 	operatorPhysicalName = getContext().getName();	
+	// This operator is most likely not going to be in an 
+	// UDP parallel region due to the remote clients'  
+	// need to connect to a single URL (machine name and port).
+	// So, this variable here may not carry much value.
+	udpChannelNumber = getContext().getChannel();
 	
 	SPLAPPTRC(L_ERROR, 
 		"Operator " <<
@@ -402,6 +417,7 @@ MY_OPERATOR::MY_OPERATOR() {
 		". Following are the user configured operator parameters: "
 		"tlsPort=" << tlsPort <<
 		", certificateFileName=" << certificateFileName <<
+		", certificatePassword length=" << certificatePassword.length() <<
 		", trustedClientCertificateFileName=" << trustedClientCertificateFileName <<
 		", trustedClientX509SubjectIdentifiers=" << trustedClientX509SubjectIdentifiers <<
 		", nonTlsEndpointNeeded=" << nonTlsEndpointNeeded <<
@@ -432,12 +448,6 @@ void MY_OPERATOR::allPortsReady() {
 	// Notifies that all ports are ready. No tuples should be submitted before
 	// this. Operators can use this method to spawn their own threads.
 	//
-	// This operator is most likely not going to be in an 
-	// UDP parallel region due to the remote clients'  
-	// need to connect to a single URL (machine name and port).
-	// So, this variable here may not carry much value.
-	udpChannelNumber = getContext().getChannel();
-	
 	// Update the operator metric only if the user asked for a live update.
 	if (websocketLiveMetricsUpdateNeeded == true) {
 		// These are one time metrics that will not change during the life of an operator.
@@ -1250,7 +1260,7 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(
 						| boost::asio::ssl::context::no_tlsv1
 						| boost::asio::ssl::context::no_tlsv1_1
 						| boost::asio::ssl::context::single_dh_use);
-		ctx->set_password_callback(bind(&MY_OPERATOR::get_password, this));
+		ctx->set_password_callback(bind(&MY_OPERATOR::get_private_key_password, this));
 		ctx->use_certificate_chain_file(certificateFileName.c_str());
 		ctx->use_private_key_file(certificateFileName.c_str(),
 			boost::asio::ssl::context::pem);
@@ -1297,8 +1307,8 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(
 			std::string("WebSocketSink_cpp.cgt: Exception in on_tls_init: ") +
 			e.what() +
 			". Reason for this error could be an invalid wss, https URL or a " +
-			"missing server certificate file or a missing trusted client certificate file. " +
-			"Please check.");
+			"missing server certificate file or a missing trusted client certificate file or an " +
+			"incorrect private key password. Please check.");
 	} 
 	
 	return ctx;
@@ -2119,9 +2129,8 @@ void MY_OPERATOR::on_close(websocketpp::connection_hdl hdl) {
 // This is a callback that can return a password if the 
 // server-side key file is configured with a key password to be
 // provided at the time of loading it in the on_tls_init method.
-std::string MY_OPERATOR::get_password() {
-	// If needed, we can plan to get it via an operator parameter.
-	return ("test");
+std::string MY_OPERATOR::get_private_key_password() {
+	return (certificatePassword);
 }
 
 // Boost ASIO will not allow or pass the self-signed peer  

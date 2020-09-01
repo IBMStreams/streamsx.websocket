@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: Apr/30/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/31/2020
 
 This example demonstrates the use of the WebSocketSink operator available
 in the streamsx.websocket toolkit. This sink  operator internally runs a WebSocket server 
@@ -84,7 +84,7 @@ composite WebSocketSinkTester {
         // Default is an empty list to indicate no url context path.
         // You can expose any number of context paths for the 
         // remote clients to access this WebSocket server endpoint. 
-        // e-g: []    (OR)    ["Orders", "", "MyServices/Banking/Deposit"]
+        // e-g: []    (OR)    ['Orders', '', 'MyServices/Banking/Deposit']
 		expression<list<rstring>> $urlContextPath : (list<rstring>)
 			getSubmissionTimeValue("urlContextPath", "[]");
 		// Server side certificate (.pem) file for the WebSocket server.
@@ -105,6 +105,9 @@ composite WebSocketSinkTester {
 		// etc/creating-a-self-signed-certificate.txt
 		expression<rstring> $certificateFileName :
 			getSubmissionTimeValue("certificateFileName", "");
+		// Is a password needed for the private key in the certificate file?
+		expression<rstring> $certificatePassword : 
+			getSubmissionTimeValue("certificatePassword", "");
 		// Do you want to specifiy a file name that contains the public certificates of
 		// the trusted client(s). If this file name is not empty, then the
 		// WebSocketSink operator will perform a client (mutual) authentication.
@@ -124,7 +127,7 @@ composite WebSocketSinkTester {
 		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
 		//
 		// So your value for this submission time parameter can be as shown here.
-		// ["emailAddress=websocket.streams@ibm.com", "CN=www.ibm.com"]
+		// ['emailAddress=websocket.streams@ibm.com', 'CN=www.ibm.com']
 		expression<list<rstring>> $trustedClientX509SubjectIdentifiers :
 			(list<rstring>)getSubmissionTimeValue("trustedClientX509SubjectIdentifiers", "[]");	
 		// Is live metrics needed for the WebSocketSink operator?
@@ -178,7 +181,7 @@ composite WebSocketSinkTester {
       	// then a given data item will be sent to all the connected clients irrespective of 
       	// the url context paths they accessed. 
       	// e-g: It can be [] to send to all (OR) 
-      	// ["Orders", "", "MyServices/Banking/Deposit"] to send to those 
+      	// ['Orders', '', 'MyServices/Banking/Deposit'] to send to those 
       	// clients who accessed a particular URL context.
 		SendData_t = rstring strData, blob blobData, list<rstring> sendToUrlContextPaths; 
 		
@@ -266,6 +269,7 @@ composite WebSocketSinkTester {
 			param
 				tlsPort: $tlsPort;
 				certificateFileName: _certificateFileName;
+				certificatePassword: $certificatePassword;
 				trustedClientCertificateFileName: $trustedClientCertificateFileName;
 				// Use this only when you have trouble authenticating clients that 
 				// have self signed certificates.

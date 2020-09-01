@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Feb/13/2020
-Last modified on: Jun/29/2020
+Last modified on: Aug/27/2020
 
 This main composite file contains the logic to send
 a payload (plain text, JSON or XML) to a given HTTP(S) endpoint.
@@ -122,6 +122,10 @@ composite HttpPostTester {
 		// Do we want to impose a tiny delay in milliseconds between consecutive HTTP Posts?
 		expression<int32> $delayBetweenConsecutiveHttpPosts : 
 			(int32)getSubmissionTimeValue("delayBetweenConsecutiveHttpPosts", "0");
+		
+		// Do you want to create a persistent (Keep-Alive) HTTP connection?
+		expression<boolean> $createPersistentHttpConnection :
+			(boolean)getSubmissionTimeValue("createPersistentHttpConnection", "false");		
 			
 		// What is the desired message rate we want to test with.
 		expression<float64> $maxMessageRate : 
@@ -149,7 +153,7 @@ composite HttpPostTester {
 			map<rstring, rstring> requestHeaders, 
 			rstring httpMethod, rstring urlQueryString;
 			
-		// Schema for the input stream of the HttpPost operator.
+		// Schema for the output stream of the HttpPost operator.
 		HttpPostOutput_t = int32 statusCode, rstring statusMessage,
 			map<rstring, rstring> responseHeaders, rstring strData, blob blobData;
 					
@@ -325,6 +329,9 @@ composite HttpPostTester {
 				// Do you want to accept all the TLS server certificates (an insecure option)?
 				tlsAcceptAllCertificates: $tlsAcceptAllCertificates;
 				//
+				// Do you want to create a persistent (Keep-Alive) HTTP connection?
+				createPersistentHttpConnection: $createPersistentHttpConnection;
+				//
 				/*
 				// =============== START OF TLS CONFIGURATION ===============
 				// You can enable or disable trust store and key store features of
@@ -409,6 +416,9 @@ composite HttpPostTester {
 				//
 				// Do you want to accept all the TLS server certificates (an insecure option)?
 				tlsAcceptAllCertificates: $tlsAcceptAllCertificates;
+				//
+				// Do you want to create a persistent (Keep-Alive) HTTP connection?
+				createPersistentHttpConnection: $createPersistentHttpConnection;
 				//
 				/*
 				// =============== START OF TLS CONFIGURATION ===============
