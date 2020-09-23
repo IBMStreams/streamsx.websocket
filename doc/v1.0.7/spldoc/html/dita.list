@@ -1,4 +1,4 @@
-#Tue Sep 22 20:14:18 EDT 2020
+#Mon Aug 31 21:13:19 EDT 2020
 copytosourcelist=
 hreftargetslist=dita/tk$com.ibm.streamsx.websocket/ix$Namespace.xml,dita/tk$com.ibm.streamsx.websocket/ix$Operator.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSource.xml,dita/toolkits/ix$Namespace.xml,dita/toolkits/ix$Operator.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSink.xml,dita/tk$com.ibm.streamsx.websocket/tk$com.ibm.streamsx.websocket.xml,dita/toolkits/toolkits.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$HttpPost.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSendReceive.xml,dita/references/OperatorModel.xml,dita/tk$com.ibm.streamsx.websocket/ns$com.ibm.streamsx.websocket.op.xml
 fullditatopicfile=fullditatopic.list

@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the streamsx.websocket toolkit operators."
-last_modified_at: 2020-08-31T10:20:48+01:00
+last_modified_at: 2020-09-22T15:30:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -44,6 +44,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | Parameter Name | Type | Default | Description |
 | --- | --- | --- | --- |
 | tlsPort | `uint32` | `443` | This parameter specifies the WebSocket TLS port number. |
+| tlsCipherWhitelist | `rstring` | `Empty string` | This parameter can be used to specify a string containing one or more comma separated approved TLS/SSL ciphers that should be used during TLS/SSL connection negotiations with clients. It is handy when there is a need to avoid using ciphers that are found to have security vulnerabilities. |
 | certificateFileName | `rstring` | `etc/ws-server.pem present inside the Streams application` | This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. |
 | certificatePassword | `rstring` | `Empty string` | This parameter specifies a password needed for decrypting the WebSocket server's private key in the PEM file. |
 | trustedClientCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. |
@@ -138,6 +139,7 @@ Following are the parameters accepted by the WebSocketSink operator. Some parame
 | Parameter Name | Type | Default | Description |
 | --- | --- | --- | --- |
 | tlsPort | `uint32` | `443` | This parameter specifies the WebSocket TLS port number. |
+| tlsCipherWhitelist | `rstring` | `Empty string` | This parameter can be used to specify a string containing one or more comma separated approved TLS/SSL ciphers that should be used during TLS/SSL connection negotiations with clients. It is handy when there is a need to avoid using ciphers that are found to have security vulnerabilities. |
 | certificateFileName | `rstring` | `etc/ws-server.pem present inside the Streams application` | This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. |
 | certificatePassword | `rstring` | `Empty string` | This parameter specifies a password needed for decrypting the WebSocket server's private key in the PEM file. |
 | trustedClientCertificateFileName | `rstring` | `An empty string` | This parameter specifies the full path of the PEM file name that can contain the public certificates of all the trusted clients. This allows for the client (mutual) authentication. If this parameter is not used or empty, then there will be no client authentication. |
