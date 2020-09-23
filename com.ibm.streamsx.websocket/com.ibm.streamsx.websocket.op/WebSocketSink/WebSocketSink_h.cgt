@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Apr/27/2020
-Last modified on: Aug/31/2020
+Last modified on: Sep/21/2020
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables 
@@ -57,6 +57,11 @@ public:
 	std::string operatorPhysicalName;
 	SPL::int32 udpChannelNumber;
 	SPL::uint32 tlsPort;
+	// A comma separated approved TLS/SSL ciphers can be specified.
+	// If there is a need to avoid using insecure vulnerable ciphers,
+	// this can be used to specify the approved ciphers to be used.
+	// e-g: "DES-CBC3-SHA,AES128-SHA,AES256-SHA"
+	std::string tlsCipherWhitelist;
 	std::string certificateFileName;
 	std::string certificatePassword;
 	std::string trustedClientCertificateFileName;
@@ -79,6 +84,10 @@ public:
 	SPL::uint32 maxClientConnectionsAllowed;
 	server_non_tls endpoint_non_tls;
 	server_tls endpoint_tls;
+	// Set up an external io_service to run the endpoint on. This is not
+	// strictly necessary, but simplifies thread management a bit.
+	boost::asio::io_service ios;
+	bool iosRunLoopStarted;
 	SPL::boolean tlsEndpointStarted;
 	SPL::boolean nonTlsEndpointStarted;
 	SPL::int64 timeOfPreviousStaleConnectionRemoval;

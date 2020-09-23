@@ -9,7 +9,7 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Aug/30/2020
+Last modified on: Sep/21/2020
 
 This Java operator is an utility operator available in the
 streamsx.websocket toolkit. It can be used to do HTTP(S) post of
@@ -600,6 +600,12 @@ public class HttpPost extends AbstractOperator {
 	            
 	            // Update the operator metrics.
 	            nHttpPostFailed.increment();
+	            
+	            // Even in the case of an exception, we will emit an
+	            // output tuple to inform the application that invoked this operator.
+		        outTuple.setInt("statusCode", 12345);
+		        outTuple.setString("statusMessage", ex.getMessage());
+		        outStream.submit(outTuple);
 	            return;
 	        }
 	                
@@ -810,6 +816,12 @@ public class HttpPost extends AbstractOperator {
 	            httpGet.releaseConnection();
 	            // Update the operator metrics.
 	            nHttpPostFailed.increment();
+	            
+	            // Even in the case of an exception, we will emit an
+	            // output tuple to inform the application that invoked this operator.
+		        outTuple.setInt("statusCode", 12345);
+		        outTuple.setString("statusMessage", ex.getMessage());
+		        outStream.submit(outTuple);
 	            return;
 	        }
 	                

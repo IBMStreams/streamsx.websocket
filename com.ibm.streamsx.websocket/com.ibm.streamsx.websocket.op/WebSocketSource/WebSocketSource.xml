@@ -484,6 +484,16 @@
         <type>boolean</type>
         <cardinality>1</cardinality>
       </parameter>
+      
+      <parameter>
+        <name>tlsCipherWhitelist</name>
+        <description>This parameter can be used to specify a string containing one or more comma separated TLS/SSL ciphers that should be used during TLS/SSL connection negotiations with clients. It is handy when there is a need to avoid using ciphers that are found to have security vulnerabilities. (Default is an empty string.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>rstring</type>
+        <cardinality>1</cardinality>
+      </parameter>
     </parameters>
 
     <inputPorts>

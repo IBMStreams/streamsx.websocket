@@ -1,5 +1,11 @@
 Changes
 =======
+## v1.0.8:
+* Sep/22/2020
+* Added logic to stop the Boost ASIO run loop on operator shutdown in order for an immediate closure of the TLS and non-TLS server ports in the Source and Sink operators.
+* Added an optional tlsCipherWhitelist parameter in the Source and Sink operators for the user to specify approved TLS/SSL ciphers thereby avoiding the use of any security vulnerable ciphers.
+* Added logic in the HttpPost operator to emit an output tuple even when the tuple processing logic encounters an exception.
+
 ## v1.0.7:
 * Sep/01/2020
 * Made the WebSocketSource operator friendlier to browser-based client applications so that they can do HTTP GET for fetching files such as html, css, js, png, gif, favicon etc.

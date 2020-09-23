@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Feb/22/2020
- Last modified on: Aug/31/2020
+ Last modified on: Sep/22/2020
 
  This particular operator (WebSocketSource) is used to
  receive either text data or binary data from one or more
@@ -51,6 +51,9 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/exception/to_string.hpp>
 #include <boost/thread/thread.hpp>
+
+// Necessary headers for setting user specified TLS ciphers.
+#include <openssl/ssl.h>
 
 // For the core logic below, we will need these namespaces from websocketpp.
 using websocketpp::lib::placeholders::_1;
@@ -508,6 +511,10 @@ my $tlsPort = $model->getParameterByName("tlsPort");
 # Default: 443
 $tlsPort = $tlsPort ? $tlsPort->getValueAt(0)->getCppExpression() : 443;
 
+my $tlsCipherWhitelist = $model->getParameterByName("tlsCipherWhitelist");
+# Default: Empty string
+$tlsCipherWhitelist = $tlsCipherWhitelist ? $tlsCipherWhitelist->getValueAt(0)->getCppExpression() : "";
+
 my $certificateFileName = $model->getParameterByName("certificateFileName");
 # Default: Default is to read ws-server.pem from the etc sub-directory of the application.
 $certificateFileName = $certificateFileName ? $certificateFileName->getValueAt(0)->getCppExpression() : "";
@@ -735,6 +742,12 @@ MY_OPERATOR::MY_OPERATOR() {
 	// will lead to a compiler error. So, only for the string based copy from a
 	// perl variable, the following check must be done for an empty string and
 	// then it should be done as shown below.
+	<% if ($tlsCipherWhitelist eq "") { %>	
+	tlsCipherWhitelist = "";
+	<% } else { %>
+	tlsCipherWhitelist = <%=$tlsCipherWhitelist%>;
+	<%}%>
+	
 	<% if ($certificateFileName eq "") { %>	
 	certificateFileName = "";
 	<% } else { %>
@@ -821,6 +834,7 @@ MY_OPERATOR::MY_OPERATOR() {
 		"-->Channel " << boost::to_string(udpChannelNumber) <<
 		". Following are the user configured operator parameters: "
 		"tlsPort=" << tlsPort <<
+		", tlsCipherWhitelist=" << tlsCipherWhitelist <<
 		", certificateFileName=" << certificateFileName <<
 		", certificatePassword length=" << certificatePassword.length() <<
 		", trustedClientCertificateFileName=" << trustedClientCertificateFileName <<
@@ -961,6 +975,15 @@ void MY_OPERATOR::prepareToShutdown() {
 	// This operator is being shutdown now.
 	// We can empty the following containers.
 	client_connections_map.clear();
+	
+	// At this time, we can stop the boost ASIO run loop that
+	// got started below in the process method of this source operator.
+	if(iosRunLoopStarted == true) {
+		// It will stop the ios run loop and make the
+		// source operator thread exit. It should also help
+		// in the immediate closure of the TLS and non-TLS ports.
+		ios.stop();
+	}
 } // End of prepareToShutdown.
 
 // Processing for source and threaded operators   
@@ -995,10 +1018,9 @@ void MY_OPERATOR::process(uint32_t idx) {
 	// corresponding close brace at the end of the code block below.
 	//
 	// while(!getPE().getShutdownRequested()) {
-	// Set up an external io_service to run both endpoints on. This is not
-	// strictly necessary, but simplifies thread management a bit.
-	boost::asio::io_service ios;
 
+	iosRunLoopStarted = false;
+	
 	// If the user opted for an additional non-TLS (plain) 
 	// Websocket endpoint, let us create that as well.
 	// This non_tls insecure endpoint is here for a very 
@@ -1128,6 +1150,7 @@ void MY_OPERATOR::process(uint32_t idx) {
 	// This will block until the server socket gets closed.
 	// For additional details, please refer to the commentary and 
 	// logic in the prepareToShutdown method
+	iosRunLoopStarted = true;
 	ios.run();
 	// }
 } // End of process (for source operators)
@@ -2297,6 +2320,27 @@ MY_OPERATOR::context_ptr MY_OPERATOR::on_tls_init(
 						| boost::asio::ssl::context::no_tlsv1_1
 						| boost::asio::ssl::context::single_dh_use);
 		ctx->set_password_callback(bind(&MY_OPERATOR::get_private_key_password, this));
+
+		// If the user has configured specific TLS ciphers to be used when
+		// establishing the TLS connection, then we can set it now.
+		// Reference URLs:
+		// https://stackoverflow.com/questions/50058521/using-specific-cipher-for-ssl-tls-in-boostasio
+		// https://www.ibm.com/support/knowledgecenter/SSB23S_1.1.0.2020/gtpc2/cpp_ssl_ctx_set_cipher_list.html
+		// https://www.ibm.com/support/knowledgecenter/SSB23S_1.1.0.2020/gtps7/s5sple1.html
+		if(tlsCipherWhitelist.length() > 0) {
+			// e-g: "DES-CBC3-SHA,AES128-SHA,AES256-SHA"
+			if (SSL_CTX_set_cipher_list(ctx->native_handle(), 
+				tlsCipherWhitelist.c_str()) <= 0) {
+				std::cout << "Operator " << operatorPhysicalName <<
+					"-->Channel " << boost::to_string(udpChannelNumber) << 
+					"-->" << "Error in setting user provided TLS cipher list." << std::endl;
+				
+				throw std::runtime_error(
+					std::string("WebSocketSource_cpp.cgt: Error in on_tls_init: ") +
+					"Error in setting user provided TLS cipher list.");			
+			}
+		}
+		
 		// Let us now load the server's private key and 
 		// public certificate holding PEM file.
 		ctx->use_certificate_chain_file(certificateFileName.c_str());
