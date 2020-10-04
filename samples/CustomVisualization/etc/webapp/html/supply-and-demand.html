@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<!-- Copyright (C) 2015, 2020 International Business Machines Corporation  -->
+<!-- All Rights Reserved                                	          -->
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+	<link rel="stylesheet" type="text/css" href="TaxiMetrics.css">
+	<script type="text/javascript" src="https://d3js.org/d3.v5.min.js"></script>
+	<script src="https://d3js.org/d3-color.v1.min.js"></script>
+	<script src="https://d3js.org/d3-scale.v3.min.js"></script>
+	<script src="https://d3js.org/d3-path.v1.min.js"></script>
+	<script src="https://d3js.org/d3-shape.v1.min.js"></script>
+	<script type="text/javascript" src="SupplyAndDemand.js"></script>
+</head>
+
+<body onload="supply_and_demand_onload()">
+	<div id="main-supply-and-demand">
+		<!-- 
+		Bordering a div: 
+		https://stackoverflow.com/questions/3741333/how-can-i-define-fieldset-border-color
+		-->
+		<fieldset id="supply-and-demand-table-fieldset">
+		<legend><b>Supply and Demand Alerts</b></legend>
+			<div id="supply-and-demand-table">
+			</div>
+		</fieldset>
+		
+		<div id="clearAlertsDiv">
+		<label for="clearAlerts">Clear the alerts:</label></br>
+		<button type="button" id="clearAlerts" 
+		 class="clearAlertsActive clearAlertsInactive" 
+		 onclick="clear_alerts_onclick()">Clear</button>
+		</div>
+	</div>
+</body>
+</html>

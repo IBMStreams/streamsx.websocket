@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!-- Copyright (C) 2015, 2020 International Business Machines Corporation  -->
+<!-- All Rights Reserved                                	          -->
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+	<link rel="stylesheet" type="text/css" href="TaxiMetrics.css">
+	<script type="text/javascript" src="https://d3js.org/d3.v5.min.js"></script>
+	<script src="https://d3js.org/d3-color.v1.min.js"></script>
+	<script src="https://d3js.org/d3-scale.v3.min.js"></script>
+	<script src="https://d3js.org/d3-path.v1.min.js"></script>
+	<script src="https://d3js.org/d3-shape.v1.min.js"></script>
+	<script type="text/javascript" src="TaxiBookings.js"></script>
+</head>
+
+<body onload="taxi_bookings_onload()">
+	<div id="main-taxi-bookings">
+		<!-- 
+		Bordering a div: 
+		https://stackoverflow.com/questions/3741333/how-can-i-define-fieldset-border-color
+		-->
+		<fieldset id="taxi-bookings-table-fieldset">
+		<legend><b>Taxi Bookings Full Details</b></legend>
+			<div id="taxi-bookings-table">
+			</div>
+		</fieldset>
+		
+		<fieldset id="new-donut-fieldset">
+		<legend><b>New Taxi Bookings Count</b></legend>
+			<div id="new-bookings-donut">
+			</div>				
+		</fieldset>
+
+		<fieldset id="unserved-donut-fieldset">
+		<legend><b>Unserved Taxi Bookings Count</b></legend>
+			<div id="unserved-bookings-donut">
+			</div>				
+		</fieldset>
+		
+		<fieldset id="new-trend-fieldset">
+		<legend><b>New Taxi Bookings Trend</b></legend>
+			<div id="new-trend-div">
+				<p>
+				<div id="com-for-trend">
+				<label for="community-for-new-trend">Select a community:</label></br>
+				<select name="community-for-new-trend" id="community-for-new-trend" size="5" 
+				 onclick="community_selection_new_trend_onclick()">
+					<!--
+					<option value="114">AL BUTEEN</option>
+					<option value="115">AL SABKHA</option>
+					<option value="116">AYAL NASIR</option>
+					<option value="117">AL MURAR</option>
+					<option value="118">NAIF</option>
+					<option value="119">AL RIGGA</option>
+					-->
+				</select>
+				</div>
+			
+				<div id="new-bookings-trend">
+				</div>
+				</p>
+			</div>				
+		</fieldset>
+
+		<fieldset id="unserved-trend-fieldset">
+		<legend><b>Unserved Taxi Bookings Trend</b></legend>
+			<div id="unserved-trend-div">
+				<p>
+				<div id="com-for-trend">
+				<label for="community-for-unserved-trend">Select a community:</label></br>
+				<select name="community-for-unserved-trend" id="community-for-unserved-trend" size="5" 
+				 onclick="community_selection_unserved_trend_onclick()">
+					<!--
+					<option value="114">AL BUTEEN</option>
+					<option value="115">AL SABKHA</option>
+					<option value="116">AYAL NASIR</option>
+					<option value="117">AL MURAR</option>
+					<option value="118">NAIF</option>
+					<option value="119">AL RIGGA</option>
+					-->
+				</select>
+				</div>
+				
+				<div id="unserved-bookings-trend">
+				</div>
+				</p>
+			</div>				
+		</fieldset>
+	</div>
+</body>
+</html>

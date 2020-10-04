@@ -1,0 +1,520 @@
+/*======== START OF STYLING THE APPLICATION TITLE ========*/
+/*
+https://stackoverflow.com/questions/10001294/how-to-position-image-next-to-text-with-padding
+*/
+#appTitle {
+  overflow: auto;
+  line-height: 70px;
+  margin-bottom: 0px;
+  border-width: thick;
+  border-style: ridge;
+  border-color: teal;  
+  background-image: url('dubai-taxi1.jpg');
+  background-repeat: repeat;
+}
+
+#rtaLogoImage {
+  float: left; 
+  height: 70px;
+  width: 70px;  
+  margin-left: 420px; 
+  vertical-align: middle;
+}
+
+#appTitle span{
+  float: left;
+  /*margin-left: 2px;*/
+  text-align: center;
+  color: maroon;
+  background-color: white;
+}
+/*======== END OF STYLING THE APPLICATION TITLE ========*/
+
+/*======== START OF STYLING THE BODY ========*/
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif, Georgia, Serif;
+}
+/*======== END OF STYLING THE BODY ========*/
+
+/*======== START OF STYLING THE TOP MENU BAR ========*/
+/*
+This top navigation bar idea is explained here: 
+https://www.w3schools.com/howto/howto_js_topnav.asp
+*/
+.topnav {
+  overflow: hidden;
+  height: 100%;
+  background-color: #333;
+  margin-top: 0px;
+}
+
+.topnav a {
+  float: left;
+  color: #f2f2f2;
+  text-align: center;
+  padding: 14px 16px;
+  text-decoration: none;
+  font-size: 17px;
+}
+
+.topnav a:hover {
+  background-color: #ddd;
+  color: black;
+}
+
+.topnav a.active {
+  background-color: #4CAF50;
+  color: white;
+}
+/*======== END OF STYLING THE TOP MENU BAR ========*/
+
+/*======== START OF STYLING THE MAIN DIV FOR DYNAMIC CONTENT ========*/
+#main {
+  width: 100%;
+  height: 100%;
+  padding-left:16px;
+  overflow-x: scroll;
+  overflow-y: scroll;
+  whitespace: nowrap;
+} 
+/*======== END OF STYLING THE MAIN DIV FOR DYNAMIC CONTENT ========*/
+
+/*======== START OF STYLING THE COMMUNITY SELECTION PAGE ========*/
+form label {
+  font-weight: normal;
+}
+
+#communitySelectionForm {
+  border-width: thick;
+  border-style: double;
+  border-color: green;
+  width: 700px;
+}
+
+#cursel {
+  float: left;
+}
+
+#currentSelection {
+  resize: none;
+}
+
+/*
+The following few styles are for the slider bar.
+Usage about these styles is explained here:
+https://www.w3schools.com/howto/tryit.asp?filename=tryhow_css_js_rangeslider_round
+*/
+#mint {
+  float: left;
+  padding-left: 60px;
+  width: 25%;
+}
+
+.slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 15px;
+  border-radius: 5px;
+  background: #DAA520; /*Goldenrod*/
+  outline: none;
+  opacity: 0.6;
+  -webkit-transition: .2s;
+  transition: opacity .2s;
+}
+
+.slider:hover {
+  opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #4CAF50; /*Green*/
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: #4CAF50; /*Green*/
+  cursor: pointer;
+}
+
+#com {
+  float: left;
+}
+
+#dis {
+  float: left;
+  padding-left: 60px;
+}
+
+#sel {
+  float: left;
+  padding-left: 60px;
+}
+
+#con {
+  float: left;
+  padding-top: 30px;
+}
+
+.registerSelectionActive {
+  background-color: #008CBA; /* Blue */
+  border: none;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  cursor: pointer;
+}
+
+.registerSelectionInactive {
+  background-color: #008CBA; /* Blue */
+  border: none;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/*======== END OF STYLING THE COMMUNITY SELECTION PAGE ========*/
+
+/*======== START OF STYLING THE TAXI COUNTS & TAXI BOOKINGS PAGES ========*/
+/*
+Ideas about this styling are explained here:
+http://bl.ocks.org/AMDS/4a61497182b8fcb05906
+*/
+/* Styling for the main div container of this page. */
+#main-taxi-counts {
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+/*
+Bordering a div: 
+https://stackoverflow.com/questions/3741333/how-can-i-define-fieldset-border-color
+*/
+#taxi-counts-table-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: blue;
+}
+
+/* Styling for the table */
+#taxi-counts-table {
+  margin: 10px;
+  /*
+  Following two styles are for needed to make the tbody scrollable.
+  Refer to the "CSS-Only" answer section in this URL:
+  https://stackoverflow.com/questions/17067294/html-table-with-100-width-with-vertical-scroll-inside-tbody
+  */
+  overflow-y: auto; 
+  height: 200px;
+}
+
+table { 
+  width: 100%; 
+  border-collapse: collapse; 
+}
+
+/* Zebra striping */
+tr:nth-of-type(odd) { 
+  background: #eee; 
+}
+
+th { 
+  background: #333; 
+  color: white; 
+  font-weight: bold; 
+  cursor: s-resize;
+  background-repeat: no-repeat;
+  background-position: 3% center;
+  /*
+  Following two styles are for needed to make the tbody scrollable.
+  Refer to the "CSS-Only" answer section in this URL:
+  https://stackoverflow.com/questions/17067294/html-table-with-100-width-with-vertical-scroll-inside-tbody
+  */
+  position: sticky;
+  top: 0;
+}
+
+td, th { 
+  padding: 6px; 
+  border: 1px solid #ccc; 
+  text-align: left; 
+}
+	
+th.des:after {
+  content: "\21E9";
+}
+    
+th.aes:after {
+  content: "\21E7";
+}
+
+/* Styling for the Dount Chart */
+/* d3.js reference URL: http://bl.ocks.org/dbuezas/9306799 */
+#hired-donut-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: green;
+  width: 1100px;
+  height: 510px;
+}
+
+#taxis-hired-donut {
+  float: left;
+  padding-left: 10px; 
+  width: 1080px;
+  height: 500px;
+}
+
+#available-donut-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: skyblue;
+  width: 1100px;
+  height: 510px;
+}
+
+#taxis-available-donut {
+  float: left;
+  padding-left: 10px; 
+  width: 1080px;
+  height: 500px;
+}
+
+svg {
+  width: 100%;
+  height: 100%;
+}
+
+path.slice{
+  stroke-width:2px;
+}
+
+polyline{
+  opacity: .3;
+  stroke: black;
+  stroke-width: 2px;
+  fill: none;
+}
+
+#hired-trend-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: goldenrod;
+  width: 1100px;
+  height: 510px;
+}
+
+#com-for-trend {
+  float: left;
+}
+
+.trend-axis {
+  font: 14px sans-serif;
+}
+
+.hired-trend-line {
+  fill: none;
+  stroke: orangered;
+  stroke-width: 3px;
+}
+
+#taxis-hired-trend {
+  float: left;
+  padding-left: 10px;
+  width: 900px;
+  height: 500px;
+}
+
+#available-trend-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: purple;
+  width: 1100px;
+  height: 510px;
+}
+
+.available-trend-line {
+  fill: none;
+  stroke: yellowgreen;
+  stroke-width: 3px;
+}
+
+#taxis-available-trend {
+  float: left;
+  padding-left: 10px;
+  width: 900px;
+  height: 500px;
+}
+
+//////// Everything below in this section are for the Taxi Bookings page. ////////
+#main-taxi-bookings {
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+/*
+Bordering a div: 
+https://stackoverflow.com/questions/3741333/how-can-i-define-fieldset-border-color
+*/
+#taxi-bookings-table-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: blue;
+}
+
+/* Styling for the table */
+#taxi-bookings-table {
+  margin: 10px;
+  /*
+  Following two styles are for needed to make the tbody scrollable.
+  Refer to the "CSS-Only" answer section in this URL:
+  https://stackoverflow.com/questions/17067294/html-table-with-100-width-with-vertical-scroll-inside-tbody
+  */
+  overflow-y: auto; 
+  height: 200px;
+}
+
+/* Styling for the Dount Chart */
+/* d3.js reference URL: http://bl.ocks.org/dbuezas/9306799 */
+#new-donut-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: green;
+  width: 1100px;
+  height: 510px;
+}
+
+#new-bookings-donut {
+  float: left;
+  padding-left: 10px; 
+  width: 1080px;
+  height: 500px;
+}
+
+#unserved-donut-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: skyblue;
+  width: 1100px;
+  height: 510px;
+}
+
+#unserved-bookings-donut {
+  float: left;
+  padding-left: 10px; 
+  width: 1080px;
+  height: 500px;
+}
+
+#new-trend-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: goldenrod;
+  width: 1100px;
+  height: 510px;
+}
+
+.new-trend-line {
+  fill: none;
+  stroke: yellowgreen;
+  stroke-width: 3px;
+}
+
+#new-bookings-trend {
+  float: left;
+  padding-left: 10px;
+  width: 900px;
+  height: 500px;
+}
+
+#unserved-trend-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: purple;
+  width: 1100px;
+  height: 510px;
+}
+
+.unserved-trend-line {
+  fill: none;
+  stroke: orangered;
+  stroke-width: 3px;
+}
+
+#unserved-bookings-trend {
+  float: left;
+  padding-left: 10px;
+  width: 900px;
+  height: 500px;
+}
+/*======== END OF STYLING THE TAXI COUNTS & TAXI BOOKINGS PAGES ========*/
+
+/*======== START OF STYLING THE SUPPLY AND DEMAND PAGE ========*/
+/* Styling for the table */
+#supply-and-demand-table-fieldset {
+  border-width: thick;
+  border-style: double;
+  border-color: blue;
+}
+
+#supply-and-demand-table {
+  margin: 10px;
+  /*
+  Following two styles are for needed to make the tbody scrollable.
+  Refer to the "CSS-Only" answer section in this URL:
+  https://stackoverflow.com/questions/17067294/html-table-with-100-width-with-vertical-scroll-inside-tbody
+  */
+  overflow-y: auto; 
+  height: 300px;
+}
+
+#clearAlertsDiv {
+  float: left;
+  padding-top: 30px;
+}
+
+.clearAlertsActive {
+  background-color: #008CBA; /* Blue */
+  border: none;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  cursor: pointer;
+}
+
+.clearAlertsInactive {
+  background-color: #008CBA; /* Blue */
+  border: none;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/*======== END OF STYLING THE SUPPLY AND DEMAND PAGE ========*/
+

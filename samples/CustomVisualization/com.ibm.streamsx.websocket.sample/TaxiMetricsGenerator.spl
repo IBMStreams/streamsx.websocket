@@ -1,0 +1,1524 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+============================================================
+This is somewhat an involved IBM Streams application that
+has a few modular blocks of logic/code. That includes ingesting
+base64 encoded data files, identifying out of sequence events,
+performing Geofence, applying custom written event time
+based windowing for the analytics and incorporating a new way to
+visualize the results in a full-fledged web browser based
+custom dashboard application. So, learning about the full
+application logic will take a considerable amount of time.
+However, if the goal is simply to learn about how the custom
+visualization is done in the context of this application, 
+then that is relatively simpler. One can understand the
+core visualiation idea and its implementation with a minimal
+effort. That learning can also be applied in other IBM Streams
+applications by focusing only on the final section inside the
+main composite of this application.
+
+Before doing anything with the code in this file, it is a 
+must to first go through the ReadMe.txt file available in the 
+top-level directory of this example.
+
+This non-main composite provides a reusable subflow graph
+that can be used to generate Taxi Metrics for computing
+the number of taxis available for booking in a given time duration,
+taxis hired in a given time duration, number of booking requests 
+in a given time duration, number of booking requests per
+status in a given time duration and the number of taxis reporting 
+their meter status in a given time duration.
+
+The logic done here is suitable in connection with the 
+CustomVisualization example available in the streamsx.websocket toolkit.
+
+The code in this non-main composite can be parameterized to
+promote reuse on two fronts.
+1) Same code here can be used for analyzing different
+ data partitions (Taxis available for booking, Taxis hired,
+ Number of booking requests, Number of unserved booking requests,
+ Number of served booking requests, Number of cancelled bookings,
+ taxi counts etc.). All these data partitions will use either the
+ Taxi Location or Taxi Booking data ingested from files, Kafka or in real-time.
+
+2) Same code here can also be used to analyze the Taxt Location and Booking events 
+using both short term sliding window periods as well as long term tumbling window periods.
+
+Both the points highlighted above can be achieved by two simple
+composite parameters that the user of this operator can apply at the
+time of invoking this non-main composite operator.
+
+First created on: July/13/2020
+Last modified on: Oct/01/2020
+============================================================
+*/
+namespace com.ibm.streamsx.websocket.sample;
+
+// All the stream schema a.k.a types and commonly used functions are available from this namespace.
+use com.ibm.streamsx.websocket.sample.types::*;
+
+// This non-main composite is used in the CustomVisualization example.
+// This composite has multiple output ports. But, the output
+// tuples will be sent only on a relevant port depending on the
+// partitioningSchemeId parameter value of this non-main composite operator.
+public composite TaxiMetricsGenerator(input MetricsWindowParameters,
+	TaxiLocationOrBookingEvent;
+	output TaxisAvailableCount, TaxisHiredCount,
+	NewBookingsRequestsCount, UnservedBookingsRequestsCount, 
+	ServedBookingsRequestsCount, CancelledBookingsRequestsCount) {
+	param
+		// What is the window length (duration in seconds)?  
+		// Data collected during this time length will be considered for 
+		// the overall METRICS reporting.
+		expression<float64> $METRICS_WINDOW_PERIOD : 
+			(float64)getSubmissionTimeValue("MetricsWindowPeriod", "60.0");
+		// What is the window slice (period in seconds) by which we should slide?
+		// This period should be greater than 0.0 and less than or 
+		// equal to the window period specified above.
+		//
+		// a) For optimal results, it is better to keep this value within 
+		// two thirds of the window period specified above. 
+		//
+		// b) If this value is set to the same value as the 
+		// window period specified above, then it can behave 
+		// something similar to a tumbling window.
+		expression<float64> $METRICS_WINDOW_SLIDING_PERIOD : 
+			(float64)getSubmissionTimeValue("MetricsWindowSlidingPeriod", "60.0");
+		// How long (in seconds) we should keep the contents inside 
+		// the window before aging/discarding/deleting/evicting them?
+		// This value should be greater than the window period specified above.
+		// 
+		// For optimal use of memory, this value need not be more than 
+		// four times the window period specified above.
+		expression<float64> $METRICS_WINDOW_CONTENTS_EVICTION_PERIOD : 
+			(float64)getSubmissionTimeValue("MetricsWindowContentsEvictionPeriod", "180.0");
+		// Following value indicates the window time for collecting 
+		// the long term METRICS. 
+		// Read more details available in a related composite operator parameter below.
+		expression<float64> $LONG_TERM_METRICS_WINDOW_PERIOD :
+			(float64)getSubmissionTimeValue("LongTermMetricsWindowPeriod", "300.0");
+		// This composite makes its code reusable based on this composite parameter.
+		// 1 = Partition the events by ESN + meterStatus == METER_OFF.
+		// 2 = Partition the events by ESN + meterStatus == METER_ON.
+		// 3 = Partition the events by status (of booking) == UNSERVED + If dtBooking falls within the window.
+		// 4 = Partition the events by status (of booking) == UNSERVED 
+		// 5 = Partition the events by status (of booking) == SERVED 
+		// 6 = Partition the events by status (of booking) == CANCELLED 
+		expression<int32> $partitioningSchemeId;
+		// Following composite parameter value indicates whether this 
+		// composite operator instance should calculate METRICS in 
+		// short term METRICS calculation mode or in long term METRICS calculation mode.
+		// In the short term METRICS calculation mode, it will use the window parameters
+		// (METRICS window period, sliding period and eviction period) defined at the
+		// top of this param clause. In the long term METRICS calculation mode,
+		// it will set the METRICS window period to the long term METRICS window
+		// period declared above. It will automatically set the
+		// window sliding period to the long term METRICS period declared above.
+		// By setting these two periods the same, we are in effect having a 
+		// tumbling window instead of a sliding window.
+		// It will also automatically set the eviction period to the 
+		// long term METRICS window period declared above plus 20 minutes.
+		expression<boolean> $longTermMetricsCalculationNeeded;
+
+	graph		
+		// =========== START OF GENERATING THE TAXI METRICS =========== 
+		// This non-main composite operator receives all the taxi location and 
+		// taxi booking  events and then it generates metrics for computing
+		// taxis available, taxis hired, bookings requests, 
+		// bookings requests unserved, served, cancelled etc. 
+		// Here, we will build a window based on user configured time value.
+		// Within that window, we will calculate the required metrics and 
+		// report at the end of that window period.
+		// 		
+		// It uses a composite parameter as the partition key.
+		(stream<TaxisAvailableCount_t> TaxisAvailableCount as TAC;
+		 stream<TaxisHiredCount_t> TaxisHiredCount as THC;
+		 stream<NewBookingsRequestsCount_t> NewBookingsRequestsCount as NBRC;
+		 stream<UnservedBookingsRequestsCount_t> UnservedBookingsRequestsCount as UBRC;
+		 stream<ServedBookingsRequestsCount_t> ServedBookingsRequestsCount as SBRC;
+		 stream<CancelledBookingsRequestsCount_t> CancelledBookingsRequestsCount as CBRC)  
+			as MetricsGenerator = Custom(MetricsWindowParameters as MWP; 
+			TaxiLocationOrBookingEvent as TLOBE) {
+		 	logic
+		 		state: {
+		 			// Following two variables are used to hold the next
+		 			// sliding window start and end times.
+		 			mutable timestamp _windowStartTs = 0.0;
+		 			mutable timestamp _windowEndTs = 0.0;
+		 			// Key for this map is the partitionKey based on this
+		 			// composite operator's partitioningSchemeId parameter. 
+		 			// Value portion of this map is a list containing all the 
+		 			// taxi location or booking events that occur for that 
+		 			// partitionKey within a given window contents eviction period  
+		 			// (such as the ESN + meterStatus == METER_OFF or 
+		 			// ESN + meterStatus == METER_ON).
+		 			mutable map<rstring, list<TaxiLocationBooking_t>> _taxisAvailableEventsMap = {};
+		 			mutable map<rstring, list<TaxiLocationBooking_t>> _taxisHiredEventsMap = {};
+		 			mutable map<rstring, list<TaxiLocationBooking_t>> _newBookingsEventsMap = {};
+		 			mutable map<rstring, list<TaxiLocationBooking_t>> _unservedBookingsEventsMap = {};
+		 			mutable map<rstring, list<TaxiLocationBooking_t>> _servedBookingsEventsMap = {};
+		 			mutable map<rstring, list<TaxiLocationBooking_t>> _cancelledBookingsEventsMap = {};
+		 			
+		 			// The following map tells the latest meter status for a given taxi.
+		 			// Key: esnNumber, Value: false for METER_OFF, true for METER_ON.
+		 			mutable map<uint32, boolean> _taxiMeterStatus = {};
+		 			
+		 			// Running total of the number of taxis available for booking and 
+		 			// the number of taxis hired.
+		 			// Key: Community Id, Value: Taxi count
+		 			mutable map<rstring, int32> _taxisAvailableCnt = {};
+		 			mutable map<rstring, int32> _taxisHiredCnt = {};
+		 			
+		 			// These state variables will hold the values obtained from the
+		 			// user via submission time parameter.
+		 			mutable float64 _metricsWindowPeriod = $METRICS_WINDOW_PERIOD;
+		 			mutable float64 _metricsWindowSlidingPeriod = $METRICS_WINDOW_SLIDING_PERIOD;
+					mutable float64 _metricsWindowContentsEvictionPeriod = 
+						$METRICS_WINDOW_CONTENTS_EVICTION_PERIOD;
+					mutable float64 _longTermMetricsWindowPeriod = 
+						$LONG_TERM_METRICS_WINDOW_PERIOD;
+		 			// This tells us how many sliding windows have been processed thus far.
+		 			mutable uint64 _metricsSlidingWindowCnt = 0ul;
+		 			// Following two state variables are used in the window contents eviction.
+		 			mutable uint64 _completedSlidingWindowCntNeededForWindowContentsEviction = 0ul;
+		 			mutable uint64 _doNextWindowContentsEvictionAtThisSlidingWindowCnt = 0ul;
+		 			
+		 			// Reusable output tuple variables are defined here.
+		 			mutable TaxisAvailableCount_t _oTuple1 = {};
+		 			mutable TaxisHiredCount_t _oTuple2 = {};
+		 			mutable NewBookingsRequestsCount_t _oTuple3 = {};
+		 			mutable UnservedBookingsRequestsCount_t _oTuple4 = {};
+		 			mutable ServedBookingsRequestsCount_t _oTuple5 = {};
+		 			mutable CancelledBookingsRequestsCount_t _oTuple6 = {};
+		 		} // End of the state section.
+
+				onTuple MWP: {
+					mutable boolean reComputeCompletedSlidingWindowCntNeeded = false; 
+					
+					// User can dynamically change the Metrics window parameters by
+					// sending a tuple on this stream.
+					if(MWP.metricsWindowPeriod > 0.0) {
+						_metricsWindowPeriod = MWP.metricsWindowPeriod;
+					}
+					
+		 			if (MWP.metricsWindowSlidingPeriod > 0.0 &&
+		 				MWP.metricsWindowSlidingPeriod <= _metricsWindowPeriod) {
+		 				_metricsWindowSlidingPeriod = MWP.metricsWindowSlidingPeriod;
+		 				// Due to this change, we must trigger the following change as well.
+		 				reComputeCompletedSlidingWindowCntNeeded = true;
+		 			}
+		 			
+			 		if (MWP.metricsWindowContentsEvictionPeriod >= _metricsWindowSlidingPeriod) {
+			 			_metricsWindowContentsEvictionPeriod = 
+			 				MWP.metricsWindowContentsEvictionPeriod;
+		 				// Due to this change, we must trigger the following change as well.
+		 				reComputeCompletedSlidingWindowCntNeeded = true;
+			 		}	
+
+					if (MWP.longTermMetricsWindowPeriod >= 60.0) {
+						_longTermMetricsWindowPeriod = MWP.longTermMetricsWindowPeriod;
+					}
+					
+					if ($longTermMetricsCalculationNeeded == true) {
+						// This composite operator is configured to work in
+						// the long term METRICS calculation mode.
+						// So, let us readjust the three main window configuration values.
+						//
+						// This field is always set to the configured long term window period.
+						_metricsWindowPeriod = _longTermMetricsWindowPeriod;
+						// This field is always set to the same value as   
+						// the configured long term window period.
+						// By setting these two periods the same, we are in effect having a 
+						// tumbling window instead of a sliding window.
+						_metricsWindowSlidingPeriod = _longTermMetricsWindowPeriod;
+						// This field is always set to 20 minutes more than  
+						// the configured long term window period.
+						_metricsWindowContentsEvictionPeriod = 
+							_longTermMetricsWindowPeriod + 1200.00;
+							
+		 				// Due to this change, we must trigger the following change as well.
+		 				reComputeCompletedSlidingWindowCntNeeded = true;
+					}
+					
+					if(reComputeCompletedSlidingWindowCntNeeded == true) {
+						// We will do the window contents eviction task every time after
+						// completing a certain number of sliding windows.
+						// We are initializing that certain number here.
+						// As a cushion, keep it one more than what is needed.
+						_completedSlidingWindowCntNeededForWindowContentsEviction = 
+							((uint64)_metricsWindowContentsEvictionPeriod / 
+							(uint64)_metricsWindowSlidingPeriod) + 1ul;
+						// Set this variable to when the next window contents eviction will happen.
+						_doNextWindowContentsEvictionAtThisSlidingWindowCnt += 
+							_completedSlidingWindowCntNeededForWindowContentsEviction;
+					}
+				}
+
+				onTuple TLOBE: {
+		 			// =========== START OF GETTING A TIMESTAMP FROM TIMESTRING ===========		 			
+		 			// Convert the Taxi Location or Taxi Booking time to Streams timestamp (ts).
+		 			mutable timestamp eventTimestamp = 0.0;
+	 				
+	 				// Taxi location and Taxi booking data records are combined into a 
+	 				// single tuple and sent here. So, we have to check which one
+	 				// we really got here.
+	 				if (TLOBE.esnNumber > 0u) {
+	 					// We have a non-zero taxi id. This is a Taxi Location event.
+	 					// Metrics window will be based on the taxi location event time.
+	 					eventTimestamp = createTimestamp(TLOBE.dateTime, 0u);	 					
+	 				} else if (TLOBE.req_id > 0ul) { 
+	 					// It is a Taxi Booking event since we have a non-zero booking request id.
+	 					// Metrics window will be based on the PTA Taxi System's 
+	 					// booking request event generation time.
+	 					eventTimestamp = createTimestamp(TLOBE.ts, 0u);
+	 				} else {
+	 					// It is not a valid input data.
+	 					return;
+	 				}	 				
+		 			// =========== END OF GETTING A TIMESTAMP FROM TIMESTRING ===========
+
+		 			// =========== START OF ADDINNG A NEW EVENT TO THE WINDOW ===========	
+		 			mutable rstring tlobePartitionKey = "";
+		 			
+		 			// PartitionSchemeId 1 is for computing TaxisAvailableCount.
+		 			// PartitionSchemeId 2 is for computing TaxisHiredCount.
+		 			// PartitionSchemeId 3 is for computing NewBookingsRequestsCount.
+		 			// PartitionSchemeId 4 is for computing UnservedBookingsRequestsCount.
+		 			// PartitionSchemeId 5 is for computing ServedBookingsRequestsCount.
+		 			// PartitionSchemeId 6 is for computing CancelledBookingsRequestsCount.
+		 			if($partitioningSchemeId == 1 || $partitioningSchemeId == 2) {
+		 				// This is a Taxi location related event.
+		 				tlobePartitionKey = TLOBE.communityId;
+		 			} else {
+		 				// This is a Taxi booking related event.
+		 				tlobePartitionKey = TLOBE.communityId;
+		 			}
+		 			
+		 			if ($partitioningSchemeId == 1 || $partitioningSchemeId == 2) {
+						// If needed, insert an empty event list.
+						if ($partitioningSchemeId == 1 && 
+							has(_taxisAvailableEventsMap, tlobePartitionKey) == false) {
+			 				mutable list<TaxiLocationBooking_t> myEventsList = [];
+			 				// Make a new entry for this partition key in the state map.
+		 					insertM(_taxisAvailableEventsMap, tlobePartitionKey, myEventsList);
+			 			}
+
+						if ($partitioningSchemeId == 2 && 
+							has(_taxisHiredEventsMap, tlobePartitionKey) == false) {
+			 				mutable list<TaxiLocationBooking_t> myEventsList = [];
+			 				// Make a new entry for this partition key in the state map.
+		 					insertM(_taxisHiredEventsMap, tlobePartitionKey, myEventsList);
+			 			}
+			 			
+		 				// 1 or 2 means partition the events by ESN.
+		 				// This has to go in the Taxis Available or Taxis Hired partition.
+		 				// This is for computing the number of taxis available for booking and
+		 				// the number of taxis hired in a given time duration. We will simply
+		 				// add all the taxi location events arriving here to the corresponding
+		 				// state map to be used later when the metrics window time elapses.
+						//
+			 			// Transform the newly received event with the event timestamp and insert to the state map.
+			 			TLOBE.eventTs = eventTimestamp;
+			 			
+			 			if ($partitioningSchemeId == 1) {
+				 			// Add it directly to the list held in the map entry.
+				 			appendM(_taxisAvailableEventsMap[tlobePartitionKey], TLOBE);
+				 		} else {
+				 			// This is for partition 2.
+				 			// Add it directly to the list held in the map entry.
+				 			appendM(_taxisHiredEventsMap[tlobePartitionKey], TLOBE);				 		
+				 		}
+						
+						// You can activate this code block for debugging if needed.
+						/*
+	 					if(findFirst(getUtcTimeString(eventTimestamp), "2020/07/06T") == 0) {
+	 						printStringLn((rstring)$partitioningSchemeId + 
+	 							"-->" + getUtcTimeString(eventTimestamp) + "-->" + (rstring)TLOBE);
+	 					}
+	 					*/						
+		 			} else if ($partitioningSchemeId == 3) {
+						// If needed, insert an empty event list.
+						if (has(_newBookingsEventsMap, tlobePartitionKey) == false) {
+			 				mutable list<TaxiLocationBooking_t> myEventsList = [];
+			 				// Make a new entry for this partition key in the state map.
+		 					insertM(_newBookingsEventsMap, tlobePartitionKey, myEventsList);
+			 			}
+
+		 				// 3 means partition the events by status (of booking) == UNSERVED and the
+		 				// req_id is created for the very first time. 
+		 				// This is for calculating the number of unserved taxi bookings in the current window period.
+		 				// We will do this only when this booking request status is unserved and 
+		 				// if it is seen for the first time and
+		 				// the booking time is within the current window period.
+		 				//
+			 			// Transform the newly received event with the event timestamp and insert to the state map.
+			 			TLOBE.eventTs = eventTimestamp;
+			 			// Add it directly to the list held in the map entry.
+			 			appendM(_newBookingsEventsMap[tlobePartitionKey], TLOBE);
+		 			} else if ($partitioningSchemeId == 4) {
+						// If needed, insert an empty event list.
+						if (has(_unservedBookingsEventsMap, tlobePartitionKey) == false) {
+			 				mutable list<TaxiLocationBooking_t> myEventsList = [];
+			 				// Make a new entry for this partition key in the state map.
+		 					insertM(_unservedBookingsEventsMap, tlobePartitionKey, myEventsList);
+			 			}
+
+		 				// 4 means partition the events by status (of booking) == UNSERVED 
+		 				//
+			 			// Transform the newly received event with the event timestamp and insert to the state map.
+			 			TLOBE.eventTs = eventTimestamp;
+			 			// Add it directly to the list held in the map entry.
+			 			appendM(_unservedBookingsEventsMap[tlobePartitionKey], TLOBE);
+		 			} else if ($partitioningSchemeId == 5) {
+						// If needed, insert an empty event list.
+						if (has(_servedBookingsEventsMap, tlobePartitionKey) == false) {
+			 				mutable list<TaxiLocationBooking_t> myEventsList = [];
+			 				// Make a new entry for this partition key in the state map.
+		 					insertM(_servedBookingsEventsMap, tlobePartitionKey, myEventsList);
+			 			}
+		 				
+						// 5 means partition the events by status (of booking) == SERVED
+						//
+ 			 			// Transform the newly received event with the event timestamp and insert to the state map.
+			 			TLOBE.eventTs = eventTimestamp;
+			 			// Add it directly to the list held in the map entry.
+			 			appendM(_servedBookingsEventsMap[tlobePartitionKey], TLOBE);			 			
+		 			} else if ($partitioningSchemeId == 6) {
+						// If needed, insert an empty event list.
+						if (has(_cancelledBookingsEventsMap, tlobePartitionKey) == false) {
+			 				mutable list<TaxiLocationBooking_t> myEventsList = [];
+			 				// Make a new entry for this partition key in the state map.
+		 					insertM(_cancelledBookingsEventsMap, tlobePartitionKey, myEventsList);
+			 			}
+
+		 				// 6 = Partition the events by status (of booking) == CANCELLED
+		 				//
+ 			 			// Transform the newly received event with the event timestamp and insert to the state map.
+			 			TLOBE.eventTs = eventTimestamp;
+			 			// Add it directly to the list held in the map entry.
+			 			appendM(_cancelledBookingsEventsMap[tlobePartitionKey], TLOBE);			 			
+		 			} else {
+	 					appTrc(Trace.info, 
+	 						"Unmatched condition to process the taxi data for partitioning scheme id " + 
+	 						(rstring)$partitioningSchemeId, "METRICS_GENERATOR");	
+		 			}
+					// =========== END OF ADDINNG A NEW EVENT TO THE WINDOW ===========
+
+					// =========== START OF SETTING UP THE SLIDING WINDOWS ===========
+					// This section of the code will get executed only once when the
+					// very first valid Taxi data tuple arrives here.
+					if (_windowStartTs <= (timestamp)0.0) {
+			 			// =========== START OF VALIDATING METRICS WINDOW CONFIGURATION ===========
+			 			// Check if the different METRICS window periods have a valid value assigned to them.
+			 			// This check needs to be done only once. Hence, this is a good place to do that.
+			 			if (_metricsWindowPeriod <= 0.0) {
+		 					appTrc(Trace.error, "METRICS window period of " +
+		 						(rstring)_metricsWindowPeriod + " is invalid. " +
+		 						"It should be greater than 0.0.", "METRICS_GENERATOR");
+		 					abort();
+	
+			 			}
+			 			
+			 			if (_metricsWindowSlidingPeriod <= 0.0 ||
+			 				_metricsWindowSlidingPeriod > _metricsWindowPeriod) {
+		 					appTrc(Trace.error, "METRICS window sliding period of " +
+		 						(rstring)_metricsWindowSlidingPeriod + " is invalid. " +
+		 						"It should be greater than 0.0 and less than or equal to " +
+		 						 (rstring)_metricsWindowPeriod, "METRICS_GENERATOR");
+		 					abort();
+			 			}
+			 			
+			 			if (_metricsWindowContentsEvictionPeriod < _metricsWindowSlidingPeriod) {
+		 					appTrc(Trace.error, "METRICS window contents eviction period of " +
+		 						(rstring)_metricsWindowContentsEvictionPeriod + " is invalid. " +
+		 						"It should be greater than or equal to " +
+		 						 (rstring)_metricsWindowSlidingPeriod, "METRICS_GENERATOR");
+		 					abort();		 				
+			 			}
+			 			
+			 			if (_longTermMetricsWindowPeriod < 60.0) {
+		 					appTrc(Trace.error, "Long term METRICS window period of " +
+		 						(rstring)_longTermMetricsWindowPeriod + " is invalid. " +
+		 						"It should be greater than or equal to 60.0", "METRICS_GENERATOR");
+		 					abort();		 				
+			 			}
+			 			// =========== END OF VALIDATING METRICS WINDOW CONFIGURATION ===========
+
+						// If this is the first ever event we are receiving, then there 
+						// will not be any existing sliding window. In that case, let us
+						// mark the very first event time as the start of the 
+						// very first sliding window. Calculate the end time for that
+						// sliding window as well.
+						_windowStartTs = eventTimestamp;
+						
+						if ($longTermMetricsCalculationNeeded == true) {
+							// This composite operator is configured to work in
+							// the long term METRICS calculation mode.
+							// So, let us readjust the three main window configuration values.
+							//
+							// This field is always set to the configured long term window period.
+							_metricsWindowPeriod = _longTermMetricsWindowPeriod;
+							// This field is always set to the same value as   
+							// the configured long term window period.
+							// By setting these two periods the same, we are in effect having a 
+							// tumbling window instead of a sliding window.
+							_metricsWindowSlidingPeriod = _longTermMetricsWindowPeriod;
+							// This field is always set to 20 minutes more than  
+							// the configured long term window period.
+							_metricsWindowContentsEvictionPeriod = 
+								_longTermMetricsWindowPeriod + 1200.00;
+						}
+						
+		 				// Subtract one second to get the exact sliding window end time so as 
+		 				// not to overlap with the next sliding window.
+		 				int64 timeInSeconds = getSeconds(_windowStartTs) + 
+		 					(int64)(_metricsWindowPeriod - 1.00);
+		 				_windowEndTs = createTimestamp(timeInSeconds, 0u);
+						
+						// We will do the window contents eviction task every time after
+						// completing a certain number of sliding windows.
+						// We are initializing that certain number here.
+						// As a cushion, keep it one more than what is needed.
+						_completedSlidingWindowCntNeededForWindowContentsEviction = 
+							((uint64)_metricsWindowContentsEvictionPeriod / 
+							(uint64)_metricsWindowSlidingPeriod) + 1ul;
+						// Set this variable to when the next window contents eviction will happen.
+						_doNextWindowContentsEvictionAtThisSlidingWindowCnt = 
+							_completedSlidingWindowCntNeededForWindowContentsEviction;
+					}
+		 			// =========== END OF SETTING UP THE SLIDING WINDOWS ===========
+
+		 			// =========== START OF THE SLIDING WINDOW PROCESSING ===========
+		 			// Start processing as many sliding windows as possible now.
+		 			// Do we have events collected inside the window during a time period 
+		 			// that is greater than the configured METRICS window period?
+		 			while (eventTimestamp > _windowEndTs) {
+		 				// We have window contents for a full METRICS window period. 
+		 				// Let us prepare a METRICS report and send it out.
+		 				// We have to include all the items described in the commentary available at
+		 				// the top of this non-main composite.
+		 				_metricsSlidingWindowCnt++;
+		 				appTrc(Trace.info, (rstring)_metricsSlidingWindowCnt +
+		 					") New METRICS sliding window started at " +
+		 					getUtcTimeString(_windowStartTs), "METRICS_GENERATOR");
+		 				// =========== START OF THE AGGREGATION + COUNT CALCULATIONS ===========
+		 				// You can activate this line for debugging if needed.
+		 				// printStringLn("-->" + (rstring)eventTimestamp); 
+		 				
+		 				// Loop through the various taxi location and booking events maps and 
+		 				// calculate the required METRICS. 
+		 				if ($partitioningSchemeId == 1) {
+			 				// Compute the TaxisAvailableCount.
+			 				appTrc(Trace.info, "TMG1a-->Size of Taxis Available Map=" +
+			 					(rstring)size(_taxisAvailableEventsMap));
+			 					
+			 				for(rstring partitionKey in _taxisAvailableEventsMap) {
+ 								// Get the list of events for this partition key.
+ 								mutable list<TaxiLocationBooking_t> taxisAvailableList = [];
+ 								taxisAvailableList = _taxisAvailableEventsMap[partitionKey];
+ 								_oTuple1 = (TaxisAvailableCount_t){};
+ 								
+ 								// Insert an entry in the map for this partition key.
+ 								if(has(_taxisAvailableCnt, partitionKey) == false) {
+ 									insertM(_taxisAvailableCnt, partitionKey, 0);
+ 								}
+ 						
+ 								appTrc(Trace.info, 
+ 									"TMG1b-->Size of Taxis Available list for partition " +
+			 						partitionKey + "=" + (rstring)size(taxisAvailableList));
+			 						
+								// Loop through the events list and do the required Metrics calculation.							
+								for (TaxiLocationBooking_t ta in taxisAvailableList) {
+									// Populate this oTuple only once in this inner loop for minor optimization.
+									if(_oTuple1.communityId == "") {
+										// Populate the output tuple attributes that are 
+										// common for this partition key.
+										_oTuple1.longitude = ta.longitude;
+										_oTuple1.latitude = ta.latitude;
+										_oTuple1.communityId = ta.communityId;
+										_oTuple1.communityName = ta.communityName;
+										_oTuple1.districtName =  ta.districtName;
+									}
+									
+									// Look for the events only within our sliding window.
+									// If we are below this sliding window time limit,
+									// let us keep iterating in the loop.
+									 if (ta.eventTs < _windowStartTs) {
+									 	continue;
+									 }
+									
+									// If we are above this sliding window time limit,
+									// let us leave from this loop now.
+									if (ta.eventTs > _windowEndTs) {
+										break;
+									}
+
+									// This event time is within the current metrics window.
+									//
+									// If this taxi transitions from METER_ON to METER_OFF, then it is
+									// considered as available for booking. Or, if it directly reports
+									// METER_OFF as the first notification, then we will also consider that
+									// as being available for booking.
+									if(has(_taxiMeterStatus, ta.esnNumber) == false &&
+									   findFirst(ta.meterStatus, "METER_OFF") == 0) {
+										// Initialize for the first time about this taxi's meter status.
+										insertM(_taxiMeterStatus, ta.esnNumber, false);
+										_taxisAvailableCnt[partitionKey] = 
+											_taxisAvailableCnt[partitionKey] + 1;
+										continue;
+									}									
+
+									if(has(_taxiMeterStatus, ta.esnNumber) == false &&
+									   findFirst(ta.meterStatus, "METER_ON") == 0) {
+										// Initialize for the first time about this taxi's meter status.
+										insertM(_taxiMeterStatus, ta.esnNumber, true);
+										continue;
+									}									
+
+									if(has(_taxiMeterStatus, ta.esnNumber) == true) {
+										// If the previosly seen meter status and the currrent one that
+										// we are seeing are the same, then simply continue.
+										if(_taxiMeterStatus[ta.esnNumber] == false &&
+										   findFirst(ta.meterStatus, "METER_OFF") == 0) {
+											continue;
+										}
+										
+										if(_taxiMeterStatus[ta.esnNumber] == true &&
+										   findFirst(ta.meterStatus, "METER_ON") == 0) {
+											continue;
+										}
+										
+										// There is a meter status transition which we will
+										// have to take into account now.
+										if(findFirst(ta.meterStatus, "METER_ON") == 0) {
+											// This taxi is hired. So, adjust the available count.
+											// Avoid making this count as a negative value.
+											if(_taxisAvailableCnt[partitionKey] > 0) {
+												_taxisAvailableCnt[partitionKey] = 
+													_taxisAvailableCnt[partitionKey] - 1;
+											}
+											
+											// Store the new meter status in the state map.
+											insertM(_taxiMeterStatus, ta.esnNumber, true);
+											continue;
+										}
+										
+										if(findFirst(ta.meterStatus, "METER_OFF") == 0) {
+											// This taxi is available now. So, adjust the available count.
+											_taxisAvailableCnt[partitionKey] = 
+												_taxisAvailableCnt[partitionKey] + 1;
+											
+											// Store the new meter status in the state map.
+											insertM(_taxiMeterStatus, ta.esnNumber, false);
+											continue;
+										}
+									}
+			 					} // End of the inner for loop.
+			 					
+ 								appTrc(Trace.info, 
+ 									"TMG1c-->Completed processing the inner loop for " +
+			 						partitionKey);
+			 									 					
+			 					// We will compute the Taxi Metrics for all the
+			 					// communities at all times. But, we will send them out for
+			 					// displaying only if the user chose that community's
+			 					// taxi metrics to be displayed. This filtering will be
+			 					// done in a downstream operator.
+			 					//
+				 				// Send the TaxisAvailableCount for the current partition key.
+				 				_oTuple1.windowStartTime = getUtcTimeString(_windowStartTs);
+				 				_oTuple1.windowEndTime = getUtcTimeString(_windowEndTs);
+				 				_oTuple1.taxisAvailableCnt = _taxisAvailableCnt[partitionKey];
+				 				submit(_oTuple1, TAC);
+			 				} // End of the outer for loop.			 				
+			 			} // End of the if block.
+
+		 				if ($partitioningSchemeId == 2) {
+			 				// Compute the TaxisHiredCount.
+			 				appTrc(Trace.info, "TMG2a-->Size of Taxis Hired Map=" +
+			 					(rstring)size(_taxisHiredEventsMap));
+			 					
+			 				for(rstring partitionKey in _taxisHiredEventsMap) {
+ 								// Get the list of events for this partition key.
+ 								mutable list<TaxiLocationBooking_t> taxisHiredList = [];
+ 								taxisHiredList = _taxisHiredEventsMap[partitionKey];
+ 								_oTuple2 = (TaxisHiredCount_t){};
+ 								
+  								// Insert an entry in the map for this partition key.
+ 								if(has(_taxisHiredCnt, partitionKey) == false) {
+ 									insertM(_taxisHiredCnt, partitionKey, 0);
+ 								}
+ 						
+ 								appTrc(Trace.info, 
+ 									"TMG2b-->Size of Taxis Hired list for partition " +
+			 						partitionKey + "=" + (rstring)size(taxisHiredList));
+			 						
+								// Loop through the events list and do the required Metrics calculation.							
+								for (TaxiLocationBooking_t th in taxisHiredList) {
+									// Populate this oTuple only once in this inner loop for minor optimization.
+									if(_oTuple2.communityId == "") {
+										// Populate the output tuple attributes that are 
+										// common for this partition key.
+										_oTuple2.longitude = th.longitude;
+										_oTuple2.latitude = th.latitude;
+										_oTuple2.communityId = th.communityId;
+										_oTuple2.communityName = th.communityName;
+										_oTuple2.districtName =  th.districtName;
+									}
+
+									// Look for the events only within our sliding window.
+									// If we are below this sliding window time limit,
+									// let us keep iterating in the loop.
+									 if (th.eventTs < _windowStartTs) {
+									 	continue;
+									 }
+									
+									// If we are above this sliding window time limit,
+									// let us leave from this loop now.
+									if (th.eventTs > _windowEndTs) {
+										break;
+									}
+									
+									// This event time is within the current metrics window.
+									//
+									// If this taxi transitions from METER_OFF to METER_ON, then it is
+									// considered as hired. Or, if it directly reports
+									// METER_ON as the first notification, then we will also consider that
+									// as being hired.
+									if(has(_taxiMeterStatus, th.esnNumber) == false &&
+									   findFirst(th.meterStatus, "METER_OFF") == 0) {
+										// Initialize for the first time about this taxi's meter status.
+										insertM(_taxiMeterStatus, th.esnNumber, false);
+										continue;
+									}									
+
+									if(has(_taxiMeterStatus, th.esnNumber) == false &&
+									   findFirst(th.meterStatus, "METER_ON") == 0) {
+										// Initialize for the first time about this taxi's meter status.
+										insertM(_taxiMeterStatus, th.esnNumber, true);
+										_taxisHiredCnt[partitionKey] =
+											_taxisHiredCnt[partitionKey] + 1;
+										continue;
+									}									
+
+									if(has(_taxiMeterStatus, th.esnNumber) == true) {
+										// If the previosly seen meter status and the currrent one that
+										// we are seeing are the same, then simply continue.
+										if(_taxiMeterStatus[th.esnNumber] == false &&
+										   findFirst(th.meterStatus, "METER_OFF") == 0) {
+											continue;
+										}
+										
+										if(_taxiMeterStatus[th.esnNumber] == true &&
+										   findFirst(th.meterStatus, "METER_ON") == 0) {
+											continue;
+										}
+										
+										// There is a meter status transition which we will
+										// have to take into account now.
+										if(findFirst(th.meterStatus, "METER_ON") == 0) {
+											// This taxi is hired. So, adjust the hired count.
+										_taxisHiredCnt[partitionKey] =
+											_taxisHiredCnt[partitionKey] + 1;
+											
+											// Store the new meter status in the state map.
+											insertM(_taxiMeterStatus, th.esnNumber, true);
+											continue;
+										}
+										
+										if(findFirst(th.meterStatus, "METER_OFF") == 0) {
+											// This taxi is available now. So, adjust the hired count.
+											// Avoid making this count as a negative value.
+											if(_taxisHiredCnt[partitionKey] > 0) {
+												_taxisHiredCnt[partitionKey] =
+													_taxisHiredCnt[partitionKey] - 1;
+											}
+											
+											// Store the new meter status in the state map.
+											insertM(_taxiMeterStatus, th.esnNumber, false);
+											continue;
+										}
+									}
+			 					} // End of the inner for loop.
+
+ 								appTrc(Trace.info, 
+ 									"TMG2c-->Completed processing the inner loop for " +
+			 						partitionKey);
+
+			 					// We will compute the Taxi Metrics for all the
+			 					// communities at all times. But, we will send them out for
+			 					// displaying only if the user chose that community's
+			 					// taxi metrics to be displayed. This filtering will be
+			 					// done in a downstream operator.
+			 					//
+			 					// Send the TaxisHiredCount for the current partition key.
+				 				_oTuple2.windowStartTime = getUtcTimeString(_windowStartTs);
+				 				_oTuple2.windowEndTime = getUtcTimeString(_windowEndTs);
+				 				_oTuple2.taxisHiredCnt = _taxisHiredCnt[partitionKey];
+				 				submit(_oTuple2, THC);
+			 				} // End of the outer for loop.			 				
+			 			} // End of the if block.
+
+		 				if ($partitioningSchemeId == 3) {
+			 				// Compute the NewBookingsRequestsCount.
+			 				appTrc(Trace.info, "TMG3a-->Size of New Bookings Map=" +
+			 					(rstring)size(_newBookingsEventsMap));
+			 				mutable set<uint64> newBookingsInThisWindow = {};
+			 				mutable set<uint64> newBookingsInFutureWindow = {};
+			 				
+			 				for(rstring partitionKey in _newBookingsEventsMap) {
+ 								// Get the list of events for this partition key.
+ 								mutable list<TaxiLocationBooking_t> newBookingsList = [];
+ 								newBookingsList = _newBookingsEventsMap[partitionKey];
+ 								_oTuple3 = (NewBookingsRequestsCount_t){};
+ 								appTrc(Trace.info, 
+ 									"TMG3b-->Size of New Bookings list for partition " +
+			 						partitionKey + "=" + (rstring)size(newBookingsList));
+ 						
+								// Loop through the events list and do the required Metrics calculation.							
+								for (TaxiLocationBooking_t nb in newBookingsList) {
+									// Populate this oTuple only once in this inner loop for minor optimization.
+									if(_oTuple3.communityId == "") {
+										// Populate the output tuple attributes that are 
+										// common for this partition key.
+										_oTuple3.longitude = nb.LocPickUpLong;
+										_oTuple3.latitude = nb.LocPickUpLat;
+										_oTuple3.communityId = nb.communityId;
+										_oTuple3.communityName = nb.communityName;
+										_oTuple3.districtName =  nb.districtName;
+									}
+
+									// Look for the events only within our sliding window.
+									// If we are below this sliding window time limit,
+									// let us keep iterating in the loop.
+									 if (nb.eventTs < _windowStartTs) {
+									 	continue;
+									 }
+									
+									// If we are above this sliding window time limit,
+									// let us leave from this loop now.
+									if (nb.eventTs > _windowEndTs) {
+										break;
+									}
+									
+									// This event time is within the current metrics window.									
+									if (nb.status == "UNSERVED" && 
+										(createTimestamp(nb.dtPickupBooking, 0u) >= _windowStartTs && 
+										 createTimestamp(nb.dtPickupBooking, 0u) <= _windowEndTs)) {
+										// This booking happened in this time window.
+										insertM(newBookingsInThisWindow, nb.req_id);
+									}
+									
+									// We will also compute the stats for the bookings that are
+									// scheduled for pickup in the next time window. It will give an
+									// idea about what is waiting to be served.
+				 					mutable int64 futureTimeInSeconds = getSeconds(_windowStartTs) +
+				 						(int64)_metricsWindowSlidingPeriod;
+				 					timestamp futureWindowStartTs = createTimestamp(futureTimeInSeconds, 0u);
+			 						// Subtract one second to get the exact sliding window end time so as 
+			 						// not to overlap with the next sliding window.
+			 						futureTimeInSeconds += (int64)(_metricsWindowPeriod - 1.00);
+			 						timestamp futureWindowEndTs = createTimestamp(futureTimeInSeconds, 0u);
+
+									if (nb.status == "UNSERVED" && 
+										(createTimestamp(nb.dtPickupBooking, 0u) >= futureWindowStartTs && 
+										 createTimestamp(nb.dtPickupBooking, 0u) <= futureWindowEndTs)) {
+										// This booking happened in this time window.
+										insertM(newBookingsInFutureWindow, nb.req_id);
+									}
+									
+			 					} // End of the inner for loop.
+
+ 								appTrc(Trace.info, 
+ 									"TMG3c-->Completed processing the inner loop for " +
+			 						partitionKey);
+			 					
+			 					// We will compute the Taxi Metrics for all the
+			 					// communities at all times. But, we will send them out for
+			 					// displaying only if the user chose that community's
+			 					// taxi metrics to be displayed. This filtering will be
+			 					// done in a downstream operator.
+			 					//
+				 				// Send the NewBookingsRequestsCount for the current partition key.
+				 				_oTuple3.windowStartTime = getUtcTimeString(_windowStartTs);
+				 				_oTuple3.windowEndTime = getUtcTimeString(_windowEndTs);
+				 				// This is the bookings count scheduled for pickup in the current window.
+				 				_oTuple3.newBookingsRequestsCnt = size(newBookingsInThisWindow);
+				 				// This is the bookings count scheduled for pickup in the next window.
+				 				_oTuple3.futureNewBookingsRequestsCnt = size(newBookingsInFutureWindow);
+				 				submit(_oTuple3, NBRC);
+			 				} // End of the outer for loop.
+			 			} // End of the if block.
+
+		 				if ($partitioningSchemeId == 4) {
+			 				// Compute the UnservedBookingsRequestsCnt.
+			 				appTrc(Trace.info, "TMG4a-->Size of Unserved Bookings Map=" +
+			 					(rstring)size(_unservedBookingsEventsMap));
+			 				mutable set<uint64> unservedBookingsInThisWindow = {};
+			 				
+			 				for(rstring partitionKey in _unservedBookingsEventsMap) {
+ 								// Get the list of events for this partition key.
+ 								mutable list<TaxiLocationBooking_t> unservedBookingsList = [];
+ 								unservedBookingsList = _unservedBookingsEventsMap[partitionKey];
+ 								_oTuple4 = (UnservedBookingsRequestsCount_t){};
+ 								appTrc(Trace.info, 
+ 									"TMG4b-->Size of Unserved Bookings list for partition " +
+			 						partitionKey + "=" + (rstring)size(unservedBookingsList));
+ 						
+								// Loop through the events list and do the required Metrics calculation.							
+								for (TaxiLocationBooking_t ub in unservedBookingsList) {
+									// Populate this oTuple only once in this inner loop for minor optimization.
+									if(_oTuple4.communityId == "") {
+										// Populate the output tuple attributes that are 
+										// common for this partition key.
+										_oTuple4.longitude = ub.LocPickUpLong;
+										_oTuple4.latitude = ub.LocPickUpLat;
+										_oTuple4.communityId = ub.communityId;
+										_oTuple4.communityName = ub.communityName;
+										_oTuple4.districtName =  ub.districtName;
+									}
+
+									// Look for the events only within our sliding window.
+									// If we are below this sliding window time limit,
+									// let us keep iterating in the loop.
+									 if (ub.eventTs < _windowStartTs) {
+									 	continue;
+									 }
+									
+									// If we are above this sliding window time limit,
+									// let us leave from this loop now.
+									if (ub.eventTs > _windowEndTs) {
+										break;
+									}
+									
+									// This event time is within the current metrics window.
+									if (ub.status == "UNSERVED") {
+										// This booking is in unserved status.
+										insertM(unservedBookingsInThisWindow, ub.req_id);
+									}
+			 					} // End of the inner for loop.
+
+ 								appTrc(Trace.info, 
+ 									"TMG4c-->Completed processing the inner loop for " +
+			 						partitionKey);
+			 					
+				 				// Send the UnservedBookingsRequestsCount for the current partition key.
+				 				_oTuple4.windowStartTime = getUtcTimeString(_windowStartTs);
+				 				_oTuple4.windowEndTime = getUtcTimeString(_windowEndTs);
+				 				_oTuple4.unservedBookingsRequestsCnt = size(unservedBookingsInThisWindow);
+				 				submit(_oTuple4, UBRC);
+			 				} // End of the outer for loop.
+			 			} // End of the if block.
+
+		 				if ($partitioningSchemeId == 5) {
+			 				// Compute the ServedBookingsRequestsCnt.
+			 				appTrc(Trace.info, "TMG5a-->Size of Served Bookings Map=" +
+			 					(rstring)size(_servedBookingsEventsMap));
+			 				mutable set<uint64> servedBookingsInThisWindow = {};
+			 				
+			 				for(rstring partitionKey in _servedBookingsEventsMap) {
+ 								// Get the list of events for this partition key.
+ 								mutable list<TaxiLocationBooking_t> servedBookingsList = [];
+ 								servedBookingsList = _servedBookingsEventsMap[partitionKey];
+ 								_oTuple5 = (ServedBookingsRequestsCount_t){};
+  								appTrc(Trace.info, 
+ 									"TMG5b-->Size of Served Bookings list for partition " +
+			 						partitionKey + "=" + (rstring)size(servedBookingsList));
+ 						
+								// Loop through the events list and do the required Metrics calculation.							
+								for (TaxiLocationBooking_t sb in servedBookingsList) {
+									// Populate this oTuple only once in this inner loop for minor optimization.
+									if(_oTuple5.communityId == "") {
+										// Populate the output tuple attributes that are 
+										// common for this partition key.
+										_oTuple5.longitude = sb.LocPickUpLong;
+										_oTuple5.latitude = sb.LocPickUpLat;
+										_oTuple5.communityId = sb.communityId;
+										_oTuple5.communityName = sb.communityName;
+										_oTuple5.districtName =  sb.districtName;
+									}
+
+									// Look for the events only within our sliding window.
+									// If we are below this sliding window time limit,
+									// let us keep iterating in the loop.
+									 if (sb.eventTs < _windowStartTs) {
+									 	continue;
+									 }
+									
+									// If we are above this sliding window time limit,
+									// let us leave from this loop now.
+									if (sb.eventTs > _windowEndTs) {
+										break;
+									}
+									
+									// This event time is within the current metrics window.
+									if (sb.status == "SERVED") {
+										// This booking happened in this time window.
+										insertM(servedBookingsInThisWindow, sb.req_id);
+									}
+			 					} // End of the inner for loop.
+
+ 								appTrc(Trace.info, 
+ 									"TMG5c-->Completed processing the inner loop for " +
+			 						partitionKey);
+
+				 				// Send the ServedBookingsRequestsCount for the current partition key.
+				 				_oTuple5.windowStartTime = getUtcTimeString(_windowStartTs);
+				 				_oTuple5.windowEndTime = getUtcTimeString(_windowEndTs);
+				 				_oTuple5.servedBookingsRequestsCnt = size(servedBookingsInThisWindow);
+				 				submit(_oTuple5, SBRC);
+			 				} // End of the outer for loop.
+			 			} // End of the if block.
+
+		 				if ($partitioningSchemeId == 6) {
+			 				// Compute the CancelledBookingsRequestsCnt.
+			 				appTrc(Trace.info, "TMG6a-->Size of Cancelled Bookings Map=" +
+			 					(rstring)size(_cancelledBookingsEventsMap));
+			 				mutable set<uint64> cancelledBookingsInThisWindow = {};
+			 				
+			 				for(rstring partitionKey in _cancelledBookingsEventsMap) {
+ 								// Get the list of events for this partition key.
+ 								mutable list<TaxiLocationBooking_t> cancelledBookingsList = [];
+ 								cancelledBookingsList = _cancelledBookingsEventsMap[partitionKey];
+ 								_oTuple6 = (CancelledBookingsRequestsCount_t){};
+  								appTrc(Trace.info, 
+ 									"TMG6b-->Size of Cancelled Bookings list for partition " +
+			 						partitionKey + "=" + (rstring)size(cancelledBookingsList));
+ 						
+								// Loop through the events list and do the required Metrics calculation.							
+								for (TaxiLocationBooking_t cb in cancelledBookingsList) {
+									// Populate this oTuple only once in this inner loop for minor optimization.
+									if(_oTuple6.communityId == "") {
+										// Populate the output tuple attributes that are 
+										// common for this partition key.
+										_oTuple6.longitude = cb.LocPickUpLong;
+										_oTuple6.latitude = cb.LocPickUpLat;
+										_oTuple6.communityId = cb.communityId;
+										_oTuple6.communityName = cb.communityName;
+										_oTuple6.districtName =  cb.districtName;
+									}
+
+									// Look for the events only within our sliding window.
+									// If we are below this sliding window time limit,
+									// let us keep iterating in the loop.
+									 if (cb.eventTs < _windowStartTs) {
+									 	continue;
+									 }
+									
+									// If we are above this sliding window time limit,
+									// let us leave from this loop now.
+									if (cb.eventTs > _windowEndTs) {
+										break;
+									}
+																		
+									// This event time is within the current metrics window.
+									if (cb.status == "CANCELLED") {
+										// This booking happened in this time window.
+										insertM(cancelledBookingsInThisWindow, cb.req_id);
+									}
+			 					} // End of the inner for loop.
+
+ 								appTrc(Trace.info, 
+ 									"TMG6c-->Completed processing the inner loop for " +
+			 						partitionKey);
+			 					
+				 				// Send the CancelledBookingsRequestsCount for the current partition key.
+				 				_oTuple6.windowStartTime = getUtcTimeString(_windowStartTs);
+				 				_oTuple6.windowEndTime = getUtcTimeString(_windowEndTs);
+				 				_oTuple6.cancelledBookingsRequestsCnt = size(cancelledBookingsInThisWindow);
+				 				submit(_oTuple6, CBRC);
+			 				} // End of the outer for loop.
+			 			} // End of the if block.
+		 				// =========== END OF THE AGGREGATION + COUNT CALCULATIONS ===========
+		 				
+	 					// Move to the next sliding window now. 
+	 					// Set new values for the sliding window start and end time.
+	 					mutable int64 timeInSeconds = getSeconds(_windowStartTs) +
+	 						(int64)_metricsWindowSlidingPeriod;
+	 					_windowStartTs = createTimestamp(timeInSeconds, 0u);
+ 						// Subtract one second to get the exact sliding window end time so as 
+ 						// not to overlap with the next sliding window.
+ 						timeInSeconds += (int64)(_metricsWindowPeriod - 1.00);
+ 						_windowEndTs = createTimestamp(timeInSeconds, 0u);
+		 			} // End of while (eventTimestamp > _windowEndTs)
+		 			// =========== END OF THE SLIDING WINDOW PROCESSING ===========
+
+			 		// =========== START OF EVICTING THE OLD WINDOW CONTENTS ===========
+					// We will do a periodic check to see if there are
+					// window contents that are old enough to be discarded.
+					// We can perform this task by aligning it with a certain number of
+					// sliding windows that have been completed. This number has already
+					// been generated above at the application startup time by using the
+					// the user configured window contents eviction period and the 
+					// window sliding period.
+					//
+					if (_metricsSlidingWindowCnt >= _doNextWindowContentsEvictionAtThisSlidingWindowCnt) {
+						// Update when the next window contents eviction will happen.
+						_doNextWindowContentsEvictionAtThisSlidingWindowCnt += 
+							_completedSlidingWindowCntNeededForWindowContentsEviction;
+						mutable list<rstring> listOfPartitionKeysToBeEvicted = [];
+						
+						if ($partitioningSchemeId == 1) {
+							// It is time to evict the old taxis available window contents if they exist.
+							mutable int32 taxisAvailableEventsEvictedCnt = 0;
+							listOfPartitionKeysToBeEvicted = (list<rstring>)[];
+							mutable map<rstring, list<TaxiLocationBooking_t>> 
+								modifiedTaxisAvailableMap = {};
+							
+							// Clean up the events state map.
+							for(rstring partitionKey in _taxisAvailableEventsMap) {
+								mutable int32 idx = -1;
+			 					mutable list<int32> listOfIndicesToBeEvicted = [];
+				 				mutable list<TaxiLocationBooking_t> taxisAvailableList = [];
+								taxisAvailableList = _taxisAvailableEventsMap[partitionKey];
+		
+								// Loop through the events list to look for any events for eviction.							
+								for (TaxiLocationBooking_t taEvent in taxisAvailableList) {
+									idx++;
+									
+									if (diffAsSecs(eventTimestamp, taEvent.eventTs) > 
+										_metricsWindowContentsEvictionPeriod) {
+										// This is an old event that needs to be evicted.
+										// Add it to the list of indices to be evicted later.
+										appendM(listOfIndicesToBeEvicted, idx);
+										taxisAvailableEventsEvictedCnt++;
+									}
+								} // End of inner for loop.	
+	
+								if (size(listOfIndicesToBeEvicted) > 0) {
+									// Remove all the old events present in the events list.
+									taxisAvailableList = remove(taxisAvailableList, listOfIndicesToBeEvicted);
+									// If there are no more taxis available events for this partition key,
+									// add it to the list of partition keys to be evicted from
+									// the state map after the outer for loop completes looping.
+									if (size(taxisAvailableList) <= 0) {
+										appendM(listOfPartitionKeysToBeEvicted, partitionKey);
+									} else {
+										// Put it in the modified map of taxis available.
+										insertM(modifiedTaxisAvailableMap, partitionKey, taxisAvailableList);
+									}
+								}
+							} // End of outer for loop.
+							
+			 				// We may have modified the contents of the taxis available events 
+			 				// list in the for loop logic above.
+			 				if (size(modifiedTaxisAvailableMap) > 0) {
+								// Put it back in the state map.
+								for (rstring partitionKey in modifiedTaxisAvailableMap) {
+									insertM(_taxisAvailableEventsMap, 
+										partitionKey, modifiedTaxisAvailableMap[partitionKey]);
+								}
+							}
+	
+			 				// If there are any partition keys with empty taxis available Events list,
+			 				// we can remove such partition keys from the state map.
+			 				for(rstring partitionKey in listOfPartitionKeysToBeEvicted) {
+			 					if (has(_taxisAvailableEventsMap, partitionKey) == true) {
+			 						removeM(_taxisAvailableEventsMap, partitionKey);
+			 					}			 					
+			 				}
+	
+							int32 taxisAvailableEventsMapKeysModifiedCnt = 
+								size(modifiedTaxisAvailableMap);
+							int32 taxisAvailableEventsMapKeysRemovedCnt = 
+								size(listOfPartitionKeysToBeEvicted);
+							appTrc(Trace.info, "Taxis available count metrics window contents eviction results: " +
+								"_metricsSlidingWindowCnt=" + (rstring)_metricsSlidingWindowCnt +
+								", WindowContentsEvictionPeriod=" + 
+									(rstring)_metricsWindowContentsEvictionPeriod +
+								", currentSlidingWindowStartTime=" + getUtcTimeString(_windowStartTs) +
+								", taxisAvailableEventsMapKeysModifiedCnt=" + (rstring)taxisAvailableEventsMapKeysModifiedCnt +
+								", taxisAvailableEventsMapKeysRemovedCnt=" + (rstring)taxisAvailableEventsMapKeysRemovedCnt +
+								", taxisAvailableEventsEvictedCnt=" + (rstring)taxisAvailableEventsEvictedCnt,
+								"METRICS_GENERATOR");
+						} // End of if ($partitioningSchemeId == 1)
+
+						if ($partitioningSchemeId == 2) {
+							// It is time to evict the old taxis Hired window contents if they exist.
+							mutable int32 taxisHiredEventsEvictedCnt = 0;
+							listOfPartitionKeysToBeEvicted = (list<rstring>)[];
+							mutable map<rstring, list<TaxiLocationBooking_t>> 
+								modifiedTaxisHiredMap = {};
+							
+							// Clean up the events state map.
+							for(rstring partitionKey in _taxisHiredEventsMap) {
+								mutable int32 idx = -1;
+			 					mutable list<int32> listOfIndicesToBeEvicted = [];
+				 				mutable list<TaxiLocationBooking_t> taxisHiredList = [];
+								taxisHiredList = _taxisHiredEventsMap[partitionKey];
+		
+								// Loop through the events list to look for any events for eviction.							
+								for (TaxiLocationBooking_t taEvent in taxisHiredList) {
+									idx++;
+									
+									if (diffAsSecs(eventTimestamp, taEvent.eventTs) > 
+										_metricsWindowContentsEvictionPeriod) {
+										// This is an old event that needs to be evicted.
+										// Add it to the list of indices to be evicted later.
+										appendM(listOfIndicesToBeEvicted, idx);
+										taxisHiredEventsEvictedCnt++;
+									}
+								} // End of inner for loop.	
+	
+								if (size(listOfIndicesToBeEvicted) > 0) {
+									// Remove all the old events present in the events list.
+									taxisHiredList = remove(taxisHiredList, listOfIndicesToBeEvicted);
+									// If there are no more taxis hired events for this partition key,
+									// add it to the list of partition keys to be evicted from
+									// the state map after the outer for loop completes looping.
+									if (size(taxisHiredList) <= 0) {
+										appendM(listOfPartitionKeysToBeEvicted, partitionKey);
+									} else {
+										// Put it in the modified map of taxis hired.
+										insertM(modifiedTaxisHiredMap, partitionKey, taxisHiredList);
+									}
+								}
+							} // End of outer for loop.
+							
+			 				// We may have modified the contents of the taxis hired events 
+			 				// list in the for loop logic above.
+			 				if (size(modifiedTaxisHiredMap) > 0) {
+								// Put it back in the state map.
+								for (rstring partitionKey in modifiedTaxisHiredMap) {
+									insertM(_taxisHiredEventsMap, 
+										partitionKey, modifiedTaxisHiredMap[partitionKey]);
+								}
+							}
+	
+			 				// If there are any partition keys with empty taxis hired Events list,
+			 				// we can remove such partition keys from the state map.
+			 				for(rstring partitionKey in listOfPartitionKeysToBeEvicted) {
+			 					if (has(_taxisHiredEventsMap, partitionKey) == true) {
+			 						removeM(_taxisHiredEventsMap, partitionKey);
+			 					}			 					
+			 				}
+	
+							int32 taxisHiredEventsMapKeysModifiedCnt = 
+								size(modifiedTaxisHiredMap);
+							int32 taxisHiredEventsMapKeysRemovedCnt = 
+								size(listOfPartitionKeysToBeEvicted);
+							appTrc(Trace.info, "Taxis hired count metrics window contents eviction results: " +
+								"_metricsSlidingWindowCnt=" + (rstring)_metricsSlidingWindowCnt +
+								", WindowContentsEvictionPeriod=" + 
+									(rstring)_metricsWindowContentsEvictionPeriod +
+								", currentSlidingWindowStartTime=" + getUtcTimeString(_windowStartTs) +
+								", taxisHiredEventsMapKeysModifiedCnt=" + (rstring)taxisHiredEventsMapKeysModifiedCnt +
+								", taxisHiredEventsMapKeysRemovedCnt=" + (rstring)taxisHiredEventsMapKeysRemovedCnt +
+								", taxisHiredEventsEvictedCnt=" + (rstring)taxisHiredEventsEvictedCnt,
+								"METRICS_GENERATOR");
+						} // End of if ($partitioningSchemeId == 2)
+						
+						if ($partitioningSchemeId == 3) {
+							// It is time to evict the old new taxi bookings window contents if they exist.
+							mutable int32 newBookingsEventsEvictedCnt = 0;
+							listOfPartitionKeysToBeEvicted = (list<rstring>)[];
+							mutable map<rstring, list<TaxiLocationBooking_t>> 
+								modifiedNewBookingsMap = {};
+							
+							// Clean up the events state map.
+							for(rstring partitionKey in _newBookingsEventsMap) {
+								mutable int32 idx = -1;
+			 					mutable list<int32> listOfIndicesToBeEvicted = [];
+				 				mutable list<TaxiLocationBooking_t> newBookingsList = [];
+								newBookingsList = _newBookingsEventsMap[partitionKey];
+		
+								// Loop through the events list to look for any events for eviction.							
+								for (TaxiLocationBooking_t nbEvent in newBookingsList) {
+									idx++;
+									
+									if (diffAsSecs(eventTimestamp, nbEvent.eventTs) > 
+										_metricsWindowContentsEvictionPeriod) {
+										// This is an old event that needs to be evicted.
+										// Add it to the list of indices to be evicted later.
+										appendM(listOfIndicesToBeEvicted, idx);
+										newBookingsEventsEvictedCnt++;
+									}
+								} // End of inner for loop.	
+	
+								if (size(listOfIndicesToBeEvicted) > 0) {
+									// Remove all the old events present in the events list.
+									newBookingsList = remove(newBookingsList, listOfIndicesToBeEvicted);
+									// If there are no more new bookings events for this partition key,
+									// add it to the list of partition keys to be evicted from
+									// the state map after the outer for loop completes looping.
+									if (size(newBookingsList) <= 0) {
+										appendM(listOfPartitionKeysToBeEvicted, partitionKey);
+									} else {
+										// Put it in the modified map of taxis hired.
+										insertM(modifiedNewBookingsMap, partitionKey, newBookingsList);
+									}
+								}
+							} // End of outer for loop.
+							
+			 				// We may have modified the contents of the new bookings events 
+			 				// list in the for loop logic above.
+			 				if (size(modifiedNewBookingsMap) > 0) {
+								// Put it back in the state map.
+								for (rstring partitionKey in modifiedNewBookingsMap) {
+									insertM(_newBookingsEventsMap, 
+										partitionKey, modifiedNewBookingsMap[partitionKey]);
+								}
+							}
+	
+			 				// If there are any partition keys with empty new bookings Events list,
+			 				// we can remove such partition keys from the state map.
+			 				for(rstring partitionKey in listOfPartitionKeysToBeEvicted) {
+			 					if (has(_newBookingsEventsMap, partitionKey) == true) {
+			 						removeM(_newBookingsEventsMap, partitionKey);
+			 					}			 					
+			 				}
+	
+							int32 newBookingsEventsMapKeysModifiedCnt = 
+								size(modifiedNewBookingsMap);
+							int32 newBookingsEventsMapKeysRemovedCnt = 
+								size(listOfPartitionKeysToBeEvicted);
+							appTrc(Trace.info, "New bookings count metrics window contents eviction results: " +
+								"_metricsSlidingWindowCnt=" + (rstring)_metricsSlidingWindowCnt +
+								", WindowContentsEvictionPeriod=" + 
+									(rstring)_metricsWindowContentsEvictionPeriod +
+								", currentSlidingWindowStartTime=" + getUtcTimeString(_windowStartTs) +
+								", newBookingsEventsMapKeysModifiedCnt=" + (rstring)newBookingsEventsMapKeysModifiedCnt +
+								", newBookingsEventsMapKeysRemovedCnt=" + (rstring)newBookingsEventsMapKeysRemovedCnt +
+								", newBookingsEventsEvictedCnt=" + (rstring)newBookingsEventsEvictedCnt,
+								"METRICS_GENERATOR");
+						} // End of if ($partitioningSchemeId == 3)
+
+						if ($partitioningSchemeId == 4) {
+							// It is time to evict the old unserved taxi bookings window contents if they exist.
+							mutable int32 unservedBookingsEventsEvictedCnt = 0;
+							listOfPartitionKeysToBeEvicted = (list<rstring>)[];
+							mutable map<rstring, list<TaxiLocationBooking_t>> 
+								modifiedUnservedBookingsMap = {};
+							
+							// Clean up the events state map.
+							for(rstring partitionKey in _unservedBookingsEventsMap) {
+								mutable int32 idx = -1;
+			 					mutable list<int32> listOfIndicesToBeEvicted = [];
+				 				mutable list<TaxiLocationBooking_t> unservedBookingsList = [];
+								unservedBookingsList = _unservedBookingsEventsMap[partitionKey];
+		
+								// Loop through the events list to look for any events for eviction.							
+								for (TaxiLocationBooking_t nbEvent in unservedBookingsList) {
+									idx++;
+									
+									if (diffAsSecs(eventTimestamp, nbEvent.eventTs) > 
+										_metricsWindowContentsEvictionPeriod) {
+										// This is an old event that needs to be evicted.
+										// Add it to the list of indices to be evicted later.
+										appendM(listOfIndicesToBeEvicted, idx);
+										unservedBookingsEventsEvictedCnt++;
+									}
+								} // End of inner for loop.	
+	
+								if (size(listOfIndicesToBeEvicted) > 0) {
+									// Remove all the old events present in the events list.
+									unservedBookingsList = remove(unservedBookingsList, listOfIndicesToBeEvicted);
+									// If there are no more unserved bookings events for this partition key,
+									// add it to the list of partition keys to be evicted from
+									// the state map after the outer for loop completes looping.
+									if (size(unservedBookingsList) <= 0) {
+										appendM(listOfPartitionKeysToBeEvicted, partitionKey);
+									} else {
+										// Put it in the modified map of taxis hired.
+										insertM(modifiedUnservedBookingsMap, partitionKey, unservedBookingsList);
+									}
+								}
+							} // End of outer for loop.
+							
+			 				// We may have modified the contents of the unserved bookings events 
+			 				// list in the for loop logic above.
+			 				if (size(modifiedUnservedBookingsMap) > 0) {
+								// Put it back in the state map.
+								for (rstring partitionKey in modifiedUnservedBookingsMap) {
+									insertM(_unservedBookingsEventsMap, 
+										partitionKey, modifiedUnservedBookingsMap[partitionKey]);
+								}
+							}
+	
+			 				// If there are any partition keys with empty unserved bookings Events list,
+			 				// we can remove such partition keys from the state map.
+			 				for(rstring partitionKey in listOfPartitionKeysToBeEvicted) {
+			 					if (has(_unservedBookingsEventsMap, partitionKey) == true) {
+			 						removeM(_unservedBookingsEventsMap, partitionKey);
+			 					}			 					
+			 				}
+	
+							int32 unservedBookingsEventsMapKeysModifiedCnt = 
+								size(modifiedUnservedBookingsMap);
+							int32 unservedBookingsEventsMapKeysRemovedCnt = 
+								size(listOfPartitionKeysToBeEvicted);
+							appTrc(Trace.info, "Unserved bookings count metrics window contents eviction results: " +
+								"_metricsSlidingWindowCnt=" + (rstring)_metricsSlidingWindowCnt +
+								", WindowContentsEvictionPeriod=" + 
+									(rstring)_metricsWindowContentsEvictionPeriod +
+								", currentSlidingWindowStartTime=" + getUtcTimeString(_windowStartTs) +
+								", unservedBookingsEventsMapKeysModifiedCnt=" + (rstring)unservedBookingsEventsMapKeysModifiedCnt +
+								", unservedBookingsEventsMapKeysRemovedCnt=" + (rstring)unservedBookingsEventsMapKeysRemovedCnt +
+								", unservedBookingsEventsEvictedCnt=" + (rstring)unservedBookingsEventsEvictedCnt,
+								"METRICS_GENERATOR");
+						} // End of if ($partitioningSchemeId == 4)
+
+						if ($partitioningSchemeId == 5) {
+							// It is time to evict the old served taxi bookings window contents if they exist.
+							mutable int32 servedBookingsEventsEvictedCnt = 0;
+							listOfPartitionKeysToBeEvicted = (list<rstring>)[];
+							mutable map<rstring, list<TaxiLocationBooking_t>> 
+								modifiedServedBookingsMap = {};
+							
+							// Clean up the events state map.
+							for(rstring partitionKey in _servedBookingsEventsMap) {
+								mutable int32 idx = -1;
+			 					mutable list<int32> listOfIndicesToBeEvicted = [];
+				 				mutable list<TaxiLocationBooking_t> servedBookingsList = [];
+								servedBookingsList = _servedBookingsEventsMap[partitionKey];
+		
+								// Loop through the events list to look for any events for eviction.							
+								for (TaxiLocationBooking_t nbEvent in servedBookingsList) {
+									idx++;
+									
+									if (diffAsSecs(eventTimestamp, nbEvent.eventTs) > 
+										_metricsWindowContentsEvictionPeriod) {
+										// This is an old event that needs to be evicted.
+										// Add it to the list of indices to be evicted later.
+										appendM(listOfIndicesToBeEvicted, idx);
+										servedBookingsEventsEvictedCnt++;
+									}
+								} // End of inner for loop.	
+	
+								if (size(listOfIndicesToBeEvicted) > 0) {
+									// Remove all the old events present in the events list.
+									servedBookingsList = remove(servedBookingsList, listOfIndicesToBeEvicted);
+									// If there are no more served bookings events for this partition key,
+									// add it to the list of partition keys to be evicted from
+									// the state map after the outer for loop completes looping.
+									if (size(servedBookingsList) <= 0) {
+										appendM(listOfPartitionKeysToBeEvicted, partitionKey);
+									} else {
+										// Put it in the modified map of taxis hired.
+										insertM(modifiedServedBookingsMap, partitionKey, servedBookingsList);
+									}
+								}
+							} // End of outer for loop.
+							
+			 				// We may have modified the contents of the served bookings events 
+			 				// list in the for loop logic above.
+			 				if (size(modifiedServedBookingsMap) > 0) {
+								// Put it back in the state map.
+								for (rstring partitionKey in modifiedServedBookingsMap) {
+									insertM(_servedBookingsEventsMap, 
+										partitionKey, modifiedServedBookingsMap[partitionKey]);
+								}
+							}
+	
+			 				// If there are any partition keys with empty served bookings Events list,
+			 				// we can remove such partition keys from the state map.
+			 				for(rstring partitionKey in listOfPartitionKeysToBeEvicted) {
+			 					if (has(_servedBookingsEventsMap, partitionKey) == true) {
+			 						removeM(_servedBookingsEventsMap, partitionKey);
+			 					}			 					
+			 				}
+	
+							int32 servedBookingsEventsMapKeysModifiedCnt = 
+								size(modifiedServedBookingsMap);
+							int32 servedBookingsEventsMapKeysRemovedCnt = 
+								size(listOfPartitionKeysToBeEvicted);
+							appTrc(Trace.info, "Served bookings count metrics window contents eviction results: " +
+								"_metricsSlidingWindowCnt=" + (rstring)_metricsSlidingWindowCnt +
+								", WindowContentsEvictionPeriod=" + 
+									(rstring)_metricsWindowContentsEvictionPeriod +
+								", currentSlidingWindowStartTime=" + getUtcTimeString(_windowStartTs) +
+								", servedBookingsEventsMapKeysModifiedCnt=" + (rstring)servedBookingsEventsMapKeysModifiedCnt +
+								", servedBookingsEventsMapKeysRemovedCnt=" + (rstring)servedBookingsEventsMapKeysRemovedCnt +
+								", servedBookingsEventsEvictedCnt=" + (rstring)servedBookingsEventsEvictedCnt,
+								"METRICS_GENERATOR");
+						} // End of if ($partitioningSchemeId == 5)
+
+						if ($partitioningSchemeId == 6) {
+							// It is time to evict the old cancelled taxi bookings window contents if they exist.
+							mutable int32 cancelledBookingsEventsEvictedCnt = 0;
+							listOfPartitionKeysToBeEvicted = (list<rstring>)[];
+							mutable map<rstring, list<TaxiLocationBooking_t>> 
+								modifiedCancelledBookingsMap = {};
+							
+							// Clean up the events state map.
+							for(rstring partitionKey in _cancelledBookingsEventsMap) {
+								mutable int32 idx = -1;
+			 					mutable list<int32> listOfIndicesToBeEvicted = [];
+				 				mutable list<TaxiLocationBooking_t> cancelledBookingsList = [];
+								cancelledBookingsList = _cancelledBookingsEventsMap[partitionKey];
+		
+								// Loop through the events list to look for any events for eviction.							
+								for (TaxiLocationBooking_t nbEvent in cancelledBookingsList) {
+									idx++;
+									
+									if (diffAsSecs(eventTimestamp, nbEvent.eventTs) > 
+										_metricsWindowContentsEvictionPeriod) {
+										// This is an old event that needs to be evicted.
+										// Add it to the list of indices to be evicted later.
+										appendM(listOfIndicesToBeEvicted, idx);
+										cancelledBookingsEventsEvictedCnt++;
+									}
+								} // End of inner for loop.	
+	
+								if (size(listOfIndicesToBeEvicted) > 0) {
+									// Remove all the old events present in the events list.
+									cancelledBookingsList = remove(cancelledBookingsList, listOfIndicesToBeEvicted);
+									// If there are no more cancelled bookings events for this partition key,
+									// add it to the list of partition keys to be evicted from
+									// the state map after the outer for loop completes looping.
+									if (size(cancelledBookingsList) <= 0) {
+										appendM(listOfPartitionKeysToBeEvicted, partitionKey);
+									} else {
+										// Put it in the modified map of taxis hired.
+										insertM(modifiedCancelledBookingsMap, partitionKey, cancelledBookingsList);
+									}
+								}
+							} // End of outer for loop.
+							
+			 				// We may have modified the contents of the cancelled bookings events 
+			 				// list in the for loop logic above.
+			 				if (size(modifiedCancelledBookingsMap) > 0) {
+								// Put it back in the state map.
+								for (rstring partitionKey in modifiedCancelledBookingsMap) {
+									insertM(_cancelledBookingsEventsMap, 
+										partitionKey, modifiedCancelledBookingsMap[partitionKey]);
+								}
+							}
+	
+			 				// If there are any partition keys with empty cancelled bookings Events list,
+			 				// we can remove such partition keys from the state map.
+			 				for(rstring partitionKey in listOfPartitionKeysToBeEvicted) {
+			 					if (has(_cancelledBookingsEventsMap, partitionKey) == true) {
+			 						removeM(_cancelledBookingsEventsMap, partitionKey);
+			 					}			 					
+			 				}
+	
+							int32 cancelledBookingsEventsMapKeysModifiedCnt = 
+								size(modifiedCancelledBookingsMap);
+							int32 cancelledBookingsEventsMapKeysRemovedCnt = 
+								size(listOfPartitionKeysToBeEvicted);
+							appTrc(Trace.info, "Cancelled bookings count metrics window contents eviction results: " +
+								"_metricsSlidingWindowCnt=" + (rstring)_metricsSlidingWindowCnt +
+								", WindowContentsEvictionPeriod=" + 
+									(rstring)_metricsWindowContentsEvictionPeriod +
+								", currentSlidingWindowStartTime=" + getUtcTimeString(_windowStartTs) +
+								", cancelledBookingsEventsMapKeysModifiedCnt=" + (rstring)cancelledBookingsEventsMapKeysModifiedCnt +
+								", cancelledBookingsEventsMapKeysRemovedCnt=" + (rstring)cancelledBookingsEventsMapKeysRemovedCnt +
+								", cancelledBookingsEventsEvictedCnt=" + (rstring)cancelledBookingsEventsEvictedCnt,
+								"METRICS_GENERATOR");
+						} // End of if ($partitioningSchemeId == 6)
+					} // End of the outermost if statement in this section.	 			
+					// =========== END OF EVICTING THE OLD WINDOW CONTENTS ===========
+		 		} // End of onTuple TLOBE
+		 		
+		 	config
+		 		threadedPort: queue(TLOBE, Sys.Wait);
+		} // End of MetricsGenerator custom operator
+		// =========== END OF GENERATING THE TAXI METRICS =========== 
+} // End of the non-main composite		 			

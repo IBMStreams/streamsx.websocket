@@ -1,6 +1,6 @@
 ============================================================
 First created on: February/22/2020
-Last modified on: September/22/2020
+Last modified on: October/04/2020
 
 Purpose of this toolkit
 -----------------------
@@ -262,6 +262,7 @@ obtained from the official documentation for this toolkit.
 3) <YOUR_WEBSOCKET_TOOLKIT_HOME>/samples/WebSocketSendReceiveTester
 4) <YOUR_WEBSOCKET_TOOLKIT_HOME>/samples/WebSocketSinkTester
 5) <YOUR_WEBSOCKET_TOOLKIT_HOME>/samples/HttpPostTester
+6) <YOUR_WEBSOCKET_TOOLKIT_HOME>/samples/CustomVisualization
 
 In the etc sub-directory of every example shown above, there is a shell script that 
 can be used to run a given example with synthetic data and then verify the 

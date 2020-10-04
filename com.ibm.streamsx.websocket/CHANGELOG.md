@@ -1,5 +1,9 @@
 Changes
 =======
+## v1.0.9:
+* Oct/04/2020
+* Added a new example CustomVisualization that shows how to do real-time custom dashboarding of the Streams application results with the help of the WebSocketSource operator.
+
 ## v1.0.8:
 * Sep/22/2020
 * Added logic to stop the Boost ASIO run loop on operator shutdown in order for an immediate closure of the TLS and non-TLS server ports in the Source and Sink operators.

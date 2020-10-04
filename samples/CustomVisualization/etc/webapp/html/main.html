@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" type="text/css" href="TaxiMetrics.css">
+		<script type="text/javascript" src="TaxiMetricsMenuClick.js"></script>
+	</head>
+
+	<body onload="main_onload()">
+	<h3 id="appTitle">
+	    <img id="rtaLogoImage" src="/logo-rta.png"> 
+	    <span>  Live Taxi Monitoring  </span>
+	    <span style="color:blue; background-color: white; 
+	    font-size:10px;">  [Powered by IBM CP4D Streams]  </span>
+	</h3>
+	
+	<!-- 
+	This top navigation bar idea is explained here: 
+	https://www.w3schools.com/howto/howto_js_topnav.asp
+	-->
+	<div class="topnav">
+		<!-- A href of # is same as #top i.e. go to the top of the current page. -->
+		<a id="selectCommunity" href="#" onclick="select_community_menu_onclick()">Select Community</a>
+		<a id="taxiCounts" href="#" onclick="taxi_counts_menu_onclick()">Taxi Counts</a>
+		<a id="taxiCountsMap" href="#" onclick="taxi_counts_map_menu_onclick()">Taxi Counts Map</a>
+		<a id="taxiBookings" href="#" onclick="taxi_bookings_menu_onclick()">Taxi Bookings</a>
+		<a id="taxiBookingsMap" href="#" onclick="taxi_bookings_map_menu_onclick()">Taxi Bookings Map</a>
+		<a id="supplyAndDemand" href="#" onclick="supply_and_demand_menu_onclick()">Supply & Demand</a>
+	</div>
+	
+	<div id="main">
+	</div>	
+	</body>
+</html>

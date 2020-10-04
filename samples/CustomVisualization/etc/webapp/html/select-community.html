@@ -1,0 +1,87 @@
+<html>
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<link rel="stylesheet" type="text/css" href="TaxiMetrics.css">
+		<script type="text/javascript" src="SelectCommunity.js"></script>
+	</head>
+	
+	<body onload="community_selection_onload()">
+	<div id="main">
+		<!-- https://stackoverflow.com/questions/3488447/html-form-with-side-by-side-input-fields -->
+		<h3 style="text-align:center; 
+		color:blueviolet">Select communities or districts to start/stop monitoring</h3>
+		
+		<div id="currentSettings">
+			<p>
+			<div id="cursel">
+			<label for="currentSelection">Currently being monitored:</label></br>
+			<textarea id="currentSelection" name="currentSelection" rows="4" cols="50" readonly>AAA</textarea>
+			</div>
+
+			<div id="mint">
+			<label for="monitoringInterval" 
+			id="monitoringIntervalLabel">Monitor every MMM minute(s):</label></br>
+			<input type="range" min="1" max="60" value="MMM" 
+			class="slider" id="monitoringInterval" oninput="monitoring_interval_oninput()">
+			</div>		 
+			</p>
+		</div>
+		
+		<div style="clear:both;">&nbsp;</div>
+		
+		<div id="communitySelectionForm">
+			<p>
+			<div id="com">
+			<label for="community">Communities:</label></br>
+			<select name="community" id="community" multiple size="5" 
+			 onclick="community_selection_onclick()">
+				BBB
+				<!--
+				<option value="114">AL BUTEEN</option>
+				<option value="115">AL SABKHA</option>
+				<option value="116">AYAL NASIR</option>
+				<option value="117">AL MURAR</option>
+				<option value="118">NAIF</option>
+				<option value="119">AL RIGGA</option>
+				-->
+			</select>
+			</div>
+	
+			<div id="dis">
+			<label for="district">Districts:</label></br>
+			<select name="district" id="district" multiple size="5" 
+			 onclick="district_selection_onclick()">
+				CCC
+				<!--
+				<option value="DEIRA">DEIRA</option>
+				<option value="MUSHRIF">MUSHRIF</option>
+				<option value="JUMEIRAH">JUMEIRAH</option>
+				<option value="BUR DUBAI">BUR DUBAI</option>
+				<option value="HADAEQ MOHAMMAD BIN RASHID">HADAEQ MOHAMMAD BIN RASHID</option>
+				-->
+			</select>
+			</div>
+	
+			<div id="sel">
+			<input type="radio" id="startMonitoring" name="newSelection" 
+			 value="Start Monitoring" onclick="start_stop_monitoring_onclick()">
+			<label for="startMonitoring">Start Monitoring</label></br>
+			<input type="radio" id="stopMonitoring" name="newSelection" 
+			 value="Stop Monitoring" onclick="start_stop_monitoring_onclick()">
+			<label for="stopMonitoring">Stop Monitoring</label>
+			</div>
+			</p>
+			
+			<div style="clear:both;">&nbsp;</div>
+	
+			<div id="con">
+			<label for="registerSelection">Finalize your selection:</label></br>
+			<button type="button" id="registerSelection" 
+			 class="registerSelectionActive registerSelectionInactive" 
+			 onclick="register_selection_onclick()">Confirm</button>
+			</div>
+		</div>
+	</div>
+	</body>
+</html>

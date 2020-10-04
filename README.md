@@ -118,6 +118,7 @@ This toolkit ships with the following examples that can be used as reference app
 * [WebSocketSendReceiveTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/WebSocketSendReceiveTester)
 * [WebSocketSinkTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/WebSocketSinkTester)
 * [HttpPostTester](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/HttpPostTester)
+* [CustomVisualization](https://github.com/IBMStreams/streamsx.websocket/tree/develop/samples/CustomVisualization)
 
 In the `etc` sub-directory of every example shown above, there is a shell script that can be used to run a given example with synthetic data and then verify the application behavior and the result. That shell script was originally written for running a given example in the IBM Streams lab in New York. It is easy to make minor changes in that shell script and use it in any other IBM Streams environment for running a given example.
 

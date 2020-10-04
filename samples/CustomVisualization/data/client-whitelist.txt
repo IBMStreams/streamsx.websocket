@@ -1,0 +1,30 @@
+# ===========================================================
+# You can specify here any valid client whitelist value as
+# shown below. The value you give here will override the
+# existing value used by the WebSocketSource operator.
+# Since it is a hot file, a FileSource operator present in
+# the TaxiMetrics application continuously 
+# monitors this file to read as soon as a new value is entered and
+# saved in this file. It then feeds that value into an 
+# optional input port of the WebSocketSource operator.
+#
+# A client whitelist tells the WebSocketSource operator to 
+# accept connections only from specific IP addresses belonging to 
+# the remote WebSocket clients. An empty list [] can be specified to 
+# indicate all client connections to be accepted without any restrictions.
+# If there is a need to accept connections only from certain clients, 
+# then a list as shown below can be used by including wild cards as needed.
+#
+# ["172.34.18.212", "10.5.23.17", "172.*.42.*", "10.29.42.*"]
+#
+# You can dynamically add one whitelist at a time. Simply append a 
+# new client whitelist line at the end of this file, press enter and 
+# then save the file in order for your new value to be read immediately 
+# by the already running TaxiMetrics application.
+#
+# Before starting the TaxiMetrics application, 
+# you should check if this file is empty or has the correct values as expected.
+# When adding a new client whitelist, it should strictly be in the
+# SPL list<rstring> format as shown above. Any incorrect format will 
+# cause the application to give runtime errors.
+# ===========================================================

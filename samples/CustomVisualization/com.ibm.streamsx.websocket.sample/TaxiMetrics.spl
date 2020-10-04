@@ -1,0 +1,2472 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+============================================================
+This is somewhat an involved IBM Streams application that
+has a few modular blocks of logic/code. That includes ingesting
+base64 encoded data files, identifying out of sequence events,
+performing Geofence, applying custom written event time
+based windowing for the analytics and incorporating a new way to
+visualize the results in a full-fledged web browser based
+custom dashboard application. So, learning about the full
+application logic will take a considerable amount of time.
+However, if the goal is simply to learn about how the custom
+visualization is done in the context of this application, 
+then that is relatively simpler. One can understand the
+core visualiation idea and its implementation with a minimal
+effort. That learning can also be applied in other IBM Streams
+applications by focusing only on the final section inside the
+main composite of this application.
+
+Before doing anything with the code in this file, it is a 
+must to first go through the ReadMe.txt file available at the 
+top-level directory of this example.
+
+This main composite has the core logic required for the
+CustomVisualization example. It ingests Taxi Location and Taxi Booking
+data from files. The data is base64 encoded in these files.
+We will base64 decode them on the fly and send it downstream
+for further analytics. As part of the analytics, we will 
+compute several taxi metrics such as the number of taxis 
+available for booking in a given time duration,
+taxis hired in a given time duration, number of booking requests 
+in a given time duration, number of booking requests per
+status in a given time duration and the number of taxis reporting 
+their meter status in a given time duration. The number of
+taxis available for booking and the number of taxis hired can also
+be filtered by community id or district name.
+This application also raises alerts when supply and demand is not met.
+
+This application can be run in the Distributed mode and then the
+results can be visualized in a web browser with this URL:
+http://<YourStreamsMachineNameOrIpAddress>:8081/viz/main.html
+
+First created on: Jun/27/2020
+Last modified on: Oct/03/2020
+============================================================
+*/
+namespace com.ibm.streamsx.websocket.sample;
+
+use com.ibm.streamsx.websocket.sample.types::*;
+use spl.file::*;
+use com.ibm.streamsx.json::*;
+use com.ibm.streams.geospatial::*;
+use com.ibm.streams.geospatial.ext::*;
+use com.ibm.streams.geospatial.st::*;
+// We will use the WebSocketSource operator from this namespace. 
+// [Inside the IBM Streams Studio, it is necessary to make the
+//  com.ibm.streamsx.websocket as a dependency for this example SPL project.]
+// [If you are building this example outside of Streams Studio, then
+//  you have to do what is necessary inside the Makefile as explained in 
+//  the previous commentary block.]
+use com.ibm.streamsx.websocket.op::*;
+
+//This is the main composite.
+public composite TaxiMetrics {
+	param
+		// Declare the constants and submission time values here.
+		expression<rstring> $TAXI_LOCATION_DIRECTORY : 
+			getSubmissionTimeValue("TaxiLocationDirectory", "/tmp/Custom-Viz-Test-Data/taxiLocation");
+			
+		expression<rstring> $TAXI_BOOKING_DIRECTORY : 
+			getSubmissionTimeValue("TaxiBookingDirectory", "/tmp/Custom-Viz-Test-Data/taxiBooking");
+		
+		// In the test data we have, there are 1580 non-zero length Taxi Location files.
+		expression<int32> $REPORT_TAXI_DETAILS_AFTER_THESE_MANY_FILES :
+			(int32)getSubmissionTimeValue("ReportTaxiDetailsAfterTheseManyFiles", "0");
+			
+		expression<rstring> $TAXI_LOCATION_RECORDS_LOG_FILE :
+			getSubmissionTimeValue("TaxiLocationRecordsLogFile", "/dev/null");
+
+		expression<rstring> $TAXI_BOOKING_RECORDS_LOG_FILE :
+			getSubmissionTimeValue("TaxiBookingRecordsLogFile", "/dev/null");
+
+		expression<rstring> $ALL_IN_ONE_COMMUNITY_DATA_SINK_FILE :
+			getSubmissionTimeValue("AllInOneCommunityDataSinkFile", "AllInOneCommunityData.txt");
+			
+		expression<float64> $INIT_DELAY_BEFORE_TAXI_DATA_INGESTION :
+			(float64)getSubmissionTimeValue("InitDelayBeforeTaxiDataIngestion", "20.0");
+					
+		// Following constants are for the CSV and JSON reference data file names.
+		expression<rstring> $COMMUNITY_TO_DISTRICT_MAPPING_FILE_NAME : "uae_district_mapping.txt";
+		expression<rstring> $COMMUNITY_GEO_JSON_FILE_NAME : "uae_communities_single_line.json";
+		
+		expression<float64> $INIT_DELAY_BEFORE_COMMUNITY_DATA_INGESTION :
+			(float64)getSubmissionTimeValue("InitDelayBeforeCommunityDataIngestion", "5.0");
+			
+		// When percentage at or below which (TaxisHired/TotalTaxis) falls, then a
+		// supply demand threshold alert will be raised.
+		expression<float64> $TAXIS_AVAILABLE_VERSUS_DEMAND_ALERT_THRESHOLD : 
+			(float64)getSubmissionTimeValue("TaxisAvailableVersusDemandAlertThreshold", "20.0");
+			
+		// Following value indicates the window time for collecting 
+		// the long term METRICS. 
+		// [There is also a submission time value constant like this one in the
+		// TaxiMetricsGenerator.spl file. We have to use this user given value in
+		// that file as well as in this SPL file's logic below in an operator.
+		// It is necessary for the user to enter the same value for both of them. (e-g: 300)
+		expression<float64> $LONG_TERM_METRICS_WINDOW_PERIOD_FOR_WEB_APP :
+			(float64)getSubmissionTimeValue("LongTermMetricsWindowPeriodForWebApp", "300.0");
+		
+		// ==== START OF WEBSOCKET SOURCE OPERATOR RELATED SUBMISSION TIME VALUES ==== 
+		// WebSocket connectivity related submission time values are defined below.
+		// TLS port on which this application will listen for
+		// communicating with the remote WebSocket clients.
+		expression<uint32> $tlsPort : 
+			(uint32)getSubmissionTimeValue("tlsPort", "9444");
+		// User can optionally specify whether they want a non-TLS endpoint.
+		expression<boolean> $nonTlsEndpointNeeded : 
+			(boolean)getSubmissionTimeValue("nonTlsEndpointNeeded", "true");
+		// Non-TLS (Plain) port on which this application will
+		// (optionally) listen for communicating with the remote WebSocket clients.
+		expression<uint32> $nonTlsPort : 
+			(uint32)getSubmissionTimeValue("nonTlsPort", "8081");
+		// Do you want to use a specific URL context path for the WebSocketSource operator?
+        // It can either be a single or a multi-part path.
+        // e-g: Orders (OR) MyServices/Banking/Deposit
+        // With that example, WebSocket server URL should either be 
+        // https://host:port/Orders   (OR)
+        // https://host:port/MyServices/Banking/Deposit
+        // Default is an empty list to indicate no url context path.
+        // You can expose any number of context paths for the 
+        // remote clients to access this WebSocket server endpoint. 
+        // e-g: []    (OR)    ['Orders', '', 'MyServices/Banking/Deposit']
+		expression<list<rstring>> $urlContextPath : (list<rstring>)
+			getSubmissionTimeValue("urlContextPath", "['viz', '']");
+		// Server side certificate (.pem) file for the WebSocket server.
+		// It is necessary for the users to create a Root CA signed 
+		// server side certificate file and point to that file at the time of
+		// starting this application. If the user doesn't point to this file
+		// at the time of starting the application, then the application will
+		// look for a default file named ws-server.pem inside the etc sub-directory
+		// of the application. This certificate will be presented to the
+		// remote client for validation when it establishes a WebSocket 
+		// connection with this application. For doing quick tests, you may save
+		// time and effort needed in getting a proper Root CA signed certificate 
+		// by going with a simpler option of creating your own self-signed 
+		// certificate. Please ensure that using a self-signed certificate is 
+		// allowed in your environment. We have provided a set of instructions to
+		// create a self signed certificate. Please refer to the following
+		// file in the etc sub-directory of this application:
+		// etc/creating-a-self-signed-certificate.txt
+		expression<rstring> $certificateFileName :
+			getSubmissionTimeValue("certificateFileName", "");
+		// Do you want to specifiy a file name that contains the public certificates of
+		// the trusted client(s). If this file name is not empty, then the
+		// WebSocketSource operator will perform a client (mutual) authentication.
+		expression<rstring> $trustedClientCertificateFileName :
+			getSubmissionTimeValue("trustedClientCertificateFileName", "");
+		// Do you want to specify a list of identifiers present in the 
+		// trusted client's X509 certificate's subject line. If that certificate is
+		// self signed, then it will help during the client (mutual) authentication to approve
+		// that client's identity as a known one.
+		// 
+		// Following are some examples of the subject line as it appears in an X509 public certificate.
+		// /C=US/ST=NY/L=Yorktown Heights/O=IBM/OU=AI/CN=websocket.streams/emailAddress=websocket.streams@ibm.com
+		// /C=US/O=Let's Encrypt/CN=Let's Encrypt Authority X3
+		// /C=BE/O=GlobalSign nv-sa/CN=GlobalSign CloudSSL CA - SHA256 - G3
+		// /C=US/O=Google Trust Services/CN=GTS CA 1O1
+		// /C=US/O=DigiCert Inc/OU=www.digicert.com/CN=DigiCert Global Root CA
+		// /C=US/ST=New York/L=Armonk/O=IBM/CN=www.ibm.com
+		//
+		// So your value for this submission time parameter can be as shown here.
+		// ["emailAddress=websocket.streams@ibm.com", "CN=www.ibm.com"]
+		expression<list<rstring>> $trustedClientX509SubjectIdentifiers :
+			(list<rstring>)getSubmissionTimeValue("trustedClientX509SubjectIdentifiers", "[]");	
+		// Is live metrics needed for the WebSocketSource operator?
+		expression<boolean> $websocketLiveMetricsUpdateNeeded : 
+			(boolean)getSubmissionTimeValue("websocketLiveMetricsUpdateNeeded", "true");
+		// Is WebSocket library low level logging needed?
+		expression<boolean> $websocketLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("websocketLoggingNeeded", "false");
+		// Is WebSocket client connection logging needed?
+		expression<boolean> $wsConnectionLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("wsConnectionLoggingNeeded", "false");
+		// Is client message exchange logging needed for debugging?
+		expression<boolean> $wsClientSessionLoggingNeeded : 
+			(boolean)getSubmissionTimeValue("wsClientSessionLoggingNeeded", "false");
+		// Time in seconds to wait before starting the WebSocket server inside the source operator.
+		expression<float64> $initDelayBeforeReceivingData :
+			(float64)getSubmissionTimeValue("initDelayBeforeReceivingData", "15.0"); 
+		// Time interval in seconds during which the WebSocket source operator below should
+		// do memory cleanup of any remote client sessions that end abruptly without 
+		// closing the connection. In this application, there is no need to 
+		// purge stale connections as clients will be long running and 
+		// properly disconnect when they go away. 
+		expression<uint32> $websocketStaleConnectionPurgeInterval :(uint32)
+			getSubmissionTimeValue("websocketStaleConnectionPurgeInterval", "0");
+		// Is ipv6 protocol stack available in the Streams machine where the
+		// WebSocketSource operator is going to run?
+		// Most of the Linux machines will have ipv6. In that case,
+		// you can keep the following line as it is.
+		// If you don't have ipv6 in your environment, you can set the
+		// following submission time value to false.
+		expression<boolean> $ipv6Available : (boolean)
+			getSubmissionTimeValue("ipv6Available", "false");
+		// Specify the number of received messages from a given client after which 
+		// an ack should be sent back to that client.
+		// This has no effect if the WebSocketSource operator is configured with a
+		// "result/response to the client" input port.
+		expression<uint32> $numberOfMessagesToReceiveBeforeAnAck :(uint32)
+			getSubmissionTimeValue("numberOfMessagesToReceiveBeforeAnAck", "0");
+		// Specify if we want to allow the client applications to do an HTTP POST.
+		expression<boolean> $allowHttpPost : (boolean)
+			getSubmissionTimeValue("allowHttpPost", "true");
+		// Whitelist to accept connections only from specific
+		// IP addresses belonging to the remote WebSocket clients.
+		// Default is an empty list to indicate all client connections
+		// are accepted without any restrictions. If there is a need to
+		// accept connections only from certain clients, then a list
+		// as shown below can be used  by including wild cards as needed.
+		// e-g: "['172.34.18.212', '10.5.23.17', '172.*.42.*', '10.29.42.*']" 
+		expression<list<rstring>> $clientWhitelist : (list<rstring>)
+			getSubmissionTimeValue("clientWhitelist", "[]");
+		// Specify a maximum number of concurrent client connections to be
+		// allowed by the WebSocket server available inside the WebSocketSource operator.
+		expression<uint32> $maxClientConnectionsAllowed : (uint32)
+			getSubmissionTimeValue('maxClientConnectionsAllowed', "32");
+		// Specify a time before which the responses for a remote client 
+		// should be sent by the application logic that receives the data items from 
+		// that client via the WebSocketSource operator. If there is no response sent
+		// within this time limit, then the operator logic will inform the client with a
+		// short message saying that the application logic timed out to send a required response.
+		expression<uint32> $responseTimeout : (uint32)
+			getSubmissionTimeValue('responseTimeout', "20");
+		// Client whitelist file name.
+		expression<rstring> $clientWhitelistFileName : 
+			getSubmissionTimeValue('clientWhitelistFileName', "client-whitelist.txt");
+		// ==== END OF WEBSOCKET SOURCE OPERATOR RELATED SUBMISSION TIME VALUES ==== 
+			
+	graph
+		/*
+		// =========== START OF PARSING THE GTFS DATA ===========
+		// This application has a built-in GTFS parser.
+		// It is technically possible for this application to 
+		// fetch the real time Taxi Location and Taxi Booking data
+		// from the source PTA (Public Transportation Agency) 
+		// Taxi system. This is something we will do in the future if this
+		// project gets serious and the customer wants to buy the 
+		// IBM Streams solution.
+		//
+		// Invoke the GTFS parser.
+		(stream<rstring msg> ParsedResult) 
+			as GtfsParser = TransitFeedParser(FileFoundInDir) {
+		}
+		// =========== END OF PARSING THE GTFS DATA ===========
+		*/			
+
+		// =========== START OF LOADING THE COMMUNITY TO DISTRICT MAPPING REFERENCE DATA =========== 
+		// Let us read the community to district mapping data and send it downstream.
+		(stream<CommunityToDistrict_t> CommunityToDistrictData) as
+			CommunityToDistrictFileReader = FileSource() {
+			param
+				initDelay: $INIT_DELAY_BEFORE_COMMUNITY_DATA_INGESTION;
+				file: getThisToolkitDir() + "/etc/" + $COMMUNITY_TO_DISTRICT_MAPPING_FILE_NAME;
+		}
+		
+		// We will generate two kinds of mapping information and send it for
+		// use in the downstream operator.
+		(stream<CommunityToDistrictMap_t> CommunityToDistrictMap as CTDM;
+		 stream<DistrictToCommunityMap_t> DistrictToCommunityMap as DTCM) as 
+			CommunityToDistrictDataMapper = Custom(CommunityToDistrictData as CTDD) {
+			logic
+				state: {
+					mutable map<rstring, rstring> _communityToDistrictMap = {};
+					mutable map<rstring, list<rstring>> _districtToCommunityMap = {};
+				}
+				
+				onTuple CTDD: {
+					// Keep inserting in the stae maps.
+					insertM(_communityToDistrictMap, CTDD.community, CTDD.district);
+					
+					// If it is is the first time we are seeing a district, 
+					// let us make an entry for that in the map.
+					// As of July/2020, there are 14 districts in UAE.
+					if(has(_districtToCommunityMap, CTDD.district) == false) {
+						insertM(_districtToCommunityMap, CTDD.district, (list<rstring>)[]);
+					}
+					
+					// Append the given community to the given district's list.
+					// As of July/2020, there are 226 communities in UAE.
+					appendM(_districtToCommunityMap[CTDD.district], CTDD.community);
+				}
+				
+				onPunct CTDD: {
+					// When the reference data file is completely read, we will push the
+					// reference data maps to the downstream operator for its use.
+					if(currentPunct() == Sys.FinalMarker) {
+						if(size(_communityToDistrictMap) <= 0) {
+							appTrc(Trace.error, "There is no data available for community to district map.");
+							abort();
+						}
+
+						if(size(_districtToCommunityMap) <= 0) {
+							appTrc(Trace.error, "There is no data available for district to community map.");
+							abort();
+						}
+						
+						mutable CommunityToDistrictMap_t oTuple1 = {};
+						oTuple1.communityToDistrictMap = _communityToDistrictMap;
+						submit(oTuple1, CTDM);
+						
+						/*
+						printStringLn("Size of _communityToDistrictMap=" + 
+							(rstring)size(_communityToDistrictMap) + ", Map=" + 
+							(rstring)_communityToDistrictMap);
+						*/
+						
+						mutable DistrictToCommunityMap_t oTuple2 = {};
+						oTuple2.districtToCommunityMap = _districtToCommunityMap;
+						submit(oTuple2, DTCM);
+						
+						// Also forward the punctuation that was received.
+						submit(currentPunct(), CTDM);
+						submit(currentPunct(), DTCM);
+						
+						/*
+						printStringLn("Size of _districtToCommunityMap=" +
+							(rstring)size(_districtToCommunityMap) +  ", Map=" +
+							(rstring)_districtToCommunityMap);
+						*/
+					}
+				}
+		}
+		
+		// =========== END OF LOADING THE COMMUNITY TO DISTRICT MAPPING REFERENCE DATA =========== 
+
+		// =========== START OF LOADING THE COMMUNITY GEO JSON REFERENCE DATA =========== 
+		// Let us read the community geo json data and send it downstream.
+		(stream<rstring jsonString> CommunityGeoJsonData) as
+			CommunityGeoJsonFileReader = FileSource() {
+			param
+				initDelay: $INIT_DELAY_BEFORE_COMMUNITY_DATA_INGESTION;
+				file: getThisToolkitDir() + "/etc/" + $COMMUNITY_GEO_JSON_FILE_NAME;
+				format: line;
+		}
+
+		(stream<rstring jsonString> TransformedCommunityGeoJson as TCGJ) as
+			CommunityGeoJsonTransformer = Custom(CommunityGeoJsonData as CGJD) {
+			logic
+				onTuple CGJD: {
+					// The JSON content has a field named "type" which is a
+					// reserved keyword in SPL. It will fail when we 
+					// attempt to convert this JSON into a tuple.
+					// It appears in 4 places in the JSON content.
+					// Let us change that attribute to myType to avoid the tuple conversion error.
+					CGJD.jsonString = regexReplacePerl(CGJD.jsonString, '"type":', '"myType":', true);	
+					submit(CGJD, TCGJ);			
+				}
+				
+				onPunct CGJD: {
+					// Forward the punctuation that was received.
+					submit(currentPunct(), TCGJ);
+				}
+		}
+		
+		// We will generate a tuple version of the geo json string for all the communities.
+		(stream<CommunityGeoJson_t> CommunityGeoJson as CGJ;
+		 stream<TransformedCommunityGeoJson> JsonParsingError as JPE) as 
+			CommunityGeoJsonTupleMaker = JSONToTuple(TransformedCommunityGeoJson as TCGJ) {	
+		}
+		
+		// If the Geo JSON tuple conversion is good, let us create the necessary
+		// data structures out of that tuple.
+		(stream<CommunityIdToNameMap_t> CommunityIdToNameMap as CITNM;
+		 stream<CommunityNameToIdMap_t> CommunityNameToIdMap as CNTIM;
+		 stream<CommunityWktGeometryMap_t> CommunityWktGeometryMap as CWGM;
+		 stream<FenceData_t> FenceData as FD) as 
+			CommunityWktGeometryDataMapper = Custom(CommunityGeoJson as CGJ; JsonParsingError as JPE) {	
+			logic
+				onTuple CGJ: {
+					// Do we have a valid tuple?
+					if(size(CGJ.features) <= 0) {
+						appTrc(Trace.error, "Empty features list found in community Geo JSON. We can't continue.");
+						abort();
+					}
+					
+					// Let us iterate through the features list now and create
+					// the three different maps for use in the downstream operator.
+					// Key: Community Id, Value: Community Name.
+					mutable map<rstring, rstring> communityIdToNameMap = {};
+					// Key: Community Name, Value: Community Id.
+					mutable map<rstring, rstring> communityNameToIdMap = {};
+					// Key: Community Name, Value: Polygon in Wkt Geometry string.
+					mutable map<rstring, rstring> communityWktGeometryMap = {};
+					mutable FenceData_t oTuple4 = {};
+					
+					for(Features_t f in CGJ.features) {
+						// Keep collecting the community id to name information.
+						insertM(communityIdToNameMap, (rstring)f.properties.COMMUNITY1, f.properties.CNAME_EN);
+						
+						// Keep collecting the community name to id information.
+						insertM(communityNameToIdMap, f.properties.CNAME_EN, (rstring)f.properties.COMMUNITY1);
+						
+						// Get the polygon geo coordinates for the given community in string representation.
+						mutable rstring polygonString = "";
+						
+						for(list<float64> pt in f.geometry.coordinates[0]) {
+							if(length(polygonString) > 0) {
+								// Add a comma.
+								polygonString += ",";
+							}
+							
+							polygonString += (rstring)pt[0] + "," + (rstring)pt[1];							
+						} // End of inner for loop.
+						
+						// Using the geospatial toolkit function, get a 
+						// WKT geometry representation of this polygon.
+						if(length(polygonString) <= 0) {
+							continue;
+						}
+						
+						rstring wktGeometryPolygon = polygon(polygonString);
+						insertM(communityWktGeometryMap, f.properties.CNAME_EN, wktGeometryPolygon);
+						
+						// Send this WKT polygon data to the Geofence operator.
+						oTuple4.fenceId = f.properties.CNAME_EN;
+						// 0 = delete the fence polygon. 1 = add/update the fence polygon.
+						oTuple4.fenceUpdateAction = 1;
+						oTuple4.fencePolygon = wktGeometryPolygon;
+						submit(oTuple4, FD);
+					} // End of outer for loop.
+
+					if(size(communityIdToNameMap) <= 0) {
+						appTrc(Trace.error, "There is no data available for community id to name map.");
+						abort();
+					}
+					
+					if(size(communityNameToIdMap) <= 0) {
+						appTrc(Trace.error, "There is no data available for community name to id map.");
+						abort();
+					}
+
+					if(size(communityWktGeometryMap) <= 0) {
+						appTrc(Trace.error, "There is no data available for communityWktGeometry map.");
+						abort();
+					}
+
+					mutable CommunityIdToNameMap_t oTuple1 = {};
+					oTuple1.communityIdToNameMap = communityIdToNameMap;
+					submit(oTuple1, CITNM);
+					// Inject a final punctuation since we will not send anything more on this stream.
+					submit(Sys.FinalMarker, CITNM);
+					
+					/*
+					printStringLn("Size of communityIdToNameMap=" + 
+						(rstring)size(communityIdToNameMap) + ", Map=" +
+						(rstring)communityIdToNameMap);
+					*/
+
+					mutable CommunityNameToIdMap_t oTuple2 = {};
+					oTuple2.communityNameToIdMap = communityNameToIdMap;
+					submit(oTuple2, CNTIM);
+					// Inject a final punctuation since we will not send anything more on this stream.
+					submit(Sys.FinalMarker, CNTIM);
+					
+					/*
+					printStringLn("Size of communityNameToIdMap=" + 
+						(rstring)size(communityNameToIdMap) + ", Map=" +
+						(rstring)communityNameToIdMap);
+					*/
+					
+					mutable CommunityWktGeometryMap_t oTuple3 = {};
+					oTuple3.communityWktGeometryMap = communityWktGeometryMap;
+					submit(oTuple3, CWGM);
+					// Inject a final punctuation since we will not send anything more on this stream.
+					submit(Sys.FinalMarker, CWGM);
+					
+					/*
+					printStringLn("Size of communityWktGeometryMap=" + 
+						(rstring)size(communityWktGeometryMap) + ", Map=" +
+						(rstring)communityWktGeometryMap);
+					*/
+
+					// ---------------------------------------------------------------------
+					// Uncomment the following code to test the geospatical toolkit functions such as
+					// isValid, contains, within etc. as they are applicable for this application.
+					// This block of code is needed only for debugging those toolkit functions.						
+					//
+					// IMPORTANT NOTE (As of July/26/2020):
+					// Geospatial toolkit functions below (isValid, contains, within etc. must be  called
+					// only from one operator when the application is auto fused  into a single PE a.k.a
+					// single Linux process. If multiple copies the  same operator or different operators in
+					// a fused PE call those functions at the same time, those functions will return
+					// inconsistent results. So, always ensure that they are called only in one place
+					// in a fused application and then the result is shared  with other operators.
+					// 
+					// In general, native functions mentioned above are very slow and not suitable for
+					// use in real-time path. So, I modified the Geofence operator's source code in my 
+					// local develoopment environment to work faster with a few optimizations. You will
+					// see the code later in this file below where Geofence operator gets used instead 
+					// of these native functions.
+					//
+					/*						
+					// Let us check if DUBAI INT'L AIRPORT geo coordinates can be validated.
+					// 55.365512, 25.253165
+					rstring wktPoint1 = point(55.365512, 25.253165);
+
+					printStringLn("DUBAI INT'L AIRPORT point validity is " + 
+						(rstring)isValid(wktPoint1) + ".");					
+					printStringLn("DUBAI INT'L AIRPORT polygon validity is " + 
+						(rstring)isValid(communityWktGeometryMap["DUBAI INT'L AIRPORT"]) + ".");
+
+					// if(within(wktPoint1, communityWktGeometryMap["WADI ALSHABAK"]) == true)  {
+					if(contains(communityWktGeometryMap["DUBAI INT'L AIRPORT"], wktPoint1) == true)  {
+						printStringLn("DUBAI INT'L AIRPORT geo code is found.");
+					} else {
+						printStringLn("DUBAI INT'L AIRPORT geo code is not found.");
+					}
+					
+					// Let us check if AL RAFFA geo cordinates can be validated.
+					// 55.289896, 25.255292
+					rstring wktPoint2 = point(55.289896, 25.255292);
+					
+					printStringLn("AL RAFFA point validity is " + 
+						(rstring)isValid(wktPoint2) + ".");	
+					printStringLn("AL RAFFA polygon validity is " + 
+						(rstring)isValid(communityWktGeometryMap["AL RAFFA"]) + ".");
+					
+					// if(within(wktPoint2, communityWktGeometryMap["AL RAFFA"]) == true)  {
+					if(contains(communityWktGeometryMap["AL RAFFA"], wktPoint2) == true)  {
+						printStringLn("AL RAFFA geo code is found.");
+					} else {
+						printStringLn("AL RAFFA geo code is not found.");
+					}
+					*/
+					// ---------------------------------------------------------------------
+				}
+				
+				onTuple JPE: {
+					// If we are here, it means that there was an error in parsing the community Geo JSON.
+					// We can't proceed.
+						appTrc(Trace.error, "Error in parsing the community Geo JSON data. We can't continue.");
+						abort();
+				}
+		}					
+		// =========== END OF LOADING THE COMMUNITY GEO JSON REFERENCE DATA =========== 
+	
+		// =========== START OF COMBINING THE ALL IN ONE COMMUNITY DATA ===========
+		// In this section, we will write the combined all in one community data to a file.
+		// This file will be useful during the application testing to know which community id 
+		// belongs to which community name and which district name.
+		(stream<CommunityIdNameDistrict_t> AllInOneCommunityData as AIOCD) as 
+			AllInOneCommunityDataMaker = Custom(CommunityToDistrictMap as CTDM;
+			CommunityIdToNameMap as CITNM) {
+			logic
+				state: {
+					// Key: Community Name, Value: District Name
+					mutable map<rstring, rstring> _communityToDistrictMap = {};
+					// Key: Community Id, Value: Community Name.
+					mutable map<rstring, rstring> _communityIdToNameMap = {};
+					mutable CommunityIdNameDistrict_t _oTuple = {};
+				}
+				
+				onTuple CTDM: {
+					_communityToDistrictMap = CTDM.communityToDistrictMap;
+				}
+				
+				onTuple CITNM: {
+					_communityIdToNameMap = CITNM.communityIdToNameMap;
+				}
+			
+				onPunct CTDM: {
+					// This is exactly the same logic as in the onPunct below.
+					if(size(_communityToDistrictMap) > 0 && size(_communityIdToNameMap) > 0) {
+						// We have data available for both the maps. We can send the
+						// all in one community data now.
+						for(rstring cid in _communityIdToNameMap) {
+							mutable rstring districtName = "";
+							// If we have this community name present in the 
+							// community to district name, let us get the district name.
+							if(has(_communityToDistrictMap, _communityIdToNameMap[cid]) == true) {
+								districtName = _communityToDistrictMap[_communityIdToNameMap[cid]];
+							}
+							
+							// Let us send the output tuple.
+							_oTuple.communityId = cid;
+							_oTuple.communityName = _communityIdToNameMap[cid];
+							_oTuple.district = districtName;
+							submit(_oTuple, AIOCD);
+						} // End of for loop.
+						
+						// Forward the punctuation as well.
+						submit(Sys.WindowMarker, AIOCD);
+					} // End of if statement.
+				}
+				
+				onPunct CITNM: {
+					// This is exactly the same logic as in the onPunct above.
+					if(size(_communityToDistrictMap) > 0 && size(_communityIdToNameMap) > 0) {
+						// We have data available for both the maps. We can send the
+						// all in one community data now.
+						for(rstring cid in _communityIdToNameMap) {
+							mutable rstring districtName = "";
+							// If we have this community name present in the 
+							// community to district name, let us get the district name.
+							if(has(_communityToDistrictMap, _communityIdToNameMap[cid]) == true) {
+								districtName = _communityToDistrictMap[_communityIdToNameMap[cid]];
+							}
+							
+							// Let us send the output tuple.
+							_oTuple.communityId = cid;
+							_oTuple.communityName = _communityIdToNameMap[cid];
+							_oTuple.district = districtName;
+							submit(_oTuple, AIOCD);
+						} // End of for loop.
+						
+						// Forward the punctuation as well.
+						submit(Sys.WindowMarker, AIOCD);
+					} // End of if statement.
+				}
+		}
+		
+		// Let us sort the all in one community data by the community id.
+		(stream<CommunityIdNameDistrict_t> SortedAllInOneCommunityData as SAIOCD) as 
+			AllInOneCommunityDataSorter = Sort(AllInOneCommunityData as AIOCD) {
+			window
+				AIOCD: tumbling, punct();
+				
+			param
+				sortBy: AIOCD.communityId;
+		}
+		
+		// Let us write the all in one community tuples to a file now.
+		() as AllInOneCommunityDataSink = FileSink(SortedAllInOneCommunityData) {
+			param
+				file: $ALL_IN_ONE_COMMUNITY_DATA_SINK_FILE;
+				flush: 1u;
+				quoteStrings: false;
+		}
+		// =========== END OF COMBINING THE ALL IN ONE COMMUNITY DATA ===========
+				
+		// =========== START OF INGESTING TaxiLocation DATA ===========
+		// Scan for the Taxi location files now.
+		// There will be one file per minute.
+		// e-g: TaxiLoc1585209493865.transfered
+		// Each of these files is around 781KB in size.
+		// Each of these files contains around 10889 CSV records,
+		// where the entire file content is base64 encoded. 
+		(stream<rstring fileName> TaxiLocationFileName) 
+			as TaxiLocationDirScanner = DirectoryScan() {
+			param
+				directory: $TAXI_LOCATION_DIRECTORY;
+				sleepTime: 5.0;
+				pattern: ".*\\.transfered";
+				initDelay: $INIT_DELAY_BEFORE_TAXI_DATA_INGESTION; 
+				sortBy: name;			
+		}
+
+		// Let us read every tax location file found and 
+		// base64 decode its content into CSV records,
+		// convert every CSV record into an event tuple and send it
+		// downstream for further processing.
+		// As described in the previous operator's commentary,
+		// every taxi location file is per minute based and it
+		// can have around 10889 CSV records.
+		(stream<TaxiLocationWithId_t> TaxiLocationWithId as TLWI;
+		 stream<TaxiReportingDetails_t> OutOfSequenceTaxiEventReport as OOTER)
+			as TaxiLocationFileReader = Custom(TaxiLocationFileName as TLFN) {
+			logic
+				state: {
+					mutable int32 _fileCnt = 0;
+					mutable uint64 _fileHandle = 0ul;
+					mutable uint64 _fileSize = 0ul;
+					mutable int32 _err = 0;
+					mutable int32 _lineCnt = 0;
+					mutable int32 _validTaxiLocationEventsCnt = 0; 
+					mutable TaxiLocationWithId_t _oTuple1 = {};
+					mutable TaxiReportingDetails_t _oTuple2 = {};
+					mutable int64 _firstDateTimeInFile = 0ul;
+					mutable int64 _lastDateTimeInFile = 0ul;
+					mutable uint64 _totalTaxiLocationEvents = 0ul;
+					mutable int32 _zeroLengthFileCnt = 0;
+					mutable map<uint32, TaxiReportingDetails_t> _taxiReportingMap = {};
+					mutable int32 _totalOutOfSequenceEventsCnt = 0;
+					mutable int32 _cumulativeOutOfSequenceEventsCnt = 0;
+				}
+				
+				onTuple TLFN: {
+					uint64 _fileHandle = fopen (TLFN.fileName, "r", _err);
+					
+					if (_err != 0) {
+						printStringLn("File " + fileName + " failed to open. Error=" 
+							+ (rstring)_err);
+						return;
+					}
+					
+					_lineCnt = 0;
+					_validTaxiLocationEventsCnt = 0;
+					_totalOutOfSequenceEventsCnt = 0;
+					// Get the size of this file.
+					fstat(_fileHandle, "size", _fileSize, _err);
+				
+					if (_err != 0) {
+						printStringLn("Unable to get the file size for " + fileName + ". Error=" 
+							+ (rstring)_err);
+						fclose(_fileHandle, _err);
+						return; 
+					}
+				
+					if(_fileSize == 0ul) {
+						_zeroLengthFileCnt++;
+						printStringLn((rstring)_zeroLengthFileCnt + 
+							") Skipped this zero length taxi location file: " + fileName);
+						fclose(_fileHandle, _err);
+						return; 
+					}
+				
+					// Taxi Location file has only one line per file with a
+					// long base64 encoded content.
+					mutable rstring content = freadLine (_fileHandle, _err);
+
+					if (_err == -1) {
+						// Error in reading the file content.
+						printStringLn("Unable to read the content of the file " + fileName + ". Error=" 
+							+ (rstring)_err);
+						fclose(_fileHandle, _err);
+						return;
+					}
+					
+					// The content read from this file is in base64 encoded format.
+					// We have to decode it to get back one or more CSV records.
+					mutable rstring csvContent = "";
+					// Call a C++ native function available in the 
+					// impl/include directory of this project.
+					base64_decode(content, csvContent);
+				
+					// Tokenzie them into individual CSV records.
+					mutable list<rstring> csvRecords = tokenize(csvContent, "\n", false);
+					
+					// Iterate over every single CSV record.
+					for(rstring line in csvRecords) {
+						_lineCnt++;						
+						// Remove if there is any \r at the end (if it was generated in MSFT Windows).
+						trim(line, "\r");
+						list<rstring> tokens = csvTokenize(line);
+						
+						if (size(tokens) != 7) {
+							printStringLn("Required number of 7 attributes were not found in line " + 
+								(rstring)_lineCnt + " from " + fileName);							
+							continue;
+						}
+
+						// This is a valid data record with the correct number of fields.
+						_validTaxiLocationEventsCnt++;
+
+						// Prepare the tuple using the CSV fields.						
+						_oTuple1.esnNumber = (uint32)tokens[0];
+						_oTuple1.dateTime = (int64)tokens[1];
+						_oTuple1.latitude = (float64)tokens[2];
+						_oTuple1.longitude = (float64)tokens[3];
+						_oTuple1.heading = (uint32)tokens[4];
+						_oTuple1.gpsSpeed = (uint32)tokens[5];
+						_oTuple1.meterStatus = tokens[6];
+						// The streamsx.geospatial toolkit's Geofence operator 
+						// expects an attribute named id. Just for feeding the 
+						// input tuples into that operator with the required
+						// attribute name, we will add this attribute name here.
+						// We only want the one community (fence) that contains 
+						// the Taxi longitude and latitude.To do that optimization in
+						// the Geofence operator, we must set the id attribute as shown below.
+						_oTuple1.id = "GetTheFirstFence";
+						
+						// Before submitting this tuple, ensure that this is not an
+						// out of sequence event for a given taxi id. We can't process
+						// such events since it will affect our end resuts.
+						// Insert it into the taxi reporting map for gathering taxi specific details.
+						if(has(_taxiReportingMap, _oTuple1.esnNumber) == true) {
+							// This taxi is reappearing in the timeseries. So, update it in the map.
+							_oTuple2 = _taxiReportingMap[_oTuple1.esnNumber];
+							
+							if (_oTuple1.dateTime < _oTuple2.mostRecentDateTime) {
+								// This is an out of sequence event for this taxi.
+								appTrc(Trace.info, (rstring)(_fileCnt+1) + ":" + (rstring)_validTaxiLocationEventsCnt + 
+								// printStringLn((rstring)(_fileCnt+1) + ":" + (rstring)_validTaxiLocationEventsCnt + 
+									") Out of sequence event detected for a taxi. Previous date time=" +
+									(rstring)_oTuple2.mostRecentDateTime + ", Current date time=" +
+									(rstring)_oTuple1.dateTime + ", Taxi id=" +
+									(rstring)_oTuple2.esnNumber);
+								
+								// Update only the event out of sequence count for 
+								// this taxi and continue the loop.
+								_oTuple2.outOfSequenceEventsCnt = _oTuple2.outOfSequenceEventsCnt + 1;
+								_taxiReportingMap[_oTuple2.esnNumber] = _oTuple2;
+								_totalOutOfSequenceEventsCnt++;
+								continue;
+							}
+							
+							// This event is in the correct order. Make an update to this map entry.
+							_oTuple2.reportCnt = _oTuple2.reportCnt + 1;
+							_oTuple2.mostRecentDateTime = _oTuple1.dateTime;
+							insertM(_taxiReportingMap, _oTuple2.esnNumber, _oTuple2);
+						} else {
+							// This taxi is arriving for the first time.
+							_oTuple2.esnNumber = _oTuple1.esnNumber;
+							_oTuple2.reportCnt = 1;
+							_oTuple2.mostRecentDateTime = _oTuple1.dateTime;
+							_oTuple2.outOfSequenceEventsCnt = 0;
+							// Insert it into the map.
+							insertM(_taxiReportingMap, _oTuple2.esnNumber, _oTuple2);
+						}
+
+						// Send this taxi location event for processing.
+						submit(_oTuple1, TLWI);
+						
+						if(_firstDateTimeInFile == 0l) {
+							// Record this file's very first event's date time.
+							// We can use it to observe whether the time grows in
+							// proper order across files.
+							_firstDateTimeInFile = _oTuple1.dateTime;
+						}
+					} // End of for loop.	
+
+					fclose(_fileHandle, _err);
+					_fileCnt++;
+					_lastDateTimeInFile = _oTuple1.dateTime;
+					_cumulativeOutOfSequenceEventsCnt += _totalOutOfSequenceEventsCnt;
+					_totalTaxiLocationEvents += 
+						((uint64)_validTaxiLocationEventsCnt - (uint64)_totalOutOfSequenceEventsCnt);
+					mutable Sys.tm firstDateTime = {};
+					time(createTimestamp(_firstDateTimeInFile, 0u), "UTC+0", firstDateTime);
+					mutable Sys.tm lastDateTime = {};
+					time(createTimestamp(_lastDateTimeInFile, 0u), "UTC+0", lastDateTime);
+					appTrc(Trace.info, (rstring)_fileCnt + ") Finished reading file " + fileName + 
+					// printStringLn((rstring)_fileCnt + ") Finished reading file " + fileName + 
+						", File size=" + (rstring)_fileSize + 
+						", Number of lines=" + (rstring)_lineCnt + 
+						", Number of valid Taxi Location events=" + (rstring)_validTaxiLocationEventsCnt + 
+						", Number of out of sequence Taxi Location events=" + (rstring)_totalOutOfSequenceEventsCnt +
+						", Number of unique taxis=" + (rstring)size(_taxiReportingMap) +
+						", First date epoch time=" + (rstring)_firstDateTimeInFile +
+						", Last date epoch time=" + (rstring)_lastDateTimeInFile +
+						", First date UTC time=" + (rstring)firstDateTime + 
+						", Last date UTC time=" + (rstring)lastDateTime +
+						", Cumulative out of sequence Taxi Location events=" + (rstring)_cumulativeOutOfSequenceEventsCnt +
+						", Cumulative valid Taxi Location events=" + (rstring)_totalTaxiLocationEvents);
+						
+					_firstDateTimeInFile = 0l;
+					_lastDateTimeInFile = 0l;
+					// Send a WindowMarker to indicate we are done sending all the tuples from this file.
+					submit(Sys.WindowMarker, TLWI);	
+					
+					// If we completed reading all the available Taxi Location files, let us
+					// give a report about any out of sequence events based on the user configuration,
+					if(_fileCnt == $REPORT_TAXI_DETAILS_AFTER_THESE_MANY_FILES) {
+						// Loop through the map and send all the taxi details stored there.
+						for(uint32 taxiId in _taxiReportingMap) {
+							submit(_taxiReportingMap[taxiId], OOTER);
+						}
+					}
+				} // End of onTuple.
+		} // End of Custom.
+		
+		() as MySink1 = FileSink(TaxiLocationWithId) {
+			param
+				file: $TAXI_LOCATION_RECORDS_LOG_FILE;
+				flush: 1u;
+		}
+		
+		() as MySink2 = FileSink(OutOfSequenceTaxiEventReport) {
+			param
+				file: "Taxi-Location-Out-Of-Sequence-Event-Details.txt";
+				flush: 1u;
+		}
+		
+		// =========== END OF INGESTING TaxiLocation DATA ===========
+		
+		// =========== START OF INGESTING TaxiBooking DATA ===========
+		// Scan for the Taxi booking files now.
+		// There will be one file per minute.
+		// e-g: TaxiBooking1585209051499.transfered
+		// Each of these files is around 22KB in size.
+		// Each of these files contains around a single line of JSON record,
+		// where the entire file content is base64 encoded. 
+		(stream<rstring fileName> TaxiBookingFileName) 
+			as TaxiBookingDirScanner = DirectoryScan() {
+			param
+				directory: $TAXI_BOOKING_DIRECTORY;
+				sleepTime: 5.0;
+				pattern: ".*\\.transfered";
+				initDelay: $INIT_DELAY_BEFORE_TAXI_DATA_INGESTION; 
+				sortBy: name;			
+		}
+
+		// Let us read every taxi booking file found and 
+		// base64 decode its content into a string,
+		// convert every JSON into a tuple and send it
+		// downstream for further processing.
+		// As described in the previous operator's commentary,
+		// every taxi booking file is per minute based and it
+		// can have an array of JSON records records representing
+		// one or more taxi bookings.
+		(stream<TaxiBookingRequestWithId_t> TaxiBookingRequestWithId as TBRWI)
+			as TaxiBookingFileReader = Custom(TaxiBookingFileName as TBFN) {
+			logic
+				state: {
+					mutable int32 _fileCnt = 0;
+					mutable uint64 _fileHandle = 0ul;
+					mutable uint64 _fileSize = 0ul;
+					mutable int32 _err = 0;
+					mutable int32 _validTaxiBookingEventsCnt = 0; 
+					mutable TaxiBookingRequestWithId_t _oTuple = {};
+					mutable TaxiBooking_t _tbTuple = {};
+					mutable uint64 _totalTaxiBookingRecords = 0ul;
+					mutable int32 _zeroLengthFileCnt = 0;
+					mutable int64 _mostRecentTaxiBookingRequestTime = 0l;
+					mutable int32 _outOfSequenceTaxiBookingRequestsCnt = 0;
+					mutable int32 _outOfSequenceTaxiBookingRecordsCnt = 0;
+				}
+				
+				onTuple TBFN: {
+					uint64 _fileHandle = fopen (TBFN.fileName, "r", _err);
+					
+					if (_err != 0) {
+						printStringLn("File " + fileName + " failed to open. Error=" 
+							+ (rstring)_err);
+						return;
+					}
+					
+					_validTaxiBookingEventsCnt = 0;
+					// Get the size of this file.
+					fstat(_fileHandle, "size", _fileSize, _err);
+				
+					if (_err != 0) {
+						printStringLn("Unable to get the file size for " + fileName + ". Error=" 
+							+ (rstring)_err);
+						fclose(_fileHandle, _err);
+						return; 
+					}
+
+					if(_fileSize == 0ul) {
+						_zeroLengthFileCnt++;
+						printStringLn((rstring)_zeroLengthFileCnt + 
+							") Zero length taxi booking file found: " + fileName);
+						fclose(_fileHandle, _err);
+						return; 
+					}
+
+					mutable rstring content = freadLine (_fileHandle, _err);
+
+					if (_err == -1) {
+						// Error in reading the file content.
+						printStringLn("Unable to read the content of the file " + fileName + ". Error=" 
+							+ (rstring)_err);
+						fclose(_fileHandle, _err);
+						return;
+					}
+					
+					// The content read from this file is in base64 encoded format.
+					// We have to decode it to get back a single JSON string record.
+					mutable rstring jsonContent = "";
+					// Call a C++ native function available in the 
+					// impl/include directory of this project.
+					base64_decode(content, jsonContent);
+				
+					// Convert the JSON string record into an event tuple.
+					_tbTuple = (TaxiBooking_t){};
+					// The JSON content has a field named "timestamp":1585209503000
+					// timestamp is a reserved type in SPL. It will fail when we 
+					// attempt to convert this JSON into a tuple.
+					// Let us change that attribute to ts to avoid the tuple conversion error.
+					jsonContent = regexReplacePerl(jsonContent, '"timestamp":', '"ts":', true);
+					extractFromJSON(jsonContent, _tbTuple);
+					
+					mutable boolean outOfSequenceTaxiBookingRequestFound = false;
+					mutable int32 outOfSequenceTaxiBookingRecordsCnt = 0;
+					// See if there is any out of sequence taxi booking requests being sent here.
+					if(_tbTuple.ts < _mostRecentTaxiBookingRequestTime) {
+						outOfSequenceTaxiBookingRequestFound = true;
+						_outOfSequenceTaxiBookingRequestsCnt++;					
+					} else {
+						// This request is in proper time sequence.
+						// Update the state variable to do similar checks in future.
+						_mostRecentTaxiBookingRequestTime = _tbTuple.ts;
+					}
+					
+					_oTuple = (TaxiBookingRequestWithId_t){};
+
+					// Iterate over the list of booking requests.
+					for(TaxiBookingRequest_t req in _tbTuple.request) {
+						// We can skip the taxi booking records in this request if it 
+						// arrived here late in time out of sequence.
+						if (outOfSequenceTaxiBookingRequestFound == false) {
+							assignFrom(_oTuple, req);
+							// The streamsx.geospatial toolkit's Geofence operator 
+							// expects an attribute named id. Just for feeding the 
+							// input tuples into that operator with the required
+							// attribute name, we will add this attribute name here.
+							// We only want the one community (fence) that contains 
+							// the customer pickup longitude and latitude.To do that optimization in
+							// the Geofence operator, we must set the id attribute as shown below.
+							_oTuple.id = "GetTheFirstFence";
+							// Copy the ts attribute.
+							// Time at which the TaxiBooking data was fetched from the PTA Taxi system.
+							_oTuple.ts = _tbTuple.ts;
+							// All timestamp values are in milliseconds. 
+							// We can make them as seconds before sending it.
+							// This is date and time when booking was made.
+							_oTuple.ts /= 1000l;
+							_oTuple.dtBooking /= 1000l;
+							// This is date and time when pickup is scheduled for.
+							_oTuple.dtPickupBooking /= 1000l;
+							
+							// dtPickup attribute is a nullable attribute.
+							// We have to check if the optional attribute is not null.
+							if(_oTuple.dtPickup??) {
+								// We have to unwrap it to access it.
+								mutable int64 x = _oTuple.dtPickup!;
+								x /= 1000l;
+								// This is date and time when the taxi picked up the passenger.
+								_oTuple.dtPickup = x;
+							} else {
+								// If it is null, set it to zero.
+								_oTuple.dtPickup = 0l;
+							}
+							
+							submit(_oTuple, TBRWI);
+							_validTaxiBookingEventsCnt++;
+							
+							appTrc(Trace.info, (rstring)(_fileCnt+1) + ":" + (rstring)_validTaxiBookingEventsCnt +
+							// printStringLn((rstring)(_fileCnt+1) + ":" + (rstring)_validTaxiBookingEventsCnt +
+								") Taxi Booking Record=" + (rstring)_oTuple);
+						} else {
+							// We will simply keep a count of total number of out of sequence records.
+							outOfSequenceTaxiBookingRecordsCnt++;
+						}
+					} // End of for loop.	
+
+					fclose(_fileHandle, _err);
+					_fileCnt++;
+					// Convert the ts attribute from milliseconds to seconds.
+					_tbTuple.ts /= 1000l;
+					
+					// Is this an out of sequence Taxi Booking Request?
+					if (outOfSequenceTaxiBookingRequestFound == true) {
+						_outOfSequenceTaxiBookingRecordsCnt += outOfSequenceTaxiBookingRecordsCnt;
+						
+						appTrc(Trace.info, (rstring)_fileCnt +  
+						// printStringLn((rstring)_fileCnt + 
+							") Out of sequence taxi booking request detected. Previous date time=" +
+							(rstring)_mostRecentTaxiBookingRequestTime + 
+							", Current date time=" +
+							(rstring)_tbTuple.ts + 
+							", Total out of sequence Taxi Booking Requests thus far=" + 
+							(rstring)_outOfSequenceTaxiBookingRequestsCnt + 
+							", Taxi Booking Records ignored in this request=" +
+							(rstring)outOfSequenceTaxiBookingRecordsCnt + 
+							", Total out of sequence Taxi Booking Records ignored thus far=" +
+							(rstring)_outOfSequenceTaxiBookingRecordsCnt + ".");
+							
+						return;
+					}
+					
+					_totalTaxiBookingRecords += (uint64)_validTaxiBookingEventsCnt;
+					
+					appTrc(Trace.info, (rstring)_fileCnt + ") Finished reading file " + fileName + 
+					// printStringLn((rstring)_fileCnt + ") Finished reading file " + fileName + 
+						", File size=" + (rstring)_fileSize + 
+						", Valid taxi booking events=" + (rstring)_validTaxiBookingEventsCnt + 
+						", ts=" + (rstring)_tbTuple.ts +
+						", Total valid Taxi Booking Events=" + (rstring)_totalTaxiBookingRecords +
+						", Total out of sequence Taxi Booking Requests thus far=" + 
+						(rstring)_outOfSequenceTaxiBookingRequestsCnt + 
+						", Total out of sequence Taxi Booking Records ignored thus far=" +
+						(rstring)_outOfSequenceTaxiBookingRecordsCnt + ".");
+											
+					// Send a WindowMarker to indicate we are done sending all the tuples from this file.
+					submit(Sys.WindowMarker, TBRWI);					
+				} // End of onTuple.
+		} // End of Custom.
+		
+		() as MySink3 = FileSink(TaxiBookingRequestWithId) {
+			param
+				file: $TAXI_BOOKING_RECORDS_LOG_FILE;
+				flush: 1u;
+		}
+		// =========== END OF INGESTING TaxiBooking DATA ===========
+		
+		// =========== START OF GETTING COMMUNITY NAME FOR THE TAXI LOCATION DATA ===========
+		// Geofence operator is faster than calling the "contains" Java native function which is
+		// extremely slow. Geofence is optimal for searching upto a maximum of 10 polygons.
+		// Anything above that number of polygons, SpatialGridIndex operator will work much faster.
+		(stream<TaxiLocationWithCommunityName_t> TaxiLocationWithCommunityName as TLWCN)
+			as TaxiLocationCommunityNameFinder = 
+			Geofence(TaxiLocationWithId as TLWI; FenceData as FD) {
+			param
+				outputMode: membership;
+			
+			output
+				TLWCN: communityNameList = CurrentFences();
+			
+			config
+				threadedPort: queue(TLWI, Sys.Wait);
+		}		
+		// =========== END OF GETTING COMMUNITY NAME FOR THE TAXI LOCATION DATA ===========
+
+		// =========== START OF GETTING COMMUNITY NAME FOR THE TAXI BOOKING DATA ===========
+		(stream<TaxiBookingRequestWithCommunityName_t> TaxiBookingRequestWithCommunityName as TBRWCN)
+			as TaxiBookingRequestCommunityNameFinder = 
+			Geofence(TaxiBookingRequestWithId as TBRWI; FenceData as FD) {
+			param
+				outputMode: membership;
+				// Incoming stream carries the longitude and latitude values in the 
+				// following non-default attribute names.
+				longitude: LocPickUpLong;
+				latitude: LocPickUpLat;
+			
+			output
+				TBRWCN: communityNameList = CurrentFences();
+				
+			config
+				threadedPort: queue(TBRWI, Sys.Wait);
+		}		
+		// =========== END OF GETTING COMMUNITY NAME FOR THE TAXI BOOKING DATA ===========
+		
+		// =========== START OF NORMALIZING THE TAXI LOCATION DATA ===========
+		// IMPORTANT
+		// ---------
+		// It is more or less same as the code in the operator below.
+		// Consider making a composite out of it and then invoking it here.
+		// 
+		// We are going to normalize the taxi location records into a
+		// common format before sending them to the aggregation counters.
+		// That will help a lot inside the metrics generator composite to process
+		// just one kind of tuple to make the logic simpler.
+		// This operator also receives the reference data about the
+		// Community <--> District maps and store them in the state variables.
+		// Such reference data as well is used in this operator's data normalization.
+		(stream<TaxiLocationBooking_t> NormalizedTaxiLocationData as NTLD)
+			as TaxiDataNormalizer = Custom(CommunityIdsChosen as CIC;
+			CommunityToDistrictMap as CTDM; 
+			CommunityNameToIdMap as CNTIM;
+			TaxiLocationWithCommunityName as TLWCN) {
+			logic
+				state: {
+					mutable TaxiLocationBooking_t _oTuple = {};
+					// Key: Community Name, Value: District Name
+					mutable map<rstring, rstring> _communityToDistrictMap = {};
+					// Key: Community Name, Value: Community Id.
+					mutable map<rstring, rstring> _communityNameToIdMap = {};
+					// Current community ids that are being used for displaying taxi metrics.
+					mutable list<rstring> _communityIdsChosenForTaxiMetricsDisplay = [];
+					// Invalid longitude, latitude count for taxi location events.
+					mutable uint64 _taxiLocationEventsLongLatErrorCnt = 0ul;
+					// Invalid longitude, latitude count for taxi booking request events.
+					mutable uint64 _taxiBookingEventsLongLatErrorCnt = 0ul;
+					// Valid taxi location events count.
+					mutable uint64 _validTaxiLocationEventsCnt = 0ul;
+					// Valid taxi booking request events count.
+					mutable uint64 _validTaxiBookingEventsCnt = 0ul;
+				}
+
+				onTuple CIC: {
+					// Update the community ids chosen for taxi metrics display.
+					_communityIdsChosenForTaxiMetricsDisplay = 
+						CIC.communityIdsChosenForTaxiMetricsDisplay;
+					appTrc(Trace.info, 
+						"TL-->Received new community ids chosen from the web client: " +
+						(rstring)_communityIdsChosenForTaxiMetricsDisplay);
+				}
+				
+				onTuple CTDM: {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityToDistrictMap = CTDM.communityToDistrictMap;
+				}
+								
+				onTuple CNTIM:  {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityNameToIdMap = CNTIM.communityNameToIdMap;
+				}
+								
+				onTuple TLWCN: {
+					// We have to see if this taxi location event belongs to a 
+					// community id that was chosen by the user for being 
+					// used for the Taxi Metrics displaying.
+					//
+					mutable rstring communityName = "";
+					mutable rstring communityId = "";
+					
+					// If user configured to monitor and display all the community ids, then we can allow
+					// every taxi location event for being used for the Taxi Metrics displaying.
+					list<int32> indices = find(_communityIdsChosenForTaxiMetricsDisplay, "ALL");
+								
+					if(size(indices) > 0) {
+						// Do it for all community ids.
+						communityName = "ALL";
+					} else {
+						// User has configured only certain community id(s). 
+						// Get the community name assigned by the upstream Geofence operator.
+						if(size(TLWCN.communityNameList) > 0) {
+							communityName = TLWCN.communityNameList[0];
+						}
+						
+						if(communityName == "") {
+							_taxiLocationEventsLongLatErrorCnt++;
+							appTrc(Trace.info, "TL-->" + (rstring)_taxiLocationEventsLongLatErrorCnt + 
+								") Unable to find a community name for this taxi location event: " +
+								(rstring)TLWCN + ", Valid taxi location events received=" +
+								(rstring)_validTaxiLocationEventsCnt);
+							return;
+						}
+					}
+
+					// Did the user select ALL or only certain community ids to be used for Taxi metrics?
+					if(communityName != "ALL") {
+						// Let us check if this particular taxi location event is from the chosen community id(s).
+						if(has(_communityNameToIdMap, communityName) == true) {
+							communityId = _communityNameToIdMap[communityName];
+						} else {
+							communityId = "Unknown"; 
+						}
+					}
+					
+					// This output tuple's schema combines both the
+					// taxi location and booking request attributes.
+					_oTuple = (TaxiLocationBooking_t){};
+					assignFrom(_oTuple, TLWCN);
+					
+					// Let us enrich this tuole with community related details.
+					if(communityName == "ALL") {
+						_oTuple.communityId = "ALL";
+						_oTuple.communityName = "ALL";
+						_oTuple.districtName = "ALL";
+					} else {
+						_oTuple.communityId = communityId;	
+						_oTuple.communityName = communityName;
+						
+						if(has(_communityToDistrictMap, communityName) == true) {
+							_oTuple.districtName = _communityToDistrictMap[communityName];
+						} else {
+							_oTuple.districtName = "Unknown";
+						}
+					}
+					
+					submit(_oTuple, NTLD);
+					_validTaxiLocationEventsCnt++;	
+					
+					if(_validTaxiLocationEventsCnt % 1000000ul == 0ul) {
+						appTrc(Trace.error, "TL-->Taxi Location Million Message Counter-->" + 
+							(rstring)(_validTaxiLocationEventsCnt/1000000ul));						
+					}																	
+				}
+					
+			config
+				threadedPort: queue(CIC, Sys.Wait), queue(TLWCN, Sys.Wait);
+		}
+		
+		// =========== END OF NORMALIZING THE TAXI LOCATION DATA ===========
+
+		// =========== START OF NORMALIZING THE TAXI BOOKING DATA ===========
+		// IMPORTANT
+		// ---------
+		// It is more or less same as the code in the operator above.
+		// Consider making a composite out of it and then invoking it here.
+		// 
+		// We are going to normalize the taxi booking records into a
+		// common format before sending them to the aggregation counters.
+		// That will help a lot inside the metrics generator composite to process
+		// just one kind of tuple to make the logic simpler.
+		// This operator also receives the reference data about the
+		// Community <--> District maps and store them in the state variables.
+		// Such reference data as well is used in this operator's data normalization.
+		(stream<TaxiLocationBooking_t> NormalizedTaxiBookingData as NTBD)
+			as TaxiBookingNormalizer = Custom(CommunityIdsChosen as CIC;
+			CommunityToDistrictMap as CTDM; 
+			CommunityNameToIdMap as CNTIM;
+			TaxiBookingRequestWithCommunityName as TBRWCN) {
+			logic
+				state: {
+					mutable TaxiLocationBooking_t _oTuple = {};
+					// Key: Community Name, Value: District Name
+					mutable map<rstring, rstring> _communityToDistrictMap = {};
+					// Key: Community Name, Value: Community Id.
+					mutable map<rstring, rstring> _communityNameToIdMap = {};
+					// Current community ids that are being used for displaying taxi metrics.
+					mutable list<rstring> _communityIdsChosenForTaxiMetricsDisplay = [];
+					// Invalid longitude, latitude count for taxi location events.
+					mutable uint64 _taxiLocationEventsLongLatErrorCnt = 0ul;
+					// Invalid longitude, latitude count for taxi booking request events.
+					mutable uint64 _taxiBookingEventsLongLatErrorCnt = 0ul;
+					// Valid taxi location events count.
+					mutable uint64 _validTaxiLocationEventsCnt = 0ul;
+					// Valid taxi booking request events count.
+					mutable uint64 _validTaxiBookingEventsCnt = 0ul;
+				}
+
+				onTuple CIC: {
+					// Update the community ids chosen for taxi metrics display.
+					_communityIdsChosenForTaxiMetricsDisplay = 
+						CIC.communityIdsChosenForTaxiMetricsDisplay;
+					appTrc(Trace.info, 
+						"TBR-->Received new community ids chosen from the web client: " +
+						(rstring)_communityIdsChosenForTaxiMetricsDisplay);
+				}
+
+				onTuple CTDM: {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityToDistrictMap = CTDM.communityToDistrictMap;
+				}
+				
+				onTuple CNTIM:  {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityNameToIdMap = CNTIM.communityNameToIdMap;
+				}
+									
+				onTuple TBRWCN: {
+					// We have to see if this taxi booking request event belongs to a 
+					// community id that was chosen by the user for being 
+					// used for the Taxi Metrics displaying.
+					//
+					mutable rstring communityName = "";
+					mutable rstring communityId = "";
+					
+					// If user configured to monitor and display all the community ids, then we can allow
+					// every taxi booking request event for being used for the Taxi Metrics displaying.
+					list<int32> indices = find(_communityIdsChosenForTaxiMetricsDisplay, "ALL");
+								
+					if(size(indices) > 0) {
+						// Do it for all community ids.
+						communityName = "ALL";
+					} else {
+						// User has configured only certain community id(s). 
+						// Get the community name assigned by the upstream Geofence operator.
+						if(size(TBRWCN.communityNameList) > 0) {
+							communityName = TBRWCN.communityNameList[0];
+						}
+
+						if(communityName == "") {
+							_taxiBookingEventsLongLatErrorCnt++;
+							appTrc(Trace.info, "TBR-->" + (rstring)_taxiBookingEventsLongLatErrorCnt + 
+								") Unable to find a community name for this taxi booking request event: " +
+								(rstring)TBRWCN + ", Valid taxi booking request events received=" +
+								(rstring)_validTaxiBookingEventsCnt);
+							return;
+						}
+					}
+
+					// Did the user select ALL or only certain community ids to be used for Taxi metrics?
+					if(communityName != "ALL") {
+						// Let us check if this particular taxi booking request event is from the chosen id(s).
+						if(has(_communityNameToIdMap, communityName) == true) {
+							communityId = _communityNameToIdMap[communityName];
+						} else {
+							communityId = "Unknown"; 
+						}							
+					}
+					
+					// This output tuple's schema combines both the
+					// taxi location and booking request attributes.
+					_oTuple = (TaxiLocationBooking_t){};
+					assignFrom(_oTuple, TBRWCN);
+					
+					// Let us enrich this tuole with community related details.
+					if(communityName == "ALL") {
+						_oTuple.communityId = "ALL";
+						_oTuple.communityName = "ALL";
+						_oTuple.districtName = "ALL";
+					} else {
+						_oTuple.communityId = communityId; 
+						_oTuple.communityName = communityName;
+						
+						if(has(_communityToDistrictMap, communityName) == true) {
+							_oTuple.districtName = _communityToDistrictMap[communityName];
+						} else {
+							_oTuple.districtName = "Unknown";
+						}
+					}
+					
+					submit(_oTuple, NTBD);
+					_validTaxiBookingEventsCnt++;
+					
+					if(_validTaxiBookingEventsCnt % 1000000ul == 0ul) {
+						appTrc(Trace.error, "TBR-->Taxi Booking Request Million Message Counter-->" + 
+							(rstring)(_validTaxiBookingEventsCnt/1000000ul));
+					}																	
+				}
+				
+			config
+				threadedPort: queue(CIC, Sys.Wait), queue(TBRWCN, Sys.Wait);
+		}
+		// =========== END OF NORMALIZING THE TAXI BOOKING DATA ===========
+
+		// =========== START OF INVOKING LONG TERM METRICS GENERATOR FOR TAXI AVAILABLE COUNT ===========
+		// Invoke the Taxi Metrics Generator operator for calculating the 
+		// taxi available count for a given time period.
+		//
+		// This composite operator has multiple output ports. But, the output
+		// tuples will be sent only on a relevant port depending on the
+		// partitioningSchemeId parameter value of this non-main composite operator.
+		// So, only certain output port(s) will be actively sending results in this
+		// particular invocation of the metrics generator.
+		(stream<TaxisAvailableCount_t> TaxisAvailableCount_LTTAMG as TAC;
+		 stream<TaxisHiredCount_t> TaxisHiredCount_LTTAMG as THC;
+		 stream<NewBookingsRequestsCount_t> NewBookingsRequestsCount_LTTAMG as NBRC;
+		 stream<UnservedBookingsRequestsCount_t> UnservedBookingsRequestsCount_LTTAMG as UBRC;
+		 stream<ServedBookingsRequestsCount_t> ServedBookingsRequestsCount_LTTAMG as SBRC;
+		 stream<CancelledBookingsRequestsCount_t> CancelledBookingsRequestsCount_LTTAMG as CBRC)  
+			as LongTermTaxiAvailableMetricsGenerator = 
+			TaxiMetricsGenerator(MetricsWindowParameters as MWP;
+				NormalizedTaxiLocationData as NTLD) {
+			param
+				// Calculate the Taxi Available Count for a given time period.
+				partitioningSchemeId: 1;
+				// This instance of the operator needs to 
+				// do the long term meetrics calculation.
+				longTermMetricsCalculationNeeded: true;				
+		}
+
+		() as TaxisAvailableCountSink = FileSink(TaxisAvailableCount_LTTAMG) {
+			param
+				file: "taxis-available.txt";
+				flush: 1u;
+		}
+		// =========== END OF INVOKING LONG TERM METRICS GENERATOR FOR TAXI AVAILABLE COUNT ===========
+
+		// =========== START OF INVOKING LONG TERM METRICS GENERATOR FOR TAXI HIRED COUNT ===========
+		// Invoke the Taxi Metrics Generator operator for calculating the 
+		// taxi hired count for a given time period.
+		//
+		// This composite operator has multiple output ports. But, the output
+		// tuples will be sent only on a relevant port depending on the
+		// partitioningSchemeId parameter value of this non-main composite operator.
+		// So, only certain output port(s) will be actively sending results in this
+		// particular invocation of the metrics generator.
+		(stream<TaxisAvailableCount_t> TaxisAvailableCount_LTTHMG as TAC;
+		 stream<TaxisHiredCount_t> TaxisHiredCount_LTTHMG as THC;
+		 stream<NewBookingsRequestsCount_t> NewBookingsRequestsCount_LTTHMG as NBRC;
+		 stream<UnservedBookingsRequestsCount_t> UnservedBookingsRequestsCount_LTTHMG as UBRC;
+		 stream<ServedBookingsRequestsCount_t> ServedBookingsRequestsCount_LTTHMG as SBRC;
+		 stream<CancelledBookingsRequestsCount_t> CancelledBookingsRequestsCount_LTTHMG as CBRC)  
+			as LongTermTaxiHiredMetricsGenerator = 
+			TaxiMetricsGenerator(MetricsWindowParameters as MWP;
+				NormalizedTaxiLocationData as NTLD) {
+			param
+				// Calculate the Taxi Hired Count for a given time period.
+				partitioningSchemeId: 2;
+				// This instance of the operator needs to 
+				// do the long term meetrics calculation.
+				longTermMetricsCalculationNeeded: true;
+		}
+
+		() as TaxisHiredCountSink = FileSink(TaxisHiredCount_LTTHMG) {
+			param
+				file: "taxis-hired.txt";
+				flush: 1u;
+		}
+		// =========== END OF INVOKING LONG TERM METRICS GENERATOR FOR TAXI HIRED COUNT ===========
+
+		// =========== START OF INVOKING LONG TERM METRICS GENERATOR FOR NEW BOOKINGS COUNT ===========
+		// Invoke the Taxi Metrics Generator operator for calculating the 
+		// new taxi bookings count for a given time period.
+		//
+		// This composite operator has multiple output ports. But, the output
+		// tuples will be sent only on a relevant port depending on the
+		// partitioningSchemeId parameter value of this non-main composite operator.
+		// So, only certain output port(s) will be actively sending results in this
+		// particular invocation of the metrics generator.
+		(stream<TaxisAvailableCount_t> TaxisAvailableCount_LTNBMG as TAC;
+		 stream<TaxisHiredCount_t> TaxisHiredCount_LTNBMG as THC;
+		 stream<NewBookingsRequestsCount_t> NewBookingsRequestsCount_LTNBMG as NBRC;
+		 stream<UnservedBookingsRequestsCount_t> UnservedBookingsRequestsCount_LTNBMG as UBRC;
+		 stream<ServedBookingsRequestsCount_t> ServedBookingsRequestsCount_LTNBMG as SBRC;
+		 stream<CancelledBookingsRequestsCount_t> CancelledBookingsRequestsCount_LTNBMG as CBRC)  
+			as LongTermNewBookingsMetricsGenerator = 
+			TaxiMetricsGenerator(MetricsWindowParameters as MWP;
+				NormalizedTaxiBookingData as NTBD) {
+			param
+				// Calculate the New Bookings Count for a given time period.
+				partitioningSchemeId: 3;
+				// This instance of the operator needs to 
+				// do the long term meetrics calculation.
+				longTermMetricsCalculationNeeded: true;
+		}
+
+		() as NewBookingsCountSink = FileSink(NewBookingsRequestsCount_LTNBMG) {
+			param
+				file: "new-taxi-bookings.txt";
+				flush: 1u;
+		}
+		// =========== END OF INVOKING LONG TERM METRICS GENERATOR FOR NEW BOOKINGS COUNT ===========
+
+		// =========== START OF INVOKING LONG TERM METRICS GENERATOR FOR UNSERVED BOOKINGS COUNT ===========
+		// Invoke the Taxi Metrics Generator operator for calculating the 
+		// unserved taxi bookings count for a given time period.
+		//
+		// This composite operator has multiple output ports. But, the output
+		// tuples will be sent only on a relevant port depending on the
+		// partitioningSchemeId parameter value of this non-main composite operator.
+		// So, only certain output port(s) will be actively sending results in this
+		// particular invocation of the metrics generator.
+		(stream<TaxisAvailableCount_t> TaxisAvailableCount_LTUBMG as TAC;
+		 stream<TaxisHiredCount_t> TaxisHiredCount_LTUBMG as THC;
+		 stream<NewBookingsRequestsCount_t> NewBookingsRequestsCount_LTUBMG as NBRC;
+		 stream<UnservedBookingsRequestsCount_t> UnservedBookingsRequestsCount_LTUBMG as UBRC;
+		 stream<ServedBookingsRequestsCount_t> ServedBookingsRequestsCount_LTUBMG as SBRC;
+		 stream<CancelledBookingsRequestsCount_t> CancelledBookingsRequestsCount_LTUBMG as CBRC)  
+			as LongTermUnservedBookingsMetricsGenerator = 
+			TaxiMetricsGenerator(MetricsWindowParameters as MWP;
+				NormalizedTaxiBookingData as NTBD) {
+			param
+				// Calculate the Unserved Bookings Count for a given time period.
+				partitioningSchemeId: 4;
+				// This instance of the operator needs to 
+				// do the long term meetrics calculation.
+				longTermMetricsCalculationNeeded: true;
+		}
+
+		() as UnservedBookingsCountSink = FileSink(UnservedBookingsRequestsCount_LTUBMG) {
+			param
+				file: "unserved-taxi-bookings.txt";
+				flush: 1u;
+		}
+		// =========== END OF INVOKING LONG TERM METRICS GENERATOR FOR UNSERVED BOOKINGS COUNT ===========
+
+		// =========== START OF INVOKING LONG TERM METRICS GENERATOR FOR SERVED BOOKINGS COUNT ===========
+		// Invoke the Taxi Metrics Generator operator for calculating the 
+		// served taxi bookings count for a given time period.
+		//
+		// This composite operator has multiple output ports. But, the output
+		// tuples will be sent only on a relevant port depending on the
+		// partitioningSchemeId parameter value of this non-main composite operator.
+		// So, only certain output port(s) will be actively sending results in this
+		// particular invocation of the metrics generator.
+		(stream<TaxisAvailableCount_t> TaxisAvailableCount_LTSBMG as TAC;
+		 stream<TaxisHiredCount_t> TaxisHiredCount_LTSBMG as THC;
+		 stream<NewBookingsRequestsCount_t> NewBookingsRequestsCount_LTSBMG as NBRC;
+		 stream<UnservedBookingsRequestsCount_t> UnservedBookingsRequestsCount_LTSBMG as UBRC;
+		 stream<ServedBookingsRequestsCount_t> ServedBookingsRequestsCount_LTSBMG as SBRC;
+		 stream<CancelledBookingsRequestsCount_t> CancelledBookingsRequestsCount_LTSBMG as CBRC)  
+			as LongTermServedBookingsMetricsGenerator = 
+			TaxiMetricsGenerator(MetricsWindowParameters as MWP;
+				NormalizedTaxiBookingData as NTBD) {
+			param
+				// Calculate the Unserved Bookings Count for a given time period.
+				partitioningSchemeId: 5;
+				// This instance of the operator needs to 
+				// do the long term meetrics calculation.
+				longTermMetricsCalculationNeeded: true;
+		}
+
+		() as ServedBookingsCountSink = FileSink(ServedBookingsRequestsCount_LTSBMG) {
+			param
+				file: "served-taxi-bookings.txt";
+				flush: 1u;
+		}
+		// =========== END OF INVOKING LONG TERM METRICS GENERATOR FOR SERVED BOOKINGS COUNT ===========
+
+		// =========== START OF INVOKING LONG TERM METRICS GENERATOR FOR CANCELLED BOOKINGS COUNT ===========
+		// Invoke the Taxi Metrics Generator operator for calculating the 
+		// cancelled taxi bookings count for a given time period.
+		//
+		// This composite operator has multiple output ports. But, the output
+		// tuples will be sent only on a relevant port depending on the
+		// partitioningSchemeId parameter value of this non-main composite operator.
+		// So, only certain output port(s) will be actively sending results in this
+		// particular invocation of the metrics generator.
+		(stream<TaxisAvailableCount_t> TaxisAvailableCount_LTCBMG as TAC;
+		 stream<TaxisHiredCount_t> TaxisHiredCount_LTCBMG as THC;
+		 stream<NewBookingsRequestsCount_t> NewBookingsRequestsCount_LTCBMG as NBRC;
+		 stream<UnservedBookingsRequestsCount_t> UnservedBookingsRequestsCount_LTCBMG as UBRC;
+		 stream<ServedBookingsRequestsCount_t> ServedBookingsRequestsCount_LTCBMG as SBRC;
+		 stream<CancelledBookingsRequestsCount_t> CancelledBookingsRequestsCount_LTCBMG as CBRC)  
+			as LongTermCancelledBookingsMetricsGenerator = 
+			TaxiMetricsGenerator(MetricsWindowParameters as MWP;
+				NormalizedTaxiBookingData as NTBD) {
+			param
+				// Calculate the Unserved Bookings Count for a given time period.
+				partitioningSchemeId: 6;
+				// This instance of the operator needs to 
+				// do the long term meetrics calculation.
+				longTermMetricsCalculationNeeded: true;
+		}
+
+		() as CancelledBookingsCountSink = FileSink(CancelledBookingsRequestsCount_LTCBMG) {
+			param
+				file: "cancelled-taxi-bookings.txt";
+				flush: 1u;
+		}
+		// =========== END OF INVOKING LONG TERM METRICS GENERATOR FOR CANCELLED BOOKINGS COUNT ===========
+				
+		// =========== START OF PREPARING DATA FOR TAXI COUNTS MAP VISUALIZATION ===========
+		// We are going to receive the taxi available and hired metrics results as a 
+		// pair for a given time duration, combine them to prepare the notification text and then
+		// send it for visualization.
+		(stream<MapViewer_t> TaxiCountsForMapViewer as TCFMV) as
+		 TaxiCountsPreparer = Barrier(TaxisAvailableCount_LTTAMG as TA; TaxisHiredCount_LTTHMG as TH) {
+		 	output
+		 		// HTML color reference: https://htmlcolorcodes.com/color-names/
+		 		// If TaxiMetrics is done for all the communities, then we will
+		 		// show the results on the map using the Dubai airport geo coordinates.
+		 		TCFMV: id = "TaxiCounts" + TA.communityId,
+		 			category = "Taxi Counts",
+		 			time = TA.windowStartTime,
+		 			communityId = TA.communityId,
+		 			communityName = TA.communityName,
+		 			districtName = TA.districtName,
+		 			hired = TH.taxisHiredCnt,
+		 			available = TA.taxisAvailableCnt,
+		 			currentNew = 0, served = 0, unserved = 0, canceled = 0, futureNew = 0,
+		 			wkt = (TA.communityId == "ALL" ? 
+		 			       point(55.365512, 25.253165) :
+		 			       point(TA.longitude, TA.latitude)),  
+		 			updateAction = 1u,
+		 			note = "<p style='color:teal'><b>" + "Community Id: " + TA.communityId + "</b></p>" +
+		 			"<p style='color:saddlebrown'><b>" + "Community Name: " + TA.communityName + "</b></p>" +
+		 			"<p style='color:crimson'><b>" + "District Name: " + TA.districtName + "</b></p>" + 
+		 			"<p style='color:blueviolet'><b>" + "Time: " + TA.windowStartTime + "</b></p>" + 
+		 			"<p style='color:blue'><b>" + "Hired: " + (rstring)TH.taxisHiredCnt + "</b></p>" + 
+					"<p style='color:green'><b>" + "Available: " + (rstring)TA.taxisAvailableCnt + "</b></p>",
+		 			markerType = com.ibm.streamsx.websocket.sample.types::GOLD;
+				
+			config
+				threadedPort: queue(TA, Sys.Wait), queue(TH, Sys.Wait);
+		 }
+		// =========== END OF PREPARING DATA FOR TAXI COUNTS MAP VISUALIZATION ===========
+		
+		// =========== START OF PREPARING DATA FOR TAXI BOOKINGS MAP VISUALIZATION ===========
+		// We are going to receive the New, Unserved, Served and Cancelled taxt bookings for 
+		// a given time duration, combine them to prepare the notification text and then
+		// send it for visualization.
+		(stream<MapViewer_t> TaxiBookingsForMapViewer as TBFMV) as
+		 TaxiBookingsPreparer = Barrier(NewBookingsRequestsCount_LTNBMG as NB;
+		 	UnservedBookingsRequestsCount_LTUBMG as UB; 
+		 	ServedBookingsRequestsCount_LTSBMG as SB;
+		 	CancelledBookingsRequestsCount_LTCBMG as CB) {
+		 	output
+		 		// HTML color reference: https://htmlcolorcodes.com/color-names/
+		 		// If TaxiMetrics is done for all the communities, then we will
+		 		// show the results on the map using the Dubai airport geo coordinates.
+		 		TBFMV: id = "TaxiBookings" + NB.communityId,
+		 			category = " Taxi Bookings", 
+		 			time = NB.windowStartTime,
+		 			communityId = NB.communityId,
+		 			communityName = NB.communityName,
+		 			districtName = NB.districtName,
+		 			hired = 0,
+		 			available = 0,
+		 			currentNew = NB.newBookingsRequestsCnt, 
+		 			served = SB.servedBookingsRequestsCnt, 
+		 			unserved = UB.unservedBookingsRequestsCnt, 
+		 			canceled = CB.cancelledBookingsRequestsCnt, 
+		 			futureNew = NB.futureNewBookingsRequestsCnt,
+		 			wkt = (NB.communityId == "ALL" ? 
+		 			       point(55.365512 + 0.000300, 25.253165 + 0.000300) :
+		 			       point(NB.longitude + 0.000300, NB.latitude + 0.000300)), 
+		 			updateAction = 1u, 
+		 			note = "<p style='color:teal'><b>" + "Community Id: " + NB.communityId + "</b></p>" +
+		 			"<p style='color:saddlebrown'><b>" + "Community Name: " + NB.communityName + "</b></p>" +
+		 			"<p style='color:crimson'><b>" + "District Name: " + NB.districtName + "</b></p>" + 
+		 			"<p style='color:blueviolet'><b>" + "Time: " + NB.windowStartTime + "</b></p>" + 
+		 			"<p style='color:green'><b>" + "Current New: " + (rstring)NB.newBookingsRequestsCnt + "</b></p>" + 
+		 			"<p style='color:blue'><b>" + "Served: " + (rstring)SB.servedBookingsRequestsCnt + "</b></p>" + 
+		 			"<p style='color:deeppink'><b>" + "Unserved: " + (rstring)UB.unservedBookingsRequestsCnt + "</b></p>" + 
+		 			"<p style='color:darkslategray'><b>" + "Cancelled: " + (rstring)CB.cancelledBookingsRequestsCnt + "</b></p>" + 
+		 			"<p style='color:mediumslateblue'><b>" + "Upcoming New: " + (rstring)NB.futureNewBookingsRequestsCnt + "</b></p>",
+		 			markerType = com.ibm.streamsx.websocket.sample.types::GREEN;
+		 			
+			config
+				threadedPort: queue(NB, Sys.Wait), queue(UB, Sys.Wait),
+					queue(SB, Sys.Wait), queue(CB, Sys.Wait);
+		 }
+		// =========== END OF PREPARING DATA FOR TAXI BOOKINGS MAP VISUALIZATION ===========
+
+
+		// =========== START OF VISUALIZING THE RESULTS IN A WEB APP ===========
+		// This logic does an easy visualization of geospatial data on a map.
+		// This operator reads a hot file to fetch any user provided
+		// new client whitelist value. Please read a test data file 
+		// (client-whitelist.txt) included in the data directory of this 
+		// example for instructions to learn about  how to add a 
+		// new client whitelist.
+		//
+		// IMPORTANT
+		// ---------
+		// Dynamically updating a client whitelist is purely an
+		// optional feature available in the WebSocketSource operator.
+		// If your application doesn't need it, you don't have to use this feature.
+		(stream<ClientWhitelist_t> ClientWhitelist as CW) 
+			as ClientWhitelistReader = FileSource() {
+			param
+				file: $clientWhitelistFileName;
+				hotFile: true;
+				initDelay: $initDelayBeforeReceivingData;
+		}
+		
+		// Receive text data or binary data or both from the
+		// remote WebSocket and HTTP POST clients and send a response back to the
+		// client from where the data item was received.
+		// [This operator can optionally receive two input ports.
+		//  One of those two input ports can be used to send a 
+		//  response to a client by roundtripping back to that same 
+		//  client from where a text or binary data item was received. 
+		//  The other input port can be used to dynamically update 
+		//  the client whitelist. Those two input ports can be in any order. 
+		//  i.e. both of them can be absent or only one of them can be present or
+		//  both of them can be present.]
+		//
+		// NOTE: Consuming the ResponseData stream below in an input port will 
+		// make the compiler to give a "Feedback Loop" warning which can be ignored.
+		//
+		// IMPORTANT
+		// ---------
+		// Dynamically updating a client whitelist is purely an
+		// optional feature available in the WebSocketSource operator via its input port.
+		// If your application doesn't need it, you don't have to use this feature.		
+		(stream<ReceivedData_t> WebSocketRxData as WSRD;
+		 stream<EndOfClientSessionSignal_t> EndOfClientSessionSignal as EOCSS) 
+			as WebSocketDataReceiver = WebSocketSource(ResponseData; ClientWhitelist) {
+			logic
+				state: {
+					// Initialize the default TLS certificate file name if the 
+					// user didn't provide his or her own.
+					rstring _certificateFileName = 
+						($certificateFileName != "") ?
+						$certificateFileName : getThisToolkitDir() + "/etc/ws-server.pem";
+				}
+				
+			param
+				tlsPort: $tlsPort;
+				certificateFileName: _certificateFileName;
+				trustedClientCertificateFileName: $trustedClientCertificateFileName;
+				// Use this only when you have trouble authenticating clients that 
+				// have self signed certificates.
+				trustedClientX509SubjectIdentifiers: $trustedClientX509SubjectIdentifiers;
+				nonTlsEndpointNeeded: $nonTlsEndpointNeeded;
+				nonTlsPort: $nonTlsPort;
+				urlContextPath: $urlContextPath;
+				// Initial delay before generating the very first tuple.
+				// This is a one time delay when this operator starts up.
+				// This delay should give sufficient time for the
+				// downstream operator(s) to come up and be ready to
+				// receive the data tuples sent by this operator.
+				initDelay: $initDelayBeforeReceivingData;
+				websocketLiveMetricsUpdateNeeded: $websocketLiveMetricsUpdateNeeded;
+				websocketLoggingNeeded: $websocketLoggingNeeded;
+				wsConnectionLoggingNeeded: $wsConnectionLoggingNeeded;
+				wsClientSessionLoggingNeeded: $wsClientSessionLoggingNeeded;
+				websocketStaleConnectionPurgeInterval: $websocketStaleConnectionPurgeInterval;
+				ipv6Available: $ipv6Available;
+				numberOfMessagesToReceiveBeforeAnAck: $numberOfMessagesToReceiveBeforeAnAck;
+				// Are we going to allow client applications to send their 
+				// text based data (plain text, JSON, XML etc.) via HTTP/HTTPS POST?
+				allowHttpPost: $allowHttpPost;
+				clientWhitelist: $clientWhitelist;
+				maxClientConnectionsAllowed: $maxClientConnectionsAllowed;
+				responseTimeout: $responseTimeout;
+				// For serving the browser-based client applications, it is
+				// better to disable the support for allowing persistent HTTP connections.
+				// If we set it to true, I have seen in my tests that it gives  
+				// page rendering problems. Hence, it is safe to turn it off.
+				allowPersistentHttpConnections: false;
+			
+			// Get these values via custom output functions	provided by this operator.
+			output
+			    // strData and/or blobData attributes will be automatically
+			    // assigned with values by the operator logic.
+			    // Other attributes can be assigned manually as done below.
+				WSRD: clientSessionId = getClientSessionId(),
+					clientIpAddress = getClientIpAddress(),
+					clientPort = getClientPort(),
+					urlContextPath = getUrlContextPath(),
+					isWebSocketClient = isWebSocketClient(),
+					isHttpClient = isHttpClient(),
+					httpRequestMethodName = getHttpRequestMethodName(),
+					urlQueryStringKeyValuePairs = getUrlQueryStringKeyValuePairs(),
+					httpRequestHeaders = getHttpRequestHeaders(),
+					fullUrlBeingAccessedByTheClient = getFullUrlBeingAccessedByTheClient(),
+					fileNameInUrlForHttpGet = getFileNameInUrlForHttpGet(),
+					totalDataItemsReceived = getTotalDataItemsReceived(),
+					totalDataBytesReceived = getTotalDataBytesReceived(),
+					totalDataItemsSent = getTotalDataItemsSent(),
+					totalDataBytesSent = getTotalDataBytesSent();
+
+			// A MUST THING TO DO
+			// ------------------
+			// For the feedback loop logic to work as explained in the
+			// commentary above, you must have this placement directive to launch 
+			// this operator in its own PE (i.e. Linux process) that is away from 
+			// the Custom operator below which is at the other end of the feedback loop.
+			// This is done for a valid reason. Infinite recursion occurs when operators with 
+			// feedback loops are fused; when the operator submits a tuple to its output port, 
+			// the subsequent submit() calls lead to a loop of other submit() calls, 
+			// effectively overflowing the call stack. By avoiding this operator from getting 
+			// fused, we ensure that it will not lead to deadlocks or stack overflow due to 
+			// infinite recursion.
+			config
+				placement: partitionIsolation;
+		}
+		
+		// This operator receives the request sent by the remote
+		// WebSocket/HTTP client, performs what the client requested and
+		// then sends the response back to that remote client.
+		//
+		// NOTE
+		// ----
+		// The first output stream will be fed back to an input port of the
+		// WebSocketSource operator above. That will trigger a feedback loop
+		// warning from the compiler which can be ignored.
+		(stream<ResponseData_t> ResponseData as RD;
+		 stream<CommunityIdsChosenForTaxiMetricsDisplay_t> CommunityIdsChosen as CIC;
+		 stream<MetricsWindowParameters_t> MetricsWindowParameters as MWP) 
+		 	as WebClientRequestHandler = Custom(WebSocketRxData as WSRD; 
+			EndOfClientSessionSignal as EOCSS;
+			TaxiCountsForMapViewer as TCFMV;
+			TaxiBookingsForMapViewer as TBFMV;
+			CommunityToDistrictMap as CTDM; 
+			DistrictToCommunityMap as DTCM; 
+			CommunityIdToNameMap as CITNM; 
+			CommunityNameToIdMap as CNTIM;
+			CommunityWktGeometryMap as CWGM) {
+			logic
+				state: {
+					// Initialize the web application directory from where the
+					// HTML, image and other files will be served.
+					rstring _webAppDirectory = getThisToolkitDir() + "/etc/webapp";
+					mutable ResponseData_t _responseData = {};	
+					mutable CommunityIdsChosenForTaxiMetricsDisplay_t _cidsChosen = {};				
+					// Key: Community Name, Value: District Name
+					mutable map<rstring, rstring> _communityToDistrictMap = {};
+					// Key: District Name, Value: list<rstring> 
+					// Will carry one or more community names in a given district.
+					mutable map<rstring, list<rstring>> _districtToCommunityMap = {};
+					// Key: Community Id, Value: Community Name.
+					mutable map<rstring, rstring> _communityIdToNameMap = {};
+					// Key: Community Name, Value: Community Id.
+					mutable map<rstring, rstring> _communityNameToIdMap = {};
+					// Key: Community Name, Value: Polygon in Wkt Geometry string.
+					mutable map<rstring, rstring> _communityWktGeometryMap = {};
+					// Current district names that are being used for displaying taxi metrics.
+					mutable list<rstring> _districtNamesChosenForTaxiMetricsDisplay = [];
+					// Current community names that are being used for displaying taxi metrics.
+					mutable list<rstring> _communityNamesChosenForTaxiMetricsDisplay = [];
+					// Current community ids that are being used for displaying taxi metrics.
+					mutable list<rstring> _communityIdsChosenForTaxiMetricsDisplay = [];
+					// Key: id, Value: Taxi Count Metrics result
+					mutable map<rstring, MapViewer_t> _currentTaxiCountMetricsForWebApp = {};
+					// Key: id, Value: Taxi Booking Metrics result
+					mutable map<rstring, MapViewer_t> _currentTaxiBookingMetricsForWebApp = {};	
+					// We will keep a shadow copy of what was sent to the WebApp. In case of no
+					// new (current) periodic metrics computed yet and in this situation if the 
+					// web app sends a request for metrics data, we will temporarily provide the shadow 
+					// (previously received) copy of the metrics data until the next periodic
+					// metric values become available.
+					mutable map<rstring, MapViewer_t> _previousTaxiCountMetricsForWebApp = {};
+					// Key: id, Value: Taxi Booking Metrics result
+					mutable map<rstring, MapViewer_t> _previousTaxiBookingMetricsForWebApp = {};	
+					mutable float64 _longTermMetricsWindowPeriod = 
+						$LONG_TERM_METRICS_WINDOW_PERIOD_FOR_WEB_APP;
+					mutable MetricsWindowParameters_t _metricsWindowParametersTuple = {};
+					// This map will hold the taxi counts metrics trend data.
+					// Key: Community ID, Value: Trend data points.
+					mutable map<rstring, TaxiCountMetricsTrend_t> _taxiCountMetricsTrendForWebApp = {};
+					// This map will hold the taxi bookings metrics trend data.
+					// Key: Community ID, Value: Trend data points.
+					mutable map<rstring, TaxiBookingMetricsTrend_t> _taxiBookingMetricsTrendForWebApp = {};
+					// This list will hold the Supply & Demand Alert data.
+					mutable list<SupplyAndDemandAlert_t> _supplyAndDemandDataForWebApp = [];
+				}
+
+				onTuple CTDM: {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityToDistrictMap = CTDM.communityToDistrictMap;
+				}
+				
+				onTuple DTCM: {
+					// We will only get a single tuple from the upstream reference data reader.
+					_districtToCommunityMap = DTCM.districtToCommunityMap;
+				}
+				
+				onTuple CITNM: {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityIdToNameMap = CITNM.communityIdToNameMap;
+				}
+				
+				onTuple CNTIM:  {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityNameToIdMap = CNTIM.communityNameToIdMap;
+				}
+				
+				onTuple CWGM: {
+					// We will only get a single tuple from the upstream reference data reader.
+					_communityWktGeometryMap = CWGM.communityWktGeometryMap;
+				}
+				
+				onTuple WSRD: {					
+					// Let us prepare a response tuple now.
+					_responseData = (ResponseData_t){};
+				    mutable rstring baseDir = _webAppDirectory;
+					mutable rstring contentType = "";
+					mutable uint64 contentLength = 0;
+					mutable boolean isBinaryFile = false;
+					mutable rstring textContent = "";
+					mutable blob binaryContent = [];
+					mutable map<rstring, rstring> responseHeadersMap = {};
+					mutable int32 err = 0;
+					
+					// Incoming data item sent by the remote client could be
+					// text based data or binary via HTTP GET or HTTP POST.
+					appTrc(Trace.info, "WSRD=" + (rstring)WSRD);
+					
+					// Our web browser based application can request for different things.
+					// 1) Page related files (html, css, js, images etc.)
+					// 2) Application-specific dynamic data.
+					//
+					// Let us first see if we have to satisfy any data requests that
+					// come here from the web application.
+					if(WSRD.isHttpClient == true &&
+					   WSRD.httpRequestMethodName == "GET" && 
+					   size(urlQueryStringKeyValuePairs) > 0) {
+					 	appTrc(Trace.info, "URL query string KV pairs=" + 
+					 		(rstring)urlQueryStringKeyValuePairs);  
+					 		
+					 	for(rstring key in urlQueryStringKeyValuePairs) {
+					 		if(key == "request") {
+					 			if(urlQueryStringKeyValuePairs[key] == "SendTaxiCountMetrics" ||
+					 			   urlQueryStringKeyValuePairs[key] == "SendTaxiBookingMetrics") {
+					 				appTrc(Trace.info, "Received a request for " +
+					 					urlQueryStringKeyValuePairs[key] + ".");
+					 					
+					 				if(urlQueryStringKeyValuePairs[key] == "SendTaxiCountMetrics") {
+						 				// We have to send an array of tuples to the web application i.e.
+						 				// those tuples represented as an array of JSON objects.
+						 				// Let us create that array now.
+						 				// We will have either the current metrics data or the 
+						 				// previously computed metrics from which we can form that array.
+						 				if(size(_currentTaxiCountMetricsForWebApp) >  0) {
+							 				for(rstring key in _currentTaxiCountMetricsForWebApp) {
+							 					if(_responseData.strData != "") {
+							 						// Comma separate the individual JSON objects.
+							 						_responseData.strData += ",";
+							 					}
+							 					
+							 					_responseData.strData += tupleToJSON(_currentTaxiCountMetricsForWebApp[key]);
+							 				}
+							 				
+							 				// Since we just now reported the currently available metrics.
+							 				// we can clear the map and start collecting fresh metrics again.
+							 				// Before doing that, we will take a copy of it in order to serve
+							 				// any intermediate metrics requests coming from the web app.
+							 				_previousTaxiCountMetricsForWebApp = _currentTaxiCountMetricsForWebApp;
+							 				clearM(_currentTaxiCountMetricsForWebApp);
+							 			} else {
+							 				// We don't have the latest (i.e. current) metrics computed yet.
+							 				// In that case, we will simply keep serving what was sent previously.
+							 				for(rstring key in _previousTaxiCountMetricsForWebApp) {
+							 					if(_responseData.strData != "") {
+							 						// Comma separate the individual JSON objects.
+							 						_responseData.strData += ",";
+							 					}
+							 					
+							 					_responseData.strData += tupleToJSON(_previousTaxiCountMetricsForWebApp[key]);
+							 				}							 				
+							 			}
+						 			} else {
+						 				if(size(_currentTaxiBookingMetricsForWebApp) >  0) {
+							 				for(rstring key in _currentTaxiBookingMetricsForWebApp) {
+							 					if(_responseData.strData != "") {
+							 						// Comma separate the individual JSON objects.
+							 						_responseData.strData += ",";
+							 					}
+							 					
+							 					_responseData.strData += tupleToJSON(_currentTaxiBookingMetricsForWebApp[key]);
+							 				}
+							 				
+							 				// Since we just now reported the currently available metrics.
+							 				// we can clear the map and start collecting fresh metrics again.
+							 				// Before doing that, we will take a copy of it in order to serve
+							 				// any intermediate metrics requests coming from the web app.
+											_previousTaxiBookingMetricsForWebApp = _currentTaxiBookingMetricsForWebApp;
+							 				clearM(_currentTaxiBookingMetricsForWebApp);	
+							 			} else {
+							 				// We don't have the latest (i.e. current) metrics computed yet.
+							 				// In that case, we will simply keep serving what was sent previously.
+							 				for(rstring key in _previousTaxiBookingMetricsForWebApp) {
+							 					if(_responseData.strData != "") {
+							 						// Comma separate the individual JSON objects.
+							 						_responseData.strData += ",";
+							 					}
+							 					
+							 					_responseData.strData += tupleToJSON(_previousTaxiBookingMetricsForWebApp[key]);
+							 				}							 											 			
+							 			}
+						 			}
+					 				
+					 				// Now surround that string containing the JSON objets with
+					 				// square brackets to turn it into an array of JSON objects.
+					 				_responseData.strData = "[" + _responseData.strData + "]";
+					 				contentType = "application/json";
+					 			} else if(urlQueryStringKeyValuePairs[key] == "SendCommunitySelectionData") {
+					 				appTrc(Trace.info, "Received a request for SendCommunitySelectionData.");
+				
+									// Let us now load the template HTML file and populate the form fields
+									// with the community names and district names.
+									rstring fileName = baseDir + "/html/select-community.html";
+									populateSelectCommunityFormFields(fileName,
+										false, contentLength, textContent, binaryContent, err, 
+										_districtToCommunityMap, _communityNameToIdMap,
+										_longTermMetricsWindowPeriod,
+										_districtNamesChosenForTaxiMetricsDisplay,
+										_communityNamesChosenForTaxiMetricsDisplay);
+
+									if(err != 0) {
+										_responseData.strData = "Unable to customize and serve the file '" + 
+											fileName + "' for HTTP GET. err=" + (rstring)err;
+										clearM(_responseData.blobData);
+										contentType = "text/plain";
+										contentLength = (uint64)length(_responseData.strData);
+										appTrc(Trace.info, _responseData.strData);
+									} else {
+										// We have read and customized the file content successfully.
+										_responseData.strData = textContent;
+										_responseData.blobData = binaryContent;
+										contentType = "text/html";
+										appTrc(Trace.info, "Serving the customized contents of the file '" + 
+											fileName + "' for HTTP GET.");
+									}
+					 			} else if(urlQueryStringKeyValuePairs[key] == "SendTaxiCountTrend") {
+					 				// This query string command will also have another query string parameter.
+					 				rstring communityId = urlQueryStringKeyValuePairs["communityId"];
+						 			appTrc(Trace.info, 
+						 				"Received a request for SendTaxiCountTrend for community id " + 
+						 				(rstring)communityId);
+					 				
+					 				if((has(_communityIdToNameMap, communityId) == true &&
+					 				   has(_taxiCountMetricsTrendForWebApp, communityId) == true) ||
+					 				   (communityId == "ALL" &&
+					 				   has(_taxiCountMetricsTrendForWebApp, communityId) == true)) {
+						 				mutable rstring communityName = "";
+						 				if(communityId != "ALL") {
+						 					communityName = _communityIdToNameMap[communityId];
+						 				} else {
+						 					communityName = "ALL";
+						 				}
+						 					
+										// Let us send the taxi count trend data to the web client.
+										_responseData.strData = tupleToJSON(_taxiCountMetricsTrendForWebApp[communityId]);
+										_responseData.blobData = binaryContent;
+										contentType = "application/json";
+										appTrc(Trace.info, "Serving the taxi counts metrics trend data for '" + 
+											communityName + "' .");
+									} else {
+										_responseData.strData = 
+											"Information about either the community id " + 
+											(rstring)communityId +
+											" or the taxi counts metrics trend is not available at this time. Please try later.";									
+										_responseData.blobData = binaryContent;
+										contentType = "text/plain";
+										appTrc(Trace.info, 
+											"Unable to serve the taxi counts metrics trend data for the community id '" + 
+											(rstring)communityId + "' .");
+									}
+					 			} else if(urlQueryStringKeyValuePairs[key] == "SendTaxiBookingTrend") {
+					 				// This query string command will also have another query string parameter.
+					 				rstring communityId = urlQueryStringKeyValuePairs["communityId"];
+						 			appTrc(Trace.info, 
+						 				"Received a request for SendTaxiBookingTrend for community id " + 
+						 				(rstring)communityId);
+					 				
+					 				if((has(_communityIdToNameMap, communityId) == true &&
+					 				   has(_taxiBookingMetricsTrendForWebApp, communityId) == true) ||
+					 				   (communityId == "ALL" &&
+					 				   has(_taxiBookingMetricsTrendForWebApp, communityId) == true)) {
+						 				mutable rstring communityName = "";
+						 				if(communityId != "ALL") {
+						 					communityName = _communityIdToNameMap[communityId];
+						 				} else {
+						 					communityName = "ALL";
+						 				}
+						 					
+										// Let us send the taxi count trend data to the web client.
+										_responseData.strData = tupleToJSON(_taxiBookingMetricsTrendForWebApp[communityId]);
+										_responseData.blobData = binaryContent;
+										contentType = "application/json";
+										appTrc(Trace.info, "Serving the taxi bookings metrics trend data for '" + 
+											communityName + "' .");
+									} else {
+										_responseData.strData = 
+											"Information about either the community id " + 
+											(rstring)communityId +
+											" or the taxi bookings metrics trend is not available at this time. Please try later.";									
+										_responseData.blobData = binaryContent;
+										contentType = "text/plain";
+										appTrc(Trace.info, 
+											"Unable to serve the taxi bookings metrics trend data for the community id '" + 
+											(rstring)communityId + "' .");
+									}
+					 			} else if(urlQueryStringKeyValuePairs[key] == "SendSupplyAndDemandData") {
+					 				appTrc(Trace.info, "Received a request for " +
+					 					urlQueryStringKeyValuePairs[key] + ".");
+					 					
+					 				// We have to send an array of tuples to the web application i.e.
+					 				// those tuples represented as an array of JSON objects.
+					 				// Let us create that array now.
+					 				for(SupplyAndDemandAlert_t alertTuple in _supplyAndDemandDataForWebApp) {
+					 					if(_responseData.strData != "") {
+					 						// Comma separate the individual JSON objects.
+					 						_responseData.strData += ",";
+					 					}
+					 					
+					 					_responseData.strData += tupleToJSON(alertTuple);
+					 				}
+						 									 				
+					 				// Now surround that string containing the JSON objets with
+					 				// square brackets to turn it into an array of JSON objects.
+					 				_responseData.strData = "[" + _responseData.strData + "]";
+					 				contentType = "application/json";
+					 			} else if(urlQueryStringKeyValuePairs[key] == "ClearSupplyAndDemandData") {
+					 				appTrc(Trace.info, "Received a request for " +
+					 					urlQueryStringKeyValuePairs[key] + ".");
+					 				
+					 				// User is asking us to clear the supply & demand alerts.
+					 				clearM(_supplyAndDemandDataForWebApp);
+					 				_responseData.strData = "Supply & Demand data is now cleared.";						 									 				
+					 				contentType = "text/plain";
+					 			} // End of if(urlQueryStringKeyValuePairs[key]
+					 			
+					 			if(_responseData.strData != "") {
+					 				// We have a non-empty response to send.
+					 				insertM(responseHeadersMap, "Content-Type", contentType);
+									insertM(responseHeadersMap, "Content-Length", 
+										(rstring)length(_responseData.strData));
+									_responseData.httpResponseHeaders = responseHeadersMap;					
+									// Send this response to the client from where we received the HTTP GET.
+									_responseData.clientSessionId = WSRD.clientSessionId;	
+									submit(_responseData, RD);
+									appTrc(Trace.info, "HTTP GET query string response sent to the web app: " + 
+										(rstring)_responseData);
+								}
+					 			
+								return;
+					 		} // End of if(key == "request")
+					 	} // End of the for loop.
+					} // End of serving URL query string KV pair requests.
+										
+					// If it is HTTP GET with a request for contents of a file, 
+					// let us serve the requested file, We will end up here only when
+					// the web application didn't send request for application-specific data.
+					if(WSRD.isHttpClient == true &&
+					   WSRD.httpRequestMethodName == "GET" && 
+					   fileNameInUrlForHttpGet != "") {
+						while(true) {
+							mutable list<rstring> result = 
+								regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.html$");
+							
+							if(size(result) >  0) {
+								contentType = "text/html";
+								baseDir += "/html";
+								break;
+							}
+	
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.css$");
+							
+							if(size(result) >  0) {
+								contentType = "text/css";
+								baseDir += "/css";
+								break;
+							}
+							
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.csv$");
+							
+							if(size(result) >  0) {
+								contentType = "text/csv";
+								baseDir += "/data";
+								break;
+							}
+							
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.js$");
+							
+							if(size(result) >  0) {
+								contentType = "text/javascript";
+								baseDir += "/js";
+								break;
+							}
+							
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.txt$");
+							
+							if(size(result) >  0) {
+								contentType = "text/plain";
+								baseDir += "/data";
+								break;
+							}
+	
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.json$");
+							
+							if(size(result) >  0) {
+								contentType = "application/json";
+								baseDir += "/data";
+								break;
+							}						
+	
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.xml$");
+							
+							if(size(result) >  0) {
+								contentType = "application/xml";
+								baseDir += "/data";
+								break;
+							}
+							
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.gif$");
+							
+							if(size(result) >  0) {
+								contentType = "image/gif";
+								isBinaryFile = true;
+								baseDir += "/images";
+								break;
+							}
+							
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.jpg$");
+							
+							if(size(result) >  0) {
+								contentType = "image/jpeg";
+								isBinaryFile = true;
+								baseDir += "/images";
+								break;
+							}
+							
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.jpeg$");
+							
+							if(size(result) >  0) {
+								contentType = "image/jpeg";
+								isBinaryFile = true;
+								baseDir += "/images";
+								break;
+							}
+							
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.png$");
+							
+							if(size(result) >  0) {
+								contentType = "image/png";
+								isBinaryFile = true;
+								baseDir += "/images";
+								break;
+							}
+
+							result = regexMatchPerl(WSRD.fileNameInUrlForHttpGet, "\\.ico$");
+							
+							if(size(result) >  0) {
+								contentType = "image/x-icon";
+								isBinaryFile = true;
+								baseDir += "/images";
+								break;
+							}
+							
+							appTrc(Trace.error, 
+								"Unsupported content type requested by the web application: " +
+								WSRD.fileNameInUrlForHttpGet);
+							return;
+						} // End of while(true)
+						
+						// We can get the file content now.
+						readFileContentForHttpGet(baseDir + WSRD.fileNameInUrlForHttpGet,
+							isBinaryFile, contentLength, textContent, binaryContent, err);
+							
+						if(err != 0) {
+							_responseData.strData = "Unable to serve the file '" + 
+								WSRD.fileNameInUrlForHttpGet + "' for HTTP GET. err=" + (rstring)err;
+							clearM(_responseData.blobData);
+							contentType = "text/plain";
+							contentLength = (uint64)length(_responseData.strData);
+							appTrc(Trace.info, _responseData.strData);
+						} else {
+							// We have read the file content successfully.
+							_responseData.strData = textContent;
+							_responseData.blobData = binaryContent;
+							appTrc(Trace.info, "Serving the file '" + 
+								WSRD.fileNameInUrlForHttpGet + "' for HTTP GET.");
+						}
+						
+						insertM(responseHeadersMap, "Content-Type", contentType);
+						insertM(responseHeadersMap, "Content-Length", (rstring)contentLength);
+						_responseData.httpResponseHeaders = responseHeadersMap;					
+						// Send this response to the client from where we received the HTTP GET.
+						_responseData.clientSessionId = WSRD.clientSessionId;	
+						submit(_responseData, RD);
+						appTrc(Trace.info, "HTTP GET file response sent to the web app: " + 
+							(rstring)_responseData);
+						return;
+					} // End of serving file content for HTTP GET.
+					
+					// If it is a HTTP POST from the web client, we will process the
+					// post message to perform the action requested by the web application.
+					if(WSRD.isHttpClient == true &&
+					   WSRD.httpRequestMethodName == "POST" && 
+					   WSRD.strData != "") {
+					 	appTrc(Trace.info, "HTTP POST payload=" + WSRD.strData);
+					 	// Format of HTTP POST messages in this application will be as shown below.
+					 	// It is in the application/x-www-form-urlencoded format.
+					 	// command=CommunityAndDistrictSelection&startStopMonitoring=2&userSelection=BUR DUBAI,DEIRA,DUBAI LAND&monitoringInterval=10
+						// command=CommunityAndDistrictSelection&startStopMonitoring=3&userSelection=126,333,919,861,337&monitoringInterval=7
+					 	// 
+						if(findFirst(WSRD.strData, "command=CommunityAndDistrictSelection") == 0) {
+							mutable float64 monitoringInterval = 0.0;
+							
+							// Let us process this inside this function.
+							processCommunityAndDistrictSelection(WSRD.strData, 
+								_communityToDistrictMap, _districtToCommunityMap,
+								_communityIdToNameMap, _communityNameToIdMap,
+								monitoringInterval,
+								_districtNamesChosenForTaxiMetricsDisplay,
+								_communityNamesChosenForTaxiMetricsDisplay,
+								_communityIdsChosenForTaxiMetricsDisplay, err);
+							
+							// If we successfully processed the command received via POST message,
+							// we can send an updated page back to the web client.
+							if(err == 0) {
+								// Let us now send the newly updated community ids to the
+								// TaxiLocation and TaxiBookings analytics operators.
+								_cidsChosen.communityIdsChosenForTaxiMetricsDisplay = 
+									_communityIdsChosenForTaxiMetricsDisplay;
+								submit(_cidsChosen, CIC);
+								
+								// If the user changed the monitoring interval, then we will
+								// update our local state variable and then send this new value to
+								// the TaxiMetricsGenerator composite operator instances.
+								if(monitoringInterval != _longTermMetricsWindowPeriod) {
+									_longTermMetricsWindowPeriod = monitoringInterval;
+									_metricsWindowParametersTuple = (MetricsWindowParameters_t){};
+									_metricsWindowParametersTuple.longTermMetricsWindowPeriod = 
+										_longTermMetricsWindowPeriod;
+									submit(_metricsWindowParametersTuple, MWP);
+								}
+								
+								// Since there is a change made in the entities to be monitored live,
+								// let us clear the state map data structure that holds the
+								// data for live updating the geographical visual map in the web client.
+						 		clearM(_currentTaxiCountMetricsForWebApp);
+				 				clearM(_currentTaxiBookingMetricsForWebApp);	
+
+								// If the community selection changes made by the user resulted in
+								// no communities being monitored, then we will additionally clear the
+								// shadow maps as well (which are used for serving interim
+								// web app requests in between the metrics update cycles.
+								if(size(_communityIdsChosenForTaxiMetricsDisplay) <= 0) {
+						 			clearM(_previousTaxiCountMetricsForWebApp);
+				 					clearM(_previousTaxiBookingMetricsForWebApp);
+				 					// Let us also clear the Supply & Demand data.
+				 					clearM(_supplyAndDemandDataForWebApp);								
+								}
+
+								// Let us now load the template HTML file and populate the form fields
+								// with the updated community names and district names currently being
+								// monitored.
+								rstring fileName = baseDir + "/html/select-community.html";
+								populateSelectCommunityFormFields(fileName,
+									false, contentLength, textContent, binaryContent, err, 
+									_districtToCommunityMap, _communityNameToIdMap,
+									_longTermMetricsWindowPeriod,
+									_districtNamesChosenForTaxiMetricsDisplay,
+									_communityNamesChosenForTaxiMetricsDisplay);
+
+								if(err != 0) {
+									_responseData.strData = "Unable to customize and serve the file '" + 
+										fileName + "' for HTTP POST. err=" + (rstring)err;
+									clearM(_responseData.blobData);
+									contentType = "text/plain";
+									contentLength = (uint64)length(_responseData.strData);
+									appTrc(Trace.info, _responseData.strData);
+								} else {
+									// We have read and customized the file content successfully.
+									_responseData.strData = textContent;
+									_responseData.blobData = binaryContent;
+									contentType = "text/html";
+									appTrc(Trace.info, "Serving the customized contents of the file '" + 
+										fileName + "' for HTTP POST CommunityAndDistrictSelection.");
+								}
+								
+							} else {
+								// We have an error in processing the POST message.
+								_responseData.strData = "Unable to process the POST command '" + 
+									"CommunityAndDistrictSelection" + "' for HTTP POST. err=" + (rstring)err;
+								clearM(_responseData.blobData);
+								contentType = "text/plain";
+								contentLength = (uint64)length(_responseData.strData);
+								appTrc(Trace.info, _responseData.strData);								
+							}	
+						} // End of if(find(WSRD.strData, "command=CommunityAndDistrictSelection") == 0)
+					 	
+			 			if(_responseData.strData != "") {
+			 				// We have a non-empty response to send.
+			 				insertM(responseHeadersMap, "Content-Type", contentType);
+							insertM(responseHeadersMap, "Content-Length", 
+								(rstring)length(_responseData.strData));
+							_responseData.httpResponseHeaders = responseHeadersMap;					
+							// Send this response to the client from where we received the HTTP GET.
+							_responseData.clientSessionId = WSRD.clientSessionId;	
+							submit(_responseData, RD);
+							appTrc(Trace.info, "POST Response sent to the web app: " + 
+								(rstring)_responseData);
+						}
+			 			
+						return;
+					 } // End of handling the HTTP POST request.			
+				} // End of onTuple WSRD
+				
+				onTuple EOCSS: {
+					// This is an End Of Client Session Signal.
+					// You can use this signal arriving on the second incoming port to
+					// identify the end of a given remote client. In your own application logic,
+					// you may want to add other logic here as you please. 
+					appTrc(Trace.debug, "WebSocket session ended for a remote client: " + (rstring)EOCSS);
+				}
+				
+				onTuple TCFMV: {
+					// We have to allow this metrics result only if the user 
+					// opted to display it.
+					list<int32> indices = 
+						find(_communityIdsChosenForTaxiMetricsDisplay, TCFMV.communityId);
+								
+					if(size(indices) > 0) {
+						// Simply insert the Taxi Count results in the state map.
+						insertM(_currentTaxiCountMetricsForWebApp, TCFMV.id, TCFMV);
+						// Update the taxi counts metrics trend map.
+						updateTaxiCountMetricsTrendMap(_taxiCountMetricsTrendForWebApp,
+							TCFMV.communityId,  TCFMV.communityName, 
+							TCFMV.time, TCFMV.hired, TCFMV.available);
+						// We will also generate the supply demand alert for taxis getting hired 
+						// versus taxis available ratio dropping below a preset threshold value.
+						updateSupplyAndDemandAlertData(_supplyAndDemandDataForWebApp,
+							TCFMV.communityId,  TCFMV.communityName, TCFMV.districtName, 
+							TCFMV.time, TCFMV.hired, TCFMV.available,
+							$TAXIS_AVAILABLE_VERSUS_DEMAND_ALERT_THRESHOLD);
+					}
+				}
+				
+				onTuple TBFMV: {
+					// We have to allow this metrics result only if the user 
+					// opted to display it.
+					list<int32> indices = 
+						find(_communityIdsChosenForTaxiMetricsDisplay, TBFMV.communityId);
+								
+					if(size(indices) > 0) {
+						// User wants to display it.
+						// Simply insert the Taxi Booking results in the state map.
+						insertM(_currentTaxiBookingMetricsForWebApp, TBFMV.id, TBFMV);
+						// Update the taxi booking metrics trend map.
+						updateTaxiBookingMetricsTrendMap(_taxiBookingMetricsTrendForWebApp,
+							TBFMV.communityId, TBFMV.communityName, 
+							TBFMV.time, TBFMV.currentNew, TBFMV.served,
+							TBFMV.unserved, TBFMV.canceled, TBFMV.futureNew);
+					}
+				}
+		} // End of Custom operator,
+
+		// This is here only for debugging purposes.
+		() as MapViewerDebugSink = Custom(TaxiCountsForMapViewer, TaxiBookingsForMapViewer as I) {
+			logic
+				onTuple I: {
+					// We can leave it commented out when not debugging.
+					// printStringLn((rstring)I);
+					return;
+				}
+				
+			config
+				threadedPort: queue(I, Sys.Wait);
+		}
+		
+		// =========== END OF VISUALIZING THE RESULTS IN A WEB APP ===========		
+}

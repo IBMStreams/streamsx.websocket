@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<!-- Copyright (C) 2015, 2020 International Business Machines Corporation  -->
+<!-- All Rights Reserved                                	          -->
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+	<link rel="stylesheet" type="text/css" href="TaxiMetrics.css">
+	<script type="text/javascript" src="https://d3js.org/d3.v5.min.js"></script>
+	<script src="https://d3js.org/d3-color.v1.min.js"></script>
+	<script src="https://d3js.org/d3-scale.v3.min.js"></script>
+	<script src="https://d3js.org/d3-path.v1.min.js"></script>
+	<script src="https://d3js.org/d3-shape.v1.min.js"></script>
+	<script type="text/javascript" src="TaxiCounts.js"></script>
+</head>
+
+<body onload="taxi_counts_onload()">
+	<div id="main-taxi-counts">
+		<!-- 
+		Bordering a div: 
+		https://stackoverflow.com/questions/3741333/how-can-i-define-fieldset-border-color
+		-->
+		<fieldset id="taxi-counts-table-fieldset">
+		<legend><b>Taxi Counts Full Details</b></legend>
+			<div id="taxi-counts-table">
+			</div>
+		</fieldset>
+		
+		<fieldset id="hired-donut-fieldset">
+		<legend><b>Taxis Hired Count</b></legend>
+			<div id="taxis-hired-donut">
+			</div>				
+		</fieldset>
+
+		<fieldset id="available-donut-fieldset">
+		<legend><b>Taxis Available Count</b></legend>
+			<div id="taxis-available-donut">
+			</div>				
+		</fieldset>
+		
+		<fieldset id="hired-trend-fieldset">
+		<legend><b>Taxis Hired Trend</b></legend>
+			<div id="hired-trend-div">
+				<p>
+				<div id="com-for-trend">
+				<label for="community-for-hired-trend">Select a community:</label></br>
+				<select name="community-for-hired-trend" id="community-for-hired-trend" size="5" 
+				 onclick="community_selection_hired_trend_onclick()">
+					<!--
+					<option value="114">AL BUTEEN</option>
+					<option value="115">AL SABKHA</option>
+					<option value="116">AYAL NASIR</option>
+					<option value="117">AL MURAR</option>
+					<option value="118">NAIF</option>
+					<option value="119">AL RIGGA</option>
+					-->
+				</select>
+				</div>
+			
+				<div id="taxis-hired-trend">
+				</div>
+				</p>
+			</div>				
+		</fieldset>
+
+		<fieldset id="available-trend-fieldset">
+		<legend><b>Taxis Available Trend</b></legend>
+			<div id="available-trend-div">
+				<p>
+				<div id="com-for-trend">
+				<label for="community-for-available-trend">Select a community:</label></br>
+				<select name="community-for-available-trend" id="community-for-available-trend" size="5" 
+				 onclick="community_selection_available_trend_onclick()">
+					<!--
+					<option value="114">AL BUTEEN</option>
+					<option value="115">AL SABKHA</option>
+					<option value="116">AYAL NASIR</option>
+					<option value="117">AL MURAR</option>
+					<option value="118">NAIF</option>
+					<option value="119">AL RIGGA</option>
+					-->
+				</select>
+				</div>
+				
+				<div id="taxis-available-trend">
+				</div>
+				</p>
+			</div>				
+		</fieldset>
+	</div>
+</body>
+</html>

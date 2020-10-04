@@ -1,0 +1,1083 @@
+/*
+==============================================
+# Licensed Materials - Property of IBM
+# Copyright IBM Corp. 2020
+==============================================
+*/
+
+/*
+============================================================
+This is somewhat an involved IBM Streams application that
+has a few modular blocks of logic/code. That includes ingesting
+base64 encoded data files, identifying out of sequence events,
+performing Geofence, applying custom written event time
+based windowing for the analytics and incorporating a new way to
+visualize the results in a full-fledged web browser based
+custom dashboard application. So, learning about the full
+application logic will take a considerable amount of time.
+However, if the goal is simply to learn about how the custom
+visualization is done in the context of this application, 
+then that is relatively simpler. One can understand the
+core visualiation idea and its implementation with a minimal
+effort. That learning can also be applied in other IBM Streams
+applications by focusing only on the final section inside the
+main composite of this application.
+
+Before doing anything with the code in this file, it is a 
+must to first go through the ReadMe.txt file available in the 
+top-level directory of this example.
+
+This non-main composite contains commonly used stream schema 
+a.k.a stream types and other commonly used functions in the 
+CustomVisualization example.
+
+First created on: Jun/27/2020
+Last modified on: Oct/03/2020
+============================================================
+*/
+namespace com.ibm.streamsx.websocket.sample.types;
+
+use spl.file::*;
+
+// Taxi Location schema.
+// 18596,1585209349,25.25695,55.40189,0,0,METER_OFF CAR_AVAILABLE
+type TaxiLocation_t = uint32 esnNumber, int64 dateTime, 
+	float64 latitude, float64 longitude, uint32 heading,
+	uint32 gpsSpeed, rstring meterStatus;
+
+// Taxi Location schema with id attribute.
+// The streamsx.geospatial toolkit's Geofence operator 
+// expects an attribute named id. Just for feeding the 
+// input tuples into that operator with the required
+// attribute name, we will add this attribute name here.
+type TaxiLocationWithId_t = TaxiLocation_t, tuple<rstring id>;
+
+// Taxi Location with Community Name schema.
+type TaxiLocationWithCommunityName_t = TaxiLocation_t, 
+	tuple<list<rstring> communityNameList>;
+
+// Taxi Booking schema. This schema has a nullable attribute named dtPickup.
+type TaxiBookingRequest_t = int64 ts, uint64 req_id, float64 LocPickUpLong, 
+	int64 dtPickupBooking, optional<int64> dtPickup, int64 dtBooking, 
+	rstring status, float64 LocPickUpLat;
+
+// Taxi Booking schema with id attribute.
+// The streamsx.geospatial toolkit's Geofence operator 
+// expects an attribute named id. Just for feeding the 
+// input tuples into that operator with the required
+// attribute name, we will add this attribute name here.
+type TaxiBookingRequestWithId_t = TaxiBookingRequest_t, tuple<rstring id>;
+
+// Taxi Booling with Community Name schema.
+type TaxiBookingRequestWithCommunityName_t = TaxiBookingRequest_t, 
+	tuple<list<rstring> communityNameList>;
+
+// This is the schema for the Taxi Booking JSON data that is read from the files.
+// JSON string in our test data has a field name called timestamp which is a reserved word.
+// We will dynamically change it to ts in the main composite SPL code.
+type TaxiBooking_t = list<TaxiBookingRequest_t> request, int64 ts;
+
+// Taxi specific information about how many times it 
+// shows up during the time period of the analytics run of this application.
+type TaxiReportingDetails_t = uint32 esnNumber, int32 reportCnt, 
+	int64 mostRecentDateTime, int32 outOfSequenceEventsCnt;
+
+// This is the schema for the combined Taxi Location and Taxi Booking data.
+// We will use this combined data type in the Taxi Metrics Generator composite.
+// eventTs attribute is a newly added attribute by this Streams application and
+// that  attribute will get used in the TaxiMetricsGenerator composite.
+type TaxiLocationBooking_t = TaxiLocation_t, TaxiBookingRequest_t, 
+	tuple<timestamp eventTs, rstring communityId, 
+	rstring communityName, rstring districtName>;
+
+// Schema for Taxis Available Count metric.
+type TaxisAvailableCount_t = float64 longitude, float64 latitude,
+	rstring communityId, rstring communityName, rstring districtName,
+	rstring windowStartTime, rstring windowEndTime, int32 taxisAvailableCnt;
+	
+// Schema for Taxis Hired Count metric.
+type TaxisHiredCount_t = float64 longitude, float64 latitude,
+	rstring communityId, rstring communityName, rstring districtName,
+	rstring windowStartTime, rstring windowEndTime, int32 taxisHiredCnt;
+	
+// Schema for New Booking Requests Count metric.
+type NewBookingsRequestsCount_t = float64 longitude, float64 latitude,
+	rstring communityId, rstring communityName, rstring districtName,
+	rstring windowStartTime, rstring windowEndTime, 
+	int32 newBookingsRequestsCnt, int32 futureNewBookingsRequestsCnt;
+
+// Schems for Unserved Booking Requests Count metric.
+type UnservedBookingsRequestsCount_t = float64 longitude, float64 latitude,
+	rstring communityId, rstring communityName, rstring districtName,
+	rstring windowStartTime, rstring windowEndTime, int32 unservedBookingsRequestsCnt;
+	
+// Schems for Served Booking Requests Count metric.
+type ServedBookingsRequestsCount_t = float64 longitude, float64 latitude,
+	rstring communityId, rstring communityName, rstring districtName,
+	rstring windowStartTime, rstring windowEndTime, int32 servedBookingsRequestsCnt;	
+
+// Schems for Cancelled Booking Requests Count metric.
+type CancelledBookingsRequestsCount_t = float64 longitude, float64 latitude,
+	rstring communityId, rstring communityName, rstring districtName,
+	rstring windowStartTime, rstring windowEndTime, int32 cancelledBookingsRequestsCnt;
+
+// Marker type supported by etc/map.html
+// Entities will be displayed in markers in color as specified by the VisualMarker_t
+type VisualMarker_t = enum{GREEN, GOLD, RED};
+
+// Schema for the MapViewer composite
+// id - Unique id of the entity
+// category - Map viewer category e-g: Taxi Counts, Taxi Bookings etc.
+// wkt - Geometry of the entity specified in WKT format
+// updateAction - 1 to add or update the entity in the map, 0 to remove the entity from the map.
+// note - Information to be displayed in the popup 
+// markerType - If the entity is a point, the color of the marker to use.
+type MapViewer_t = rstring id, rstring category, rstring time, rstring communityId,
+	rstring communityName, rstring districtName, int32 hired, int32 available, 
+	int32 currentNew, int32 served, int32 unserved, int32 canceled, int32 futureNew,
+	rstring wkt, uint32 updateAction, rstring note, VisualMarker_t markerType;
+
+// Schema for the UAE community to district mapping data.
+type CommunityToDistrict_t = rstring community, rstring district;
+
+// Schema for storing the community to district mapping data.
+// Key: Community Name, Value: District Name
+type CommunityToDistrictMap_t = map<rstring, rstring> communityToDistrictMap;
+
+// Schema for storing the district to communities mapping data.
+// Key: District Name, Value: list<rstring> 
+// Will carry one or more community names in a given district.
+type DistrictToCommunityMap_t = map<rstring, list<rstring>> districtToCommunityMap;
+
+// Following few lines are for defining the Streams schema for the
+// geojson data file for UAE. This is somewhat a complex JSON structure.
+// I obtained the file for tests. I then did a dos2unix on that file.
+// Then, I made that multi-line file into a single-line file using this command.
+//
+// https://www.theunixschool.com/2011/08/5-different-ways-to-join-all-lines-in.html
+// paste -s --delimiters="" uae_communities_multi_line,json > uae_communities_single_line,json
+//
+// After that, I ran the createTypes.sh from the streamsx.json toolkit to get the following
+// Streams schema lines.
+//
+// JSON test data file has a field name called type which is a reserved word.
+// We will dynamically change it to myType in the main composite SPL code.
+// That restricted word appears in 4 different places in the JSON file.
+type Geometry_t = list<list<list<float64>>> coordinates, rstring myType;
+
+// This schema has a few nullable attributes.
+type Properties_t = optional<rstring> CREATED_BY, int64 COMMUNITY1, optional<rstring> SURVEY_DAT, 
+	rstring CNAME_EN, optional<rstring> CREATE_DAT, float64 SHAPE_Area, 
+	optional<rstring> RTA_ASSET_, int64 SHAPE_FID, optional<rstring> FIELD_COMM, 
+	float64 SHAPE_Leng, int64 COMMUNITY_, optional<rstring> RTA_COMMEN, rstring CNAME_AR;
+
+type Features_t = Geometry_t geometry, rstring myType, Properties_t properties;
+
+type CrsProperties_t= rstring name;
+
+type Crs_t = rstring myType, CrsProperties_t properties;
+
+type CommunityGeoJson_t = rstring myType, Crs_t crs, list<Features_t> features;
+
+// Schema for the community id to community name map.
+// Key: Community Id, Value: Community Name.
+type CommunityIdToNameMap_t = map<rstring, rstring> communityIdToNameMap;
+
+// Schema for the community name to community id map.
+// Key: Community Name, Value: Community Id.
+type CommunityNameToIdMap_t = map<rstring, rstring> communityNameToIdMap;
+
+// Schema for the WKT geometry formatted data map for all the communities.
+// Key: Community Name, Value: Polygon in Wkt Geometry string.
+type CommunityWktGeometryMap_t = map<rstring, rstring> communityWktGeometryMap;
+
+// Schema for the Fence Data to be sent to the Geofence operator.
+type FenceData_t = rstring fenceId, int32 fenceUpdateAction, rstring fencePolygon ;
+
+// Schema for the current community ids chosen for taxi metrics display.
+type CommunityIdsChosenForTaxiMetricsDisplay_t = 
+	list<rstring> communityIdsChosenForTaxiMetricsDisplay;
+// This schema defines community id, community name and the correspnding district in one place.
+type CommunityIdNameDistrict_t = rstring communityId, rstring communityName, rstring district;
+
+// Schema for dynamically changing the metrics window parameters.
+type MetricsWindowParameters_t = float64 metricsWindowPeriod, float64 metricsWindowSlidingPeriod,
+	float64 metricsWindowContentsEvictionPeriod, float64 longTermMetricsWindowPeriod;
+
+// Schema for the taxi count Metrics trend.
+type TaxiCountMetricsTrend_t = rstring communityId, rstring communityName, 
+	list<rstring> time, list<int32> hired, list<int32> available;
+
+// Schema for the taxi booking Metrics trend.
+type TaxiBookingMetricsTrend_t = rstring communityId, rstring communityName, 
+	list<rstring> time, list<int32> currentNew, list<int32> served,
+	list<int32> unserved, list<int32> canceled, list<int32> futureNew;
+
+// Schema for Supply & Demand alert.
+type SupplyAndDemandAlert_t = rstring time, rstring communityId, 
+	rstring communityName, rstring districtName, 
+	int32 hired, int32 available, int32 alertPercentage;
+
+// The following is the schema of the first output stream for the
+// WebSocketSource operator. The first three attributes are
+// very important and the other ones are purely optional if some
+// scenarios really require them.
+// rstring strData --> String based data (plain text, JSON and XML) received from the remote client.
+// blob blobData --> Binary based data (audio, video, image etc.) received from the remote client.
+// uint64 clientSessionId --> Unique identifier of a remote client as assigned by this operator. 
+// rstring clientIpAddress --> IP address of the remote client from where the data was received.
+// rstring clientPort --> Port of the remote client from where the data was received.
+// rstring urlContextPath --> Context path present in the URL being accessed by a client.
+// boolean isWebSocketClient --> True indicates that the remote client holds a WebSocket connection.
+// boolean isHttpClient --> True indicates that the remote client holds a Http connection.
+// rstring httpRequestMethodName --> It tells us about the HTTP request whether it is a GET or PUT or POST.
+// map<rstring, rstring> urlQueryStringKeyValuePairs --> It has the HTTP GET URL query string key/value pairs.
+// map<rstring, rstring> httpRequestHeaders --> If HTTP clients are going to send data here, this 
+//                                              attribute can be there to fetch the HTTP request headers.
+// rstring fullUrlBeingAccessedByTheClient --> Full URL that the client used to access this operator.
+// rstring fileNameInUrlForHttpGet --> Name of the file that the client wants to get via this HTTP GET url.
+// uint64 totalDataItemsReceived --> Total data items received so far from a given clientSessionId.
+// uint64 totalDataBytesReceived --> Number of data bytes received so far from a given clientSessionId.
+// uint64 totalDataItemsSent --> Total data items sent so far to a given clientSessionId.
+// uint64 totalDataBytesSent --> Number of data bytes sent so far to a given clientSessionId.
+type ReceivedData_t = rstring strData, blob blobData, uint64 clientSessionId, 
+	rstring clientIpAddress, rstring clientPort, rstring urlContextPath,
+	boolean isWebSocketClient, boolean isHttpClient,
+	rstring httpRequestMethodName,
+	map<rstring, rstring> urlQueryStringKeyValuePairs,
+	map<rstring, rstring> httpRequestHeaders,
+	rstring fullUrlBeingAccessedByTheClient,
+	rstring fileNameInUrlForHttpGet, 
+	uint64 totalDataItemsReceived, uint64 totalDataBytesReceived,
+	uint64 totalDataItemsSent, uint64 totalDataBytesSent;
+	
+// The following schema is for the second output stream of the
+// WebSocketSource operator. It has one attribute indicating
+// the a given remote client (clientSessionId) which ended the session.
+type EndOfClientSessionSignal_t = uint64 clientSessionId;
+
+// The following schema is for the "data result/response back to the client" 
+// input port that can be optionally specified in the WebSocketSource operator.
+// This input port can carry the response to be sent to a remote client from
+// where a data item was just now received.
+// If a given application receives data from the remote HTTP clients, then
+// it is allowed to have a map attribute named httpResponseHeaders.
+// Application logic can set any custom HTTP response headers through
+// this map. Inside the WebSocketSource operator logic, if this map is 
+// found to be not empty, then the custom headers in this map will be
+// assigned as part of the HTTP response sent to the remote HTTP client.
+type ResponseData_t = rstring strData, blob blobData, 
+	uint64 clientSessionId, map<rstring, rstring> httpResponseHeaders;
+
+// The following schema defines the required attribute for the optional
+// input stream of the WebSocketSource operator. This input stream
+// allows for dynamically changing the client whitelist when the 
+// application is running.
+type ClientWhitelist_t = list<rstring> clientWhitelist;
+
+
+// Commonly used functions are defined below.
+//
+// This function will receive a local timestamp as input and then
+// return a local time string like this: 2018/12/03T20:14:59.163
+public rstring getLocalTimeString(timestamp ts) {
+	mutable rstring str = "";
+	str += (rstring)year(ts) + "/";
+	// It is from 0 to 11. So, add 1 to it.
+	uint32 monthNow = month(ts) + 1u;
+	
+	if (monthNow < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)monthNow + "/";
+	
+	// It is from 1 to 31.
+	uint32 dayNow = day(ts);
+	
+	if (dayNow < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)dayNow + "T";
+	
+	// It is from 0 to 23.
+	uint32 hourNow = hour(ts);
+
+	if (hourNow < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)hourNow + ":";
+	
+	uint32 min = minute(ts);
+	
+	if (min < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)min + ":";
+	
+	uint32 sec = second(ts);
+	
+	if (sec < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)sec;
+	return(str);
+} // End of getLocalTimeString
+
+// This function will receive a UTC/GMT timestamp as input and then
+// return a UTC/GMT time string like this: 2018/12/03T20:14:59.163
+public rstring getUtcTimeString(timestamp ts) {
+	mutable rstring str = "";
+	str += (rstring)gmyear(ts) + "/";
+	// It is from 0 to 11. So, add 1 to it.
+	uint32 monthNow = gmmonth(ts) + 1u;
+	
+	if (monthNow < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)monthNow + "/";
+	
+	// It is from 1 to 31.
+	uint32 dayNow = gmday(ts);
+	
+	if (dayNow < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)dayNow + "T";
+	
+	// It is from 0 to 23.
+	uint32 hourNow = gmhour(ts);
+
+	if (hourNow < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)hourNow + ":";
+	
+	uint32 min = gmminute(ts);
+	
+	if (min < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)min + ":";
+	
+	uint32 sec = gmsecond(ts);
+	
+	if (sec < 10u) {
+		str += "0";
+	}
+	
+	str += (rstring)sec;
+	return(str);
+} // End of getUtcTimeString
+
+// We will receive the taxis hired and the taxis available data and
+// compute the ratio of (TaxisHired/TotalTaxis) and check if it is
+// at or below the user defined threshold value. It will return
+// insert an alert tuple in a list when falling below the threshold.
+public void updateSupplyAndDemandAlertData(
+	mutable list<SupplyAndDemandAlert_t> supplyAndDemandDataForWebApp,
+	rstring communityId, rstring communityName, rstring districtName, 
+	rstring time, int32 hiredCnt, int32 availableCnt, float64 threshold) {
+	int32 totalTaxis = hiredCnt + availableCnt;	
+	if(totalTaxis <= 0) {
+		return;
+	}
+	
+	float64 taxisInUseRatio = (float64)hiredCnt/(float64)totalTaxis;
+	float64 taxisAvailableInPercentage = (1.0 - taxisInUseRatio) * 100.00;
+	
+	// If the available taxis percentage is at or below the threshold, that is a cause for an alert.
+	if(taxisAvailableInPercentage <= threshold) {
+		mutable SupplyAndDemandAlert_t alertTuple = {};
+		alertTuple.time = time;
+		alertTuple.communityId = communityId;
+		alertTuple.communityName = communityName;
+		alertTuple.districtName = districtName;
+		alertTuple.hired = hiredCnt;
+		alertTuple.available = availableCnt;
+		alertTuple.alertPercentage = (int32)taxisAvailableInPercentage;
+		// Add this alert record to to list passed to this function.
+		appendM(supplyAndDemandDataForWebApp, alertTuple);
+		
+		// Too keep the supply & demand alert list to a manageable size,
+		// we will only keep the most recent 1000 alerts.
+		int32 sizeOfList = size(supplyAndDemandDataForWebApp);
+		
+		if(sizeOfList > 1000) {
+			int32 itemsToBeRemoved = sizeOfList - 1000;
+			supplyAndDemandDataForWebApp = 
+				remove(supplyAndDemandDataForWebApp, 0, itemsToBeRemoved-1);
+		}
+	}
+} // End of getSupplyDemandThresholdAlert
+
+// This function reads the text or binary content of a given file to be sent
+// back as a response for a HTTP GET request.
+public stateful void readFileContentForHttpGet(rstring fileName, boolean isBinaryFile, 
+	mutable uint64 contentLength, mutable rstring textContent, 
+	mutable blob binaryContent, mutable int32 err) {
+	// Let us get the size of the file.
+	fstat(fileName, "size", contentLength, err);
+
+	if (err != 0) {
+		// Unable to get the file content length.
+		return;
+	}	
+		
+	uint64 handle = fopen (fileName, "r", err);
+	
+	if (err != 0) {
+		// Unable to open the file for read.
+		return;
+	}	
+	
+	// We will read the file content into a blob.
+	freadfile(binaryContent, handle, err);
+	mutable int32 closeError = 0;
+	fclose(handle, closeError);
+	
+	if (err != 0) {
+		// We encountered a file read error.
+		return;
+	}
+	
+	if(isBinaryFile == true) {
+		// We are done if it is a binary content.
+		return;
+	}
+	
+	// It is not a binary file. 
+	// Make textual content out of the blob we read above.
+	textContent = convertFromBlob(binaryContent);
+	// Reset the blob variable.
+	clearM(binaryContent);
+} // End of readFileContentForHttpGet
+
+// This function loads the select community HTML file contents and then
+// it customizes the form fields with application-specific data values.
+public stateful void populateSelectCommunityFormFields(rstring fileName, boolean isBinaryFile, 
+	mutable uint64 contentLength, mutable rstring textContent, 
+	mutable blob binaryContent, mutable int32 err, 
+	map<rstring, list<rstring>> districtToCommunityMap,
+	map<rstring, rstring> communityNameToIdMap,
+	float64 longTermMetricsWindowPeriod, 
+	list<rstring> districtNamesChosenForTaxiMetricsDisplay,
+	list<rstring> communityNamesChosenForTaxiMetricsDisplay) {
+	// We should have the two maps passed to this function have non-zero size.
+	if(size(districtToCommunityMap) <= 0) {
+		err = 101;
+		return;
+	} else if(size(communityNameToIdMap) <= 0) {
+		err = 102;
+		return;
+	}
+
+	// Let us read the HTML file contents.
+	readFileContentForHttpGet(fileName, isBinaryFile, contentLength, 
+		textContent, binaryContent, err);
+		
+	if(err != 0) {
+		return;
+	}
+	
+	// We have correctly read the HTML template content.
+	// We have to now populate three different fields in the HTML form.
+	//
+	// First one to populate is a text area where we can display which
+	// districts or community names are currently being monitored.
+	mutable rstring substitutionString = "";
+	mutable list<rstring> sortedList = [];
+
+	if(size(districtNamesChosenForTaxiMetricsDisplay) > 0) {
+		sortedList = sort(districtNamesChosenForTaxiMetricsDisplay);
+		for(rstring str in sortedList) {
+			if(substitutionString != "") {
+				substitutionString += ", ";
+			} else {
+				substitutionString = "Districts: ";
+			}
+			
+			substitutionString += str;
+		}
+	} else if(size(communityNamesChosenForTaxiMetricsDisplay) > 0) {
+		sortedList = sort(communityNamesChosenForTaxiMetricsDisplay);
+		for(rstring str in sortedList) {
+			if(substitutionString != "") {
+				substitutionString += ", ";
+			} else {
+				substitutionString = "Communities: ";
+			}
+			
+			substitutionString += str;
+		}	
+	} else {
+		substitutionString = "None";
+	}
+	
+	// Do the string replacement by changing the placeholder AAA that we have in the HTML file content.	
+	textContent = regexReplacePerl(textContent, 'AAA', substitutionString, false);
+	substitutionString = "";
+
+	// Let us now populate the label that shows the current monitoring interval in minutes.
+	substitutionString = (rstring)(longTermMetricsWindowPeriod/60.00);
+	// Do the string replacement by changing the placeholder MMM that we have in the HTML file content.	
+	textContent = regexReplacePerl(textContent, 'MMM', substitutionString, true);
+	substitutionString = "";
+
+	// Let us now populate the multi-select dropdown box where we can 
+	// display all the community names. We are going to assign the 
+	// community id as the value of each entry and the community name as
+	// the display item to be shown for the user to select from.
+	sortedList = keys(communityNameToIdMap);
+	sortM(sortedList);
+	
+	for(rstring str in sortedList) {
+		substitutionString += '<option value="' + 
+		communityNameToIdMap[str] + '">' +
+		str	+ '</option>' + '\n';
+	}
+
+	// Do the string replacement by changing the placeholder BBB that we have in the HTML file content.	
+	textContent = regexReplacePerl(textContent, 'BBB', substitutionString, true);
+	substitutionString = "";
+	
+	// Let us now populate the multi-select dropdown box where we can 
+	// display all the district names. We are going to assign the 
+	// district name both as the value of each entry and the 
+	// display item to be shown for the user to select from.
+	sortedList = keys(districtToCommunityMap);
+	sortM(sortedList);	
+	
+	for(rstring str in sortedList) {
+		substitutionString += '<option value="' + str + '">' +
+			str + '</option>' + '\n';
+	}
+
+	// Do the string replacement by changing the placeholder CCC that we have in the HTML file content.	
+	textContent = regexReplacePerl(textContent, 'CCC', substitutionString, true);
+} // End of populateSelectCommunityFormFields
+
+// This function processes the CADS (Community And District Selection) data that was
+// selected by the user from the browser application GUI.
+public void processCommunityAndDistrictSelection(rstring cadsCmd, 
+ map<rstring, rstring> communityToDistrictMap, 
+ map<rstring, list<rstring>> districtToCommunityMap,
+ map<rstring, rstring> communityIdToNameMap, 
+ map<rstring, rstring> communityNameToIdMap,
+ mutable float64 monitoringInterval,
+ mutable list<rstring> districtNamesChosenForTaxiMetricsDisplay,
+ mutable list<rstring> communityNamesChosenForTaxiMetricsDisplay, 
+ mutable list<rstring> communityIdsChosenForTaxiMetricsDisplay,
+ mutable int32 err) {
+ 	err = 0;
+ 	
+ 	// CADS commands sent from the browser application follow the URL encoded format.
+ 	// command=CommunityAndDistrictSelection&startStopMonitoring=2&userSelection=BUR DUBAI,DEIRA,DUBAI LAND&monitoringInterval=10
+	// command=CommunityAndDistrictSelection&startStopMonitoring=3&userSelection=126,333,919,861,337&monitoringInterval=7
+ 	// Let us tokenize it using &.
+ 	list<rstring> tokens1 = tokenize(cadsCmd, "&", false);
+ 	
+ 	// We expect four tokens as shown in the example above.
+ 	if(size(tokens1) < 4) {
+ 		err = 101;
+ 		return;
+ 	}	
+
+	// First token is the command name which was already handled by the caller of this function.
+	// 	
+ 	// Let us now parse the second token to know about one of the following user selections.
+ 	// addCommunityIds, addDistrictNames, removeCommunityIds, removeDistrictNames
+	list<rstring> tokens2 = tokenize(tokens1[1], "=", false);
+	
+	// We expect this to have two tokens.
+	if(size(tokens2) < 2) {
+		err = 102;
+		return;
+	}
+	
+	int32 cadsOption = (int32)tokens2[1];
+	
+	// Let us now parse the third token to get the community ids or the district names.
+	list<rstring> tokens3 = tokenize(tokens1[2], "=", false);
+	
+	// We expect this to have two tokens.
+	if(size(tokens3) < 2) {
+		err = 103;
+		return;
+	}	
+	
+	rstring cadsValue = tokens3[1];
+
+	// Let us now parse the fourth token to get the monitoring interval in minutes.
+	list<rstring> tokens4 = tokenize(tokens1[3], "=", false);
+	
+	// We expect this to have two tokens.
+	if(size(tokens4) < 2) {
+		err = 104;
+		return;
+	}	
+	
+	// We have to convert the minutes value into seconds.
+	monitoringInterval = (float64)tokens4[1] * 60.0;
+
+	// Now comees the main logic for doing the bookeeping.	 
+	mutable boolean dataUpdated = false;
+	
+	// This tuple tells us which community ids and district names are
+	// chosen by the user for computing (add) or for not computing (remove)
+	// their real-time taxi metrics. This data is entered by the user in the
+	// web form provided by the HTTP custom-built web application.
+	// Users can give either a single or multiple community ids and/or district names.
+	// When giving multiple entries, they have to be separated by comma.
+	//
+	// Since the web form allows the user to enter the following 4 values, we will
+	// simply execute the user's wish in that order.
+	//
+	// addCommunityIds, addDistrictNames, removeCommunityIds, removeDistrictNames
+	//
+	// Depending on what the user enters, each field has the possibility to 
+	// nullify what the user entered in the previous field(s).
+	//
+	// 1) Does the user want to add community ids for taxi metrics displaying?
+	if(cadsOption == 1) {
+		// Users are allowed to give multiple community ids separated by comma.
+		// Let us tokenize them now.
+		list<rstring> tokens = csvTokenize(cadsValue);
+		
+		for(rstring id in tokens) {
+			// Is this a valid community id?
+			if(has(communityIdToNameMap, id) == true) {
+				// This is a valid community id.
+				// Before adding this, let us remove ALL if it exists.
+				list<int32> indices = find(communityIdsChosenForTaxiMetricsDisplay, "ALL");
+				
+				if(size(indices) > 0) {
+					// Remove the indices that have "ALL".
+					communityIdsChosenForTaxiMetricsDisplay = 
+						remove(communityIdsChosenForTaxiMetricsDisplay, indices);
+					dataUpdated = true;
+				}
+
+				// Add this specific community id to be used in the 
+				// Taxi Metrics displaying.									
+				// If this community id is not there already, add it.
+				// This check will avoid adding duplicates.
+				if(has(communityIdsChosenForTaxiMetricsDisplay, id) == false) {
+					appendM(communityIdsChosenForTaxiMetricsDisplay, id);
+					dataUpdated = true;
+				}
+			} else if (upper(id) == "ALL") {
+				if(has(communityIdsChosenForTaxiMetricsDisplay, upper(id)) == false) {
+					// User wants to use all the community ids for Taxi Metrics displaying.
+					// We can clear the list and simply add ALL.
+					clearM(communityIdsChosenForTaxiMetricsDisplay);
+					appendM(communityIdsChosenForTaxiMetricsDisplay, "ALL");
+					dataUpdated = true;
+				}
+			} else {
+				// This is an invalid community id.
+				appTrc(Trace.error, "WCRH-->Add community ids-->Invalid community id '" + id  + 
+					"' given by the user was ignored.");
+			}
+		} // End of for loop.
+		
+		if(dataUpdated == true) {
+			appTrc(Trace.info, "WCRH-->Add community ids-->Community id(s) given by the user: '" +
+				cadsValue + "', Community id(s) currently used for the taxi metrics display: " + 
+				(rstring)communityIdsChosenForTaxiMetricsDisplay);
+				
+			// Since we have updated the data based on the user input for community, let us
+			// populate the list that we have to represent all the community names being currently monitored.
+			clearM(communityNamesChosenForTaxiMetricsDisplay);
+			
+			if(communityIdsChosenForTaxiMetricsDisplay[0] == "ALL") {
+				appendM(communityNamesChosenForTaxiMetricsDisplay, "All communities.");
+			} else {			
+				for(rstring key in communityIdsChosenForTaxiMetricsDisplay) {
+					// If this community name is not already there, add it to the following list.
+					list<int32> positions = 
+						find(communityNamesChosenForTaxiMetricsDisplay, communityIdToNameMap[key]);
+					
+					if(size(positions) <= 0) {
+						appendM(communityNamesChosenForTaxiMetricsDisplay, 
+							communityIdToNameMap[key]);
+					}
+				}
+			}
+			
+			// User changed the way the taxi monitoring is done based on community names.
+			// That means, we can empty the other list holding the district names that probably were being monitored earlier.
+			clearM(districtNamesChosenForTaxiMetricsDisplay);
+		}
+	} // End of if(cadsOption == 1)
+	
+	dataUpdated = false;
+
+	// 2) Does the user want to add district names for taxi metrics displaying?
+	if(cadsOption == 2) {
+		// Users are allowed to give multiple district names separated by comma.
+		// Let us tokenize them now.
+		list<rstring> tokens = csvTokenize(cadsValue);
+		
+		for(rstring name in tokens) {
+			// Is this a valid district name?
+			if(has(districtToCommunityMap, upper(name)) == true) {
+				// This is a valid district name.
+				// Get all the community names in the current district name.
+				list<rstring> communityNamesInDistrict = districtToCommunityMap[upper(name)];
+				// Before adding this, let us remove ALL if it exists.
+				list<int32> indices = find(communityIdsChosenForTaxiMetricsDisplay, "ALL");
+				
+				if(size(indices) > 0) {
+					// Remove the indices that have "ALL".
+					communityIdsChosenForTaxiMetricsDisplay = 
+						remove(communityIdsChosenForTaxiMetricsDisplay, indices);
+					dataUpdated = true;
+				}
+				
+				// Add all the community ids in this district to be used in 
+				// the Taxi Metrics displaying.
+				for(rstring cName in communityNamesInDistrict) {
+					// Using the community name, get the community id.
+					if(has(communityNameToIdMap, cName) == true) {
+						rstring id = communityNameToIdMap[cName];
+						
+						// If this community id is not there already, add it.
+						// This check will avoid adding duplicates.
+						if(has(communityIdsChosenForTaxiMetricsDisplay, id) == false) {
+							appendM(communityIdsChosenForTaxiMetricsDisplay, id);
+							dataUpdated = true;
+						}
+					} else {
+						// This is an invalid community name.
+						appTrc(Trace.error, "WCRH-->Add district names-->Invalid community name '" + cName  + 
+							"' found in the district '" + upper(name) + "' was ignored.");										
+					}
+				} // End of inner for loop.
+			} else if (upper(name) == "ALL") {
+				if(has(communityIdsChosenForTaxiMetricsDisplay, upper(name)) == false) {
+					// User wants to use all the community ids in all the 
+					// district names for Taxi Metrics displaying.
+					// We can clear the list and simply add ALL.
+					clearM(communityIdsChosenForTaxiMetricsDisplay);
+					appendM(communityIdsChosenForTaxiMetricsDisplay, "ALL");
+					dataUpdated = true;
+				}
+			} else {
+				// This is an invalid district name.
+				appTrc(Trace.error, "WCRH-->Add district names-->Invalid district name '" + 
+					upper(name)  + "' given by the user was ignored.");
+			}
+		} // End of outer for loop.
+		
+		if(dataUpdated == true) {
+			appTrc(Trace.info, "WCRH-->Add district names-->District(s) given by the user: '" + 
+				cadsValue + "', Community id(s) currently used for the taxi metrics display: " + 
+				(rstring)communityIdsChosenForTaxiMetricsDisplay);
+
+			// Since we have updated the data based on the user input for district, let us
+			// populate the list that we have to represent all the district names being currently monitored.
+			clearM(districtNamesChosenForTaxiMetricsDisplay);
+			
+			if(communityIdsChosenForTaxiMetricsDisplay[0] == "ALL") {
+				appendM(districtNamesChosenForTaxiMetricsDisplay, "All districts.");
+			} else {
+				for(rstring key in communityIdsChosenForTaxiMetricsDisplay) {
+					// Get the district name for this community.
+					rstring districtName = communityToDistrictMap[communityIdToNameMap[key]];
+					// If this district name is not already there, add it to the following list.
+					list<int32> positions = find(districtNamesChosenForTaxiMetricsDisplay, districtName);
+					
+					if(size(positions) <= 0) {
+						appendM(districtNamesChosenForTaxiMetricsDisplay, districtName);
+					}				
+				}
+			}
+			
+			// User changed the way the taxi monitoring is done based on district names.
+			// That means, we can empty the other list holding the community names that probably were being monitored earlier.
+			clearM(communityNamesChosenForTaxiMetricsDisplay);
+		}
+	} // End of if(cadsOption == 2)
+
+	dataUpdated = false;
+
+	// 3) Does the user want to remove community ids from being used for displaying taxi metrics?
+	if(cadsOption == 3) {
+		// Users are allowed to give multiple community ids separated by comma.
+		// Let us tokenize them now.
+		list<rstring> tokens = csvTokenize(cadsValue);
+		
+		for(rstring id in tokens) {
+			// Is this a valid community id?
+			if(has(communityIdToNameMap, id) == true) {
+				// This is a valid community id.
+				// Before removing this, let us remove ALL if it exists.
+				list<int32> indices = find(communityIdsChosenForTaxiMetricsDisplay, "ALL");
+				
+				if(size(indices) > 0) {
+					// We have been processing "ALL" community ids thus far.
+					// Let us remove that by clearing the list.
+					clearM(communityIdsChosenForTaxiMetricsDisplay);
+					dataUpdated = true;
+						
+					// We want to go from "ALL" to allowing every community id except
+					// for the current one in our outer for loop.
+					// Let us add all the community ids except for the id being
+					// handled in the outer for loop.
+					for(rstring myId in communityIdToNameMap) {
+						if(myId != id) {
+							appendM(communityIdsChosenForTaxiMetricsDisplay, myId);
+							dataUpdated = true;
+						}
+					} // End of inner for loop.
+					
+					dataUpdated = true;
+				} else {
+					// Remove this specific community id from being used for  
+					// the Taxi Metrics displaying.
+					list<int32> idIndices = 
+						find(communityIdsChosenForTaxiMetricsDisplay, id);
+					
+					if(size(idIndices) > 0) {
+						// Remove the indices that have this id.
+						communityIdsChosenForTaxiMetricsDisplay = 
+							remove(communityIdsChosenForTaxiMetricsDisplay, idIndices);
+						dataUpdated = true;
+					}
+				}
+			} else if (upper(id) == "ALL") {
+				// User wants to remove all the community ids from being
+				// used for the Taxi Metrics displaying.
+				// We can clear the list.
+				clearM(communityIdsChosenForTaxiMetricsDisplay);
+				dataUpdated = true;
+			} else {
+				// This is an invalid community id.
+				appTrc(Trace.error, "WCRH-->Remove community ids-->Invalid community id '" + id  + 
+					"' given by the user was ignored.");
+			}
+		} // End of the outer for loop.
+		
+		if(dataUpdated == true) {
+			appTrc(Trace.info, "WCRH-->Remove community ids-->Community id(s) given by the user: '" +
+				cadsValue + "', Community id(s) currently used for the taxi metrics display: " + 
+				(rstring)communityIdsChosenForTaxiMetricsDisplay);
+			
+			// Since we have updated the data based on the user input for community, let us
+			// populate the list that we have to represent all the community names being currently monitored.
+			clearM(communityNamesChosenForTaxiMetricsDisplay);
+			
+			if(size(communityIdsChosenForTaxiMetricsDisplay) > 0) {
+				for(rstring key in communityIdsChosenForTaxiMetricsDisplay) {
+					// If this community name is not already there, add it to the following list.
+					list<int32> positions = 
+						find(communityNamesChosenForTaxiMetricsDisplay, communityIdToNameMap[key]);
+					
+					if(size(positions) <= 0) {
+						appendM(communityNamesChosenForTaxiMetricsDisplay, 
+							communityIdToNameMap[key]);
+					}
+				}
+			}
+			
+			// User changed the way the taxi monitoring is done based on community names.
+			// That means, we can empty the other list holding the district names that probably were being monitored earlier.
+			clearM(districtNamesChosenForTaxiMetricsDisplay);
+		}
+	} // End of if(cadsOption == 3)
+
+	dataUpdated = false;
+
+	// 4) Does the user want to remove district names from being used for taxi metrics displaying?
+	if(cadsOption == 4) {
+		// Users are allowed to give multiple district names separated by comma.
+		// Let us tokenize them now.
+		list<rstring> tokens = csvTokenize(cadsValue);
+		
+		for(rstring name in tokens) {
+			// Is this a valid district name?
+			if(has(districtToCommunityMap, upper(name)) == true) {
+				// This is a valid district name.
+				// Get all the community names in the current district name.
+				list<rstring> communityNamesInDistrict = districtToCommunityMap[upper(name)];
+				// Before removing this, let us remove ALL if it exists.
+				list<int32> indices = find(communityIdsChosenForTaxiMetricsDisplay, "ALL");
+				
+				if(size(indices) > 0) {
+					// We have been processing "ALL" community ids thus far.
+					// Let us remove that by clearing the list.
+					clearM(communityIdsChosenForTaxiMetricsDisplay);
+					dataUpdated = true;
+						
+					// We want to go from "ALL" to allowing every community id except
+					// for the community ids in the current district name in our outer for loop.
+					// Let us add all the community ids except for the ids of the communities in
+					// the district name being handled in the outer for loop.
+					for(rstring id in communityIdToNameMap) {
+						list<int32> indices = find(communityNamesInDistrict, communityIdToNameMap[id]);
+						
+						// This community id is not in that district. We can do Taxi Metrics for this id,
+						if(size(indices) <= 0) {
+							appendM(communityIdsChosenForTaxiMetricsDisplay, id);
+							dataUpdated = true;
+						}
+					} // End of inner for loop.										
+				} else {
+					// Remove all the community ids belonging to this district from 
+					// being used for the Taxi Metrics displaying.
+					for(rstring cName in communityNamesInDistrict) {
+						if(has(communityNameToIdMap, cName) == true) {
+							list<int32> idIndices = 
+								find(communityIdsChosenForTaxiMetricsDisplay, communityNameToIdMap[cName]);
+							
+							if(size(idIndices) > 0) {
+								// Remove the indices that have this id.
+								communityIdsChosenForTaxiMetricsDisplay = 
+									remove(communityIdsChosenForTaxiMetricsDisplay, idIndices);
+								dataUpdated = true;
+							}
+						}
+					}										
+				}
+			} else if (upper(name) == "ALL") {
+				// User wants to remove all the districts i.e all the community ids from being
+				// used for the Taxi Metrics displaying.
+				// We can clear the list.
+				clearM(communityIdsChosenForTaxiMetricsDisplay);
+				dataUpdated = true;
+			} else {
+				// This is an invalid district name.
+				appTrc(Trace.error, "WCRH-->Remove district names-->Invalid district name '" + 
+					upper(name)  + "' given by the user was ignored.");
+			}
+		} // End of the outer for loop.
+		
+		if(dataUpdated == true) {
+			appTrc(Trace.info, "WCRH-->Remove district names-->District name(s) given by the user: '" +
+				cadsValue + "', Community id(s) currently used for the taxi metrics display: " + 
+				(rstring)communityIdsChosenForTaxiMetricsDisplay);
+				
+			// Since we have updated the data based on the user input for district, let us
+			// populate the list that we have to represent all the district names being currently monitored.
+			clearM(districtNamesChosenForTaxiMetricsDisplay);
+			
+			if(size(communityIdsChosenForTaxiMetricsDisplay) > 0) {
+				for(rstring key in communityIdsChosenForTaxiMetricsDisplay) {
+					// Get the district name for this community.
+					rstring districtName = communityToDistrictMap[communityIdToNameMap[key]];
+					// If this district name is not already there, add it to the following list.
+					list<int32> positions = find(districtNamesChosenForTaxiMetricsDisplay, districtName);
+					
+					if(size(positions) <= 0) {
+						appendM(districtNamesChosenForTaxiMetricsDisplay, districtName);
+					}				
+				}
+			}
+			
+			// User changed the way the taxi monitoring is done based on district names.
+			// That means, we can empty the other list holding the community names that probably were being monitored earlier.
+			clearM(communityNamesChosenForTaxiMetricsDisplay);
+		}
+	} // End of if(cadsOption == 4) 
+} // End of processCommunityAndDistrictSelection 
+
+// This function updates the taxi count metrics map with a new data point.
+public void updateTaxiCountMetricsTrendMap(
+	mutable map<rstring, TaxiCountMetricsTrend_t> taxiCountMetricsTrendMap,
+	rstring communityId, rstring communityName, rstring time, int32 hired, int32 available) {
+	// Time value sent here is in this format.	
+	// 2020/07/04T07:59:42
+	// We have to parse the hour:min:sec part from that as needed for the trend graph x axis.
+	list<rstring> tokens1 = tokenize(time, "T", false);
+	
+	if(size(tokens1) < 2) {
+		// We don't have the time in correct format. Skip this.
+		return;
+	} 
+	
+	// Let us parse the time portion now to get individual hh, mm and ss fields.
+	rstring timeString = tokens1[1];
+	// Let us update the map now.
+	mutable TaxiCountMetricsTrend_t trendTuple = {};
+	
+	if(has(taxiCountMetricsTrendMap, communityId) == true) {
+		// This community name exists in the map.
+		trendTuple = taxiCountMetricsTrendMap[communityId];
+		
+		// We have to keep only certain number of trend data points (e-g: 15).
+		// Let us prune the oldest data point if we have to make room for the new one.
+		if(size(trendTuple.time) >= 15) {
+			// Remove the oldest one.
+			removeM(trendTuple.time, 0);
+			removeM(trendTuple.hired, 0);
+			removeM(trendTuple.available, 0);
+		}
+	}
+	
+	// Insert or Update it in the map.	
+	trendTuple.communityId = communityId;
+	trendTuple.communityName = communityName;	
+	appendM(trendTuple.time, timeString);
+	appendM(trendTuple.hired, hired);
+	appendM(trendTuple.available, available);
+	insertM(taxiCountMetricsTrendMap, communityId, trendTuple);	
+}
+
+// This function updates the taxi count metrics map with a new data point.
+public void updateTaxiBookingMetricsTrendMap(
+	mutable map<rstring, TaxiBookingMetricsTrend_t> taxiBookingMetricsTrendMap,
+	rstring communityId, rstring communityName, 
+	rstring time, int32 currentNew, int32 served,
+	int32 unserved, int32 canceled, int32 futureNew) {
+	// Time value sent here is in this format.	
+	// 2020/07/04T07:59:42
+	// We have to parse the hour:min:sec part from that as needed for the trend graph x axis.
+	list<rstring> tokens1 = tokenize(time, "T", false);
+	
+	if(size(tokens1) < 2) {
+		// We don't have the time in correct format. Skip this.
+		return;
+	} 
+	
+	// Let us parse the time portion now to get individual hh, mm and ss fields.
+	rstring timeString = tokens1[1];
+	// Let us update the map now.
+	mutable TaxiBookingMetricsTrend_t trendTuple = {};
+	
+	if(has(taxiBookingMetricsTrendMap, communityId) == true) {
+		// This community name exists in the map.
+		trendTuple = taxiBookingMetricsTrendMap[communityId];
+		
+		// We have to keep only certain number of trend data points (e-g: 15).
+		// Let us prune the oldest data point if we have to make room for the new one.
+		if(size(trendTuple.time) >= 15) {
+			// Remove the oldest one.
+			removeM(trendTuple.time, 0);
+			removeM(trendTuple.currentNew, 0);
+			removeM(trendTuple.served, 0);
+			removeM(trendTuple.unserved, 0);
+			removeM(trendTuple.canceled, 0);
+			removeM(trendTuple.futureNew, 0);
+		}
+	}
+	
+	// Insert or Update it in the map.	
+	trendTuple.communityId = communityId;
+	trendTuple.communityName = communityName;	
+	appendM(trendTuple.time, timeString);
+	appendM(trendTuple.currentNew, currentNew);
+	appendM(trendTuple.served, served);
+	appendM(trendTuple.unserved, unserved);
+	appendM(trendTuple.canceled, canceled);
+	appendM(trendTuple.futureNew, futureNew);
+	insertM(taxiBookingMetricsTrendMap, communityId, trendTuple);	
+}
