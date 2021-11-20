@@ -9,7 +9,7 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Sep/21/2020
+Last modified on: Nov/19/2021
 
 This Java operator is an utility operator available in the
 streamsx.websocket toolkit. It can be used to do HTTP(S) post of
@@ -730,7 +730,7 @@ public class HttpPost extends AbstractOperator {
         		urlQueryString = tuple.getString("urlQueryString");
         	}
         	
-        	if(urlQueryString.equalsIgnoreCase("") == false) {
+        	if(urlQueryString.equalsIgnoreCase("") == true) {
         		// No URL query string specified by the user.
         		// We can use just the URL that is configured and
         		// get a new http GET object for us to work with.

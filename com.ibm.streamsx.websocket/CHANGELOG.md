@@ -1,5 +1,9 @@
 Changes
 =======
+## v1.1.0:
+* Nov/19/2021
+* Fixed a problem in the HttpPost operator where the HTTP GET query string not getting sent to the remote server.
+
 ## v1.0.9:
 * Oct/04/2020
 * Added a new example CustomVisualization that shows how to do real-time custom dashboarding of the Streams application results with the help of the WebSocketSource operator.
