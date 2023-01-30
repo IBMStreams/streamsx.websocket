@@ -1,4 +1,4 @@
-#Mon Jan 30 11:04:01 EST 2023
+#Sun Jan 29 18:12:27 EST 2023
 copytosourcelist=
 hreftargetslist=dita/tk$com.ibm.streamsx.websocket/ix$Namespace.xml,dita/tk$com.ibm.streamsx.websocket/ix$Operator.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSource.xml,dita/toolkits/ix$Namespace.xml,dita/toolkits/ix$Operator.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSink.xml,dita/tk$com.ibm.streamsx.websocket/tk$com.ibm.streamsx.websocket.xml,dita/toolkits/toolkits.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$HttpPost.xml,dita/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSendReceive.xml,dita/references/OperatorModel.xml,dita/tk$com.ibm.streamsx.websocket/ns$com.ibm.streamsx.websocket.op.xml
 fullditatopicfile=fullditatopic.list
@@ -37,7 +37,7 @@ codereffile=coderef.list
 keylist=
 codereflist=
 user.input.file.listfile=usr.input.file.list
-user.input.dir=/homes/hny5/sen/tmp99/my-test/streamsx.websocket/doc/spldoc
+user.input.dir=/homes/hny5/sen/tmp99/19Nov2021/test-it/streamsx.websocket/doc/spldoc
 uplevels=../
 tempdirToinputmapdir.relative.value=dita/
 conrefpushfile=conrefpush.list

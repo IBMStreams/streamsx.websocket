@@ -2,7 +2,7 @@
 title: "Toolkit Usage Overview"
 permalink: /docs/user/overview/
 excerpt: "How to use this toolkit."
-last_modified_at: 2020-10-04T11:59:48+01:00
+last_modified_at: 2023-01-30T17:28:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -32,6 +32,7 @@ This toolkit requires the following two open source packages that are not shippe
 2. websocketpp v0.8.2
    - The entire websocketpp directory is copied into the `include` directory of this toolkit. [Around 1.5 MB in size]
        - (It is needed for a successful compilation of the Streams application that uses this toolkit. Please note that these include files will not bloat the size of that application's SAB file  since the `include` directory will not be part of the SAB file.)
+       - You can obtain the official version 0.8.2 from this URL: https://github.com/zaphoyd/websocketpp/archive/refs/tags/0.8.2.tar.gz
 
 3. Open SSL libraries in Linux
    - On all your IBM Streams application machines, you have to ensure that the openssl-devel-1.0.2k-12 and openssl-libs-1.0.2k-12 (or a higher version) are installed. This can be verified via this command: `rpm -qa | grep -i openssl`
@@ -45,7 +46,16 @@ This toolkit is packaged with a comprehensive build.xml automation file that wil
 
 If all those commands ran successfully, this toolkit is ready for use.
 
-If there is no direct Internet access from the IBM Streams machine and if there is a need to go through a proxy server, then the `ant all` command may not work. In that case, you can try this command instead. `ant all -Dwebsocket.archive=file://localhost$(pwd)/ext -Dwebsocket.version=0.8.2 -Dboost.archive.src0=file://localhost$(pwd)/ext/boost-install-files/boost_1_73_0.tar.gz`
+If there is no direct Internet access from the IBM Streams machine and if there is a need to go through a proxy server, then the `ant all` command may not work. In that case, you can try this procedure. 
+
+1. `ant clean-total`
+ 
+2. Now, you can download or wget the two external packages (websocketpp-0.8.2.tar.gz and boost-1.73.0.tar.gz) on your own from any Windows or Mac or Linux box that has Internet connection from the URLs shown above and then you can copy those two tar.gz files manually to your Linux machine's toolkit directory as `streamsx.websocket/ext/0.8.2.tar.gz` and `streamsx.websocket/ext/boost-install-files/boost-1.73.0.tar.gz`.  [Please note that the websocketpp package should be named as `0.8.2.tar.gz`] After that, from inside the streamsx.websocket directory you can run the following "ant all" command with additional parameters.
+ 
+`ant all -Dwebsocket.archive=file://localhost$(pwd)/ext -Dwebsocket.version=0.8.2 -Dboost.archive.src0=file://localhost$(pwd)/ext/boost-install-files/boost-1.73.0.tar.gz`
+ 
+3. If the build is successful, you can now run this command.
+    `ant download-clean`
 
 ## A must do in the Streams applications that will use this toolkit
 i. You must add this toolkit as a dependency in your application.

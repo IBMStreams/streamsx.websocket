@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the streamsx.websocket toolkit operators."
-last_modified_at: 2020-09-22T15:30:48+01:00
+last_modified_at: 2023-01-30T18:01:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -19,6 +19,8 @@ This IBM Streams C++ WebSocket toolkit contains the following operators to enabl
 4. HttpPost (client-based) [To send/post text and binary data via HTTP(S)]
 
 In a Streams application, these operators can either be used together or independent of each other. Since they are built using the most highly regarded C++ Boost library, they are expected to incur low CPU and low memory usage thereby improving the overall throughput with a good cost performance advantage. All the operators mentioned above can support TLS encryption to secure the data exchange and in addition they allow an optional configuration to perform client or server (one-way or two-way) TLS certificate verification/authentication.
+
+Since WebSocket at its low level is based on TCP, you have to be aware of the effects of the Nagle's algorithm which is usually controlled by TCP_NODELAY. This operator has an optional parameter named tcpNoDelay to enable or disable Nagle's algorithm for your needs. The tcpNoDelay parameter will do its job correctly only with the websocketpp library version 0.8.3 and higher.
 
 In addition to reading the details in this section, it is highly recommended to refer to the SPLDoc for this toolkit in order to get a deeper understanding of all the four operators.
 
@@ -59,6 +61,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | wsClientSessionLoggingNeeded | `boolean` | `false` | This parameter specifies whether logging is needed when the remote client session is in progress with this operator. |
 | websocketStaleSessionPurgeInterval | `uint32` | `0` | This parameter specifies periodic time interval in seconds during which any stale client sessions should be purged to free up memory usage. |
 | ipv6Available | `boolean` | `true` | This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSource operator is running. |
+| tcpNoDelay | `boolean` | `false` | This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. |
 | numberOfMessagesToReceiveBeforeAnAck | `uint32` | `23456` | This parameter indicates how many messages are to be received before sending an ack to the remote client. |
 | allowHttpPost | `boolean` | `false` | This parameter specifies whether this operator will allow message reception via HTTP(S) GET/PUT/POST. |
 | newDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that is just about to send a new data item to the remote clients. It should be >= 0.0. |
@@ -114,6 +117,7 @@ Following are the parameters accepted by the WebSocketSendReceive operator. Some
 | newDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that is just about to send a new data item to the remote server. It should be >= 0.0 |
 | noDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote server. It should be >= 0.0 |
 | reconnectionInterval | `float64` | `60.0` | This parameter specifies the periodic time interval (in partial seconds) at which reconnection to the remote WebSocket server will be attempted. It should be > 0.0 |
+| tcpNoDelay | `boolean` | `false` | This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. |
 
 ### WebSocketSendReceive operator's custom output functions
 Following are the custom output functions supported by the WebSocketSendReceive operator. These functions can be called as needed within the output clause of this operator's SPL invocation code.
@@ -153,6 +157,7 @@ Following are the parameters accepted by the WebSocketSink operator. Some parame
 | wsClientSessionLoggingNeeded | `boolean` | `false` | This parameter specifies whether logging is needed when the remote client session is in progress with this operator. |
 | websocketStaleSessionPurgeInterval | `uint32` | `0` | This parameter specifies periodic time interval in seconds during which any stale client sessions should be purged to free up memory usage. |
 | ipv6Available | `boolean` | `true` | This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSource operator is running. |
+| tcpNoDelay | `boolean` | `false` | This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. |
 | newDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that is just about to send a new data item to the remote clients. It should be >= 0.0. |
 | noDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote clients. It should be >= 0.0. |
 | clientWhitelist | `list<rstring>` | `An empty list` | This parameter specifies a list of client IP addresses to accept connections only from those clients. Default is an empty list to have no client connection restrictions. |
