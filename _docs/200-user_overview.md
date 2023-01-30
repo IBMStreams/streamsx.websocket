@@ -54,8 +54,7 @@ If there is no direct Internet access from the IBM Streams machine and if there 
  
 `ant all -Dwebsocket.archive=file://localhost$(pwd)/ext -Dwebsocket.version=0.8.2 -Dboost.archive.src0=file://localhost$(pwd)/ext/boost-install-files/boost-1.73.0.tar.gz`
  
-3. If the build is successful, you can now run this command.
-    `ant download-clean`
+If the build is successful, you can now run this command: `ant download-clean`
 
 ## A must do in the Streams applications that will use this toolkit
 i. You must add this toolkit as a dependency in your application.
