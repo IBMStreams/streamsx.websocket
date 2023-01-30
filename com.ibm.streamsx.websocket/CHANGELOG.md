@@ -1,5 +1,9 @@
 Changes
 =======
+## v1.1.2:
+* Jan/30/2023
+* Optimized all the reference examples that use the WebSocketSendReceive operator to queue the incoming tuples in a map instead of a list to improve the data sending performance.
+
 ## v1.1.1:
 * Jan/29/2023
 * Fixed a major network performance impact in the ws_data_sender method of all the three WebSocket operators by changing it from a long running thread loop method into a non-thread one shot callable method that can send the text and/or binary data item via active WebSocket connection(s) and return back to the caller immediately after that..

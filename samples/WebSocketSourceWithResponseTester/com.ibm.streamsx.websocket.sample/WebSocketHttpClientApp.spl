@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2020
+# Copyright IBM Corp. 2020, 2023
 ==============================================
 */
 
 /*
 ==============================================
 First created on: May/20/2020
-Last modified on: Aug/31/2020
+Last modified on: Jan/30/2023
 
 This application is a companion application that must be used while
 demonstrating the "result/response to the remote WS/HTTP clients"
@@ -272,8 +272,9 @@ composite WebSocketHttpClientApp {
 			SendDataResult as SDR) {
 			logic
 				state: {
-					mutable list<SendData_t> _dataToBeSent = [];
+					mutable map<uint64, SendData_t> _dataToBeSent = {};
 					mutable boolean _sendResultPending = false;
+					mutable uint64 _tuplesReceivedCnt = 0;
 					mutable uint64 _tuplesSentCnt = 0;
 					mutable int32 _numberOfWindowPunctuations = 0;
 					mutable int32 _numberOfFinalPunctuations = 0;
@@ -286,8 +287,8 @@ composite WebSocketHttpClientApp {
 				// sent in the other onTuple block that checks the result of the 
 				// previous data send activity.
 				//
-				// Simply insert into the list state variable.
-				appendM(_dataToBeSent, D);
+				// Simply insert into the map state variable.
+				insertM(_dataToBeSent, ++_tuplesReceivedCnt, D);
 				
 				if (_sendResultPending == false) {
 					_tuplesSentCnt++;
@@ -300,7 +301,7 @@ composite WebSocketHttpClientApp {
 					// So, we can release the oldest tuple waiting to be 
 					// sent to the remote server.
 					_sendResultPending = true;
-					submit(_dataToBeSent[0], SD);
+					submit(_dataToBeSent[_tuplesSentCnt], SD);
 				}
 			}
 
@@ -330,16 +331,18 @@ composite WebSocketHttpClientApp {
 					// logic should make an attempt to wait for a while before attempting to send the
 					// data after knowing that there is an ongoing connection problem with the remote server.
 					block(10.0);
-					submit(_dataToBeSent[0], SD);
+					submit(_dataToBeSent[_tuplesSentCnt], SD);
 				} else {
 					// Previous tuple was successfully sent.
-					// Remove it from the list state variable.
-					removeM(_dataToBeSent, 0);
+					// Remove it from the map state variable.
+					if(has(_dataToBeSent, _tuplesSentCnt) == true) { 
+						removeM(_dataToBeSent, _tuplesSentCnt);
+					}
 					
 					// Let us send if the next one is available in the waiting list.
 					if(size(_dataToBeSent) > 0) {						
 						_sendResultPending = true;
-						submit(_dataToBeSent[0], SD);	
+						submit(_dataToBeSent[++_tuplesSentCnt], SD);	
 					} else {
 						// Nothing pending to be sent at this time.
 						_sendResultPending = false;
