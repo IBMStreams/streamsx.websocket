@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2020
+# Copyright IBM Corp. 2020, 2023
 ==============================================
 */
 
 /*
 ============================================================
 First created on: Apr/27/2020
-Last modified on: Sep/21/2020
+Last modified on: Jan/29/2023
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables 
@@ -77,6 +77,7 @@ public:
 	bool wsClientSessionLoggingNeeded;
 	SPL::int64 websocketStaleConnectionPurgeInterval;
 	bool ipv6Available;
+	bool tcpNoDelay;
 	SPL::float64 newDataCpuYieldTimeInSenderThread;
 	SPL::float64 noDataCpuYieldTimeInSenderThread;
 	// Behind the scenes, an SPL list is nothing but a C++ std::vector.
@@ -152,9 +153,14 @@ public:
 	Metric *nClientsConnectedMetric;
 	Metric *nDataItemsSentToRemoteClientsMetric;
 	Metric *nDataBytesSentToRemoteClientsMetric;
+	Metric *nBlobDataItemsWaitingToBeSentToRemoteClientsMetric;
+	Metric *nStringDataItemsWaitingToBeSentToRemoteClientsMetric;
+	Metric *nTimeTakenToSendMostRecentDataItemMetric;
+	Metric *nSizeOfMostRecentDataItemSentMetric;
 	Metric *nTlsPortMetric;
 	Metric *nNonTlsPortNeededMetric;
 	Metric *nNonTlsPortMetric;
+	Metric *nTcpNoDelayMetric;
 	
 	// Constructor
 	MY_OPERATOR();
@@ -205,6 +211,14 @@ public:
 	
 	// Websocket client connection close handler.
 	void on_close(websocketpp::connection_hdl hdl);
+
+	// Websocket non_tls socket init handler.
+	void on_non_tls_socket_init(websocketpp::connection_hdl hdl, 
+		boost::asio::ip::tcp::socket & s);
+	
+	// Websocket TLS socket init handler.
+	void on_tls_socket_init(websocketpp::connection_hdl hdl, 
+		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> & s);
 	
 	// Websocket TLS binding event handler
 	context_ptr on_tls_init(websocketpp::connection_hdl hdl);

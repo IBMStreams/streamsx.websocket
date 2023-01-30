@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2020
+# Copyright IBM Corp. 2020, 2023
 ==============================================
 */
 
 /*
 ============================================================
 First created on: Apr/08/2020
-Last modified on: Aug/31/2020
+Last modified on: Jan/29/2023
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables and
@@ -53,6 +53,7 @@ public:
 	std::string certificateFileName;
 	std::string certificatePassword;
 	std::string trustedServerCertificateFileName;
+	bool tcpNoDelay;
 	// Behind the scenes, an SPL list is nothing but a C++ std::vector.
 	SPL::list<SPL::rstring> trustedServerX509SubjectIdentifiers;	
 	bool wsConnectionEstablished;
@@ -92,6 +93,10 @@ public:
 	Metric *nDataItemsReceivedFromRemoteServerMetric;
 	Metric *nDataBytesReceivedFromRemoteServerMetric;
 	Metric *nWebsocketConnectionActiveStatusMetric;
+	Metric *nTimeTakenToSendMostRecentDataItemMetric;
+	Metric *nSizeOfMostRecentDataItemSentMetric;
+	Metric *nSizeOfMostRecentDataItemReceivedMetric;
+	Metric *nTcpNoDelayMetric;
 
 public:
 	// Constructor
@@ -145,6 +150,14 @@ public:
 	
 	// Websocket connection close common event handler.
 	void on_close(websocketpp::connection_hdl hdl, bool isTlsConnection);
+	
+	// Websocket non_tls socket init handler.
+	void on_non_tls_socket_init(websocketpp::connection_hdl hdl, 
+		boost::asio::ip::tcp::socket & s);
+	
+	// Websocket TLS socket init handler.
+	void on_tls_socket_init(websocketpp::connection_hdl hdl, 
+		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> & s);
 	
 	// Websocket TLS binding event handler
 	context_ptr on_tls_init(tls_client* c, websocketpp::connection_hdl);

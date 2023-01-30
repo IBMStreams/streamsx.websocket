@@ -1,14 +1,14 @@
 /*
  ==============================================
  # Licensed Materials - Property of IBM
- # Copyright IBM Corp. 2020
+ # Copyright IBM Corp. 2020, 2023
  ==============================================
  */
 
 /*
  ============================================================
  First created on: Apr/08/2020
- Last modified on: Aug/31/2020
+ Last modified on: Jan/29/2023
 
  This particular operator (WebSocketSendReceive) is used to
  send and receive either text data or binary data to and from a 
@@ -226,6 +226,10 @@ if (defined $trustedServerX509SubjectIdentifiers) {
 		$trustedServerX509SubjectIdentifiers->getValueAt(0)->getCppExpression();
 }
 
+my $tcpNoDelay = $model->getParameterByName("tcpNoDelay");
+# Default: 0
+$tcpNoDelay = $tcpNoDelay ? $tcpNoDelay->getValueAt(0)->getCppExpression() : 0;
+
 my $websocketLiveMetricsUpdateNeeded = $model->getParameterByName("websocketLiveMetricsUpdateNeeded");
 # Default: 1
 $websocketLiveMetricsUpdateNeeded = $websocketLiveMetricsUpdateNeeded ? $websocketLiveMetricsUpdateNeeded->getValueAt(0)->getCppExpression() : 1;
@@ -272,6 +276,13 @@ MY_OPERATOR::MY_OPERATOR()
 	nDataItemsReceivedFromRemoteServerMetric = & opm.getCustomMetricByName("nDataItemsReceivedFromRemoteServer");
 	nDataBytesReceivedFromRemoteServerMetric = & opm.getCustomMetricByName("nDataBytesReceivedFromRemoteServer");
 	nWebsocketConnectionActiveStatusMetric = & opm.getCustomMetricByName("nWebsocketConnectionActiveStatus");
+	nTimeTakenToSendMostRecentDataItemMetric = 
+		&opm.getCustomMetricByName("nTimeTakenToSendMostRecentDataItem");
+	nSizeOfMostRecentDataItemSentMetric = 
+		&opm.getCustomMetricByName("nSizeOfMostRecentDataItemSent");
+	nSizeOfMostRecentDataItemReceivedMetric = 
+		&opm.getCustomMetricByName("nSizeOfMostRecentDataItemReceived");
+	nTcpNoDelayMetric = &opm.getCustomMetricByName("nTcpNoDelay");
 	
 	numberOfDataItemsSent = 0;
 	numberOfDataItemsReceived = 0;
@@ -323,6 +334,8 @@ MY_OPERATOR::MY_OPERATOR()
 	trustedServerX509SubjectIdentifiers = <%=$trustedServerX509SubjectIdentifiers%>;
 	<%}%>
 	
+	tcpNoDelay = <%=$tcpNoDelay%>;
+	
 	newDataCpuYieldTimeInSenderThread = <%=$newDataCpuYieldTimeInSenderThread%>;
 
 	if (newDataCpuYieldTimeInSenderThread < 0.0) {
@@ -362,6 +375,7 @@ MY_OPERATOR::MY_OPERATOR()
 		", certificateFileName=" << certificateFileName <<
 		", trustedServerCertificateFileName=" << trustedServerCertificateFileName <<
 		", trustedServerX509SubjectIdentifiers=" << trustedServerX509SubjectIdentifiers <<
+		", tcpNoDelay=" << tcpNoDelay <<
 		", websocketLiveMetricsUpdateNeeded=" << websocketLiveMetricsUpdateNeeded <<
 		", websocketLoggingNeeded=" << websocketLoggingNeeded <<
 		", wsConnectionLoggingNeeded=" << wsConnectionLoggingNeeded <<
@@ -380,6 +394,15 @@ MY_OPERATOR::~MY_OPERATOR()
 // Notify port readiness
 void MY_OPERATOR::allPortsReady() 
 {
+	// Notifies that all ports are ready. No tuples should be submitted before
+	// this. Operators can use this method to spawn their own threads.
+	//
+	// Update the operator metric only if the user asked for a live update.
+	if (websocketLiveMetricsUpdateNeeded == true) {
+		// These are one time metrics that will not change during the life of an operator.
+		nTcpNoDelayMetric->setValueNoLock(tcpNoDelay);
+	}
+	
 	// This operator is usually part of a UDP parallel region in many application scenarios.
 	wsConnectionEstablished = false;
 	makeNewWebsocketConnection = false;
@@ -411,6 +434,13 @@ void MY_OPERATOR::allPortsReady()
     	SPL::Functions::Utility::abort(__FILE__, __LINE__);
     }
     
+    /*
+	// v1.1.1 change (Jan/28/2023)
+	// No sender thread anymore starting in this release. 
+	// Instead, it will just be a callable method that the
+	// input tuple process method will invoke whenever there
+	// is data available to be sent.
+	//
     // Create another thread to periodically watch for the
     // data availability so that the text or binary data can be 
     // sent to the remote WebSocket server.
@@ -427,7 +457,8 @@ void MY_OPERATOR::allPortsReady()
 			e.what(), "ws_data_sender thread creation");
     	// We can't do much without this thread. Abort this operator now.
     	SPL::Functions::Utility::abort(__FILE__, __LINE__);
-    }    
+    } 
+    */   
 } // End of allPortsReady.
  
 // Notify pending shutdown
@@ -482,8 +513,24 @@ void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
 	// There are multiple methods (process and ws_data_sender) that
 	// regularly access (read, write and delete) the vector member variables.
 	// All those methods work in parallel inside their own threads.
-	// To make that vector access to be thread safe, we will use this mutex.
+	// To make that vector access to be thread safe, we will 
+	// use the mutex that is shown below.
+	//
+	// v1.1.1 change (Jan/28/2023)
+	// Since there is no more sender thread starting in this release, 
+	// this mutex is not used anymore in the sender method below.
+	// However, we will use it at the entrypoint of this 
+	// method here in order to have only one upstream
+	// operator thread to do the data sending at any 
+	// given time in case this operator is fused with 
+	// a few other upstream operators where all of them 
+	// try to push data tuples here from their operator threads.
+	// If this operator runs on its own dedicated PE,
+	// then there is no concern of multiple incoming 
+	// upstream fused operator threads and this low overhead 
+	// mutex is still beneficial.
 	SPL::AutoMutex autoMutex1(wsMutex1);
+	
 	// Use this variable if needed in the future.
 	IPort0Type const & <%=$inputTupleName1%> = static_cast<IPort0Type const&>(tuple);
 	
@@ -501,6 +548,12 @@ void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
 			// Push this data to the vector so that we can 
 			// retrieve this data in the sender thread and send it to the remote WebSocket server.
 			strDataToSend.push_back(strData);
+			
+			// v1.1.1 change (Jan/28/2023)
+			// No more sender thread starting from this release. 
+			// Instead, we are going to call the sender method whenever
+			// there is a data item available to be sent to the connected clients.
+			ws_data_sender();
 		}
 	}
 	
@@ -522,6 +575,12 @@ void MY_OPERATOR::process(Tuple & tuple, uint32_t port)
 			blobDataToSend.push_back(blobData.releaseData(sizeOfBlobData));
 			// Push the size of the blob data as well for use in the sender thread.
 			blobDataSize.push_back(sizeOfBlobData);
+			
+			// v1.1.1 change (Jan/28/2023)
+			// No more sender thread starting from this release. 
+			// Instead, we are going to call the sender method whenever
+			// there is a data item available to be sent to the connected clients.
+			ws_data_sender();
 		}
 	}
 } // End of process (for mutating ports)
@@ -544,8 +603,47 @@ void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
 
 // This method provides a thread for the Websocket data sender
 // as well as the Websocket connection termination monitor.
+//
+// v1.1.1 change (Jan/28/2023)
+// There is no more sender thread starting in this release.
+// You can see that the thread creation for this method in the
+// allPortsReady method above is fully commented out.
+// This is now just a callable method with no need for mutex
+// coordination with the input tuple process method above.
+// Whenever there is a data item available to sent to the 
+// remote server, process method will call this method after
+// appending the blob and/or string into the appropriate list.
+// This method will send the available data item and then
+// remove it from the list.
+//
+// I did this "from being a thread to being a non-thread callable method"
+// change because the earlier approach did it by making the process method  
+// to keep receiving the data items and pushing them into a vector and
+// the sender thread to dequeue from that vector and send it away.
+// In the earlier approach of keeping a shared vector between the
+// process and sender threads controlled via a mutex let the 
+// process method to accumulate millions of tuples in its vector
+// in a few minutes and then the sender thread taking too much
+// CPU time (in high tens of milliseconds) to dequeue, send and
+// remove the data item from such a bloated vector. In particular,
+// removing element 0 of a vector with hundreds of thousands of
+// elements in it was horribly punishing in the time it took to do it.
+// It made the sending logic to become very sluggish to cause severe
+// performance slowdown by not being able to send the data items
+// to the remote server in a fast manner. Hence, I changed the
+// sender logic below from a long running thread loop to a 
+// stateless callable method. In this scheme, there will only be
+// one data item in a vector to be sent at any given time and not
+// millions of entries in a vector to access and then remove.
+// My tests in our lab showed far better results.
+//
 void MY_OPERATOR::ws_data_sender() {
-	while (!getPE().getShutdownRequested()) {
+	SPL::int64 timeTakenToSendDataItem = 0;
+	
+	// v1.1.1 change (Jan/28/2023)
+	// Since it is no longer a long running thread loop,
+	// there is no need for this while loop.
+	// while (!getPE().getShutdownRequested()) {
 		// Start the loop with the assumption that there is no
 		// need to a make a new WebSocket connection with the remote server.
 		// If needed, it will be set below.
@@ -555,13 +653,19 @@ void MY_OPERATOR::ws_data_sender() {
 
 		// Keep waiting in this while loop until
 		// there is data that needs to be sent to the remote WebSocket server.
+		SPL::timestamp tsBeforeSendingDataItem = SPL::Functions::Time::getTimestamp();
+
 		// Wait for a configured amount of time that is not 0.0 when there is
 		// data actively available for sending.
 		// When there is no data available to send, yield the CPU for a 
 		// configured amount of time as well.
 		int32_t blobDataVectorSize = blobDataToSend.size();
 		int32_t strDataVectorSize = strDataToSend.size();
-		
+
+		// V1.1.1 change (Jan/28/2023)
+		// Since there is no more long running thread while loop 
+		// starting in this release, there is no need for CPU yielding.
+		/*
 		if(blobDataVectorSize <= 0 && strDataVectorSize <= 0) {
 			// There is no data available to be sent at this time.
 			// Yield the CPU for a little time.
@@ -575,6 +679,7 @@ void MY_OPERATOR::ws_data_sender() {
 			// This wait time can be configured via an operator parameter.
 			SPL::Functions::Utility::block(newDataCpuYieldTimeInSenderThread);
 		}
+		*/
 		
 		// Check if the Websocket connection needs to be established.
 		if ((blobDataVectorSize > 0 || strDataVectorSize > 0) && 
@@ -618,13 +723,22 @@ void MY_OPERATOR::ws_data_sender() {
 			// Wait until the Websocket connection is fully made as explained above.
 			while(wsConnectionEstablished == false) {				
 				if (websocketConnectionErrorOccurred == true) {
+					// V1.1.1 change (Jan/28/2023)
+					// Since there is more sender thread starting in this release,
+					// we have no need for a mutex to coordinate with the
+					// input tuple process method. This sender method will simply be
+					// called from that other method whenever there is 
+					// data available to be sent.
+					//
+					/*
 					// Since there is no valid WebSocket connection, we can't send this data item.
 					// Let us remove it from our internal vector.
 					// There are multiple methods (process and ws_data_sender) that
 					// regularly access (read, write and delete) the vector member variables.
 					// All those methods work in parallel inside their own threads.
 					// To make that vector access thread safe, we will use this mutex.
-					SPL::AutoMutex autoMutex1(wsMutex1);	
+					SPL::AutoMutex autoMutex1(wsMutex1);
+					*/	
 					
 					if (blobDataVectorSize > 0) {
 						// Clear the blob data item that we were supposed to send, but
@@ -708,17 +822,44 @@ void MY_OPERATOR::ws_data_sender() {
 			// Continue from the top of the outer while loop which will
 			// correctly put us back in the code block below in the next
 			// loop iteration to stat sending the next available data item if any.
-			continue;
+			//
+			// V1.1.1 change (Jan/28/2023)
+			// Since there is no more long running thread while loop
+			// starting in this release, we don't need the following
+			// while loop continue statement. Instead we will return 
+			// to the caller of this method if needed or proceed ahead
+			// to send the data item to the remote server.
+			//
+			// continue;
+			//
+			if (wsConnectionEstablished == false) {
+				// If we couldn't reestablish connection, we have done the
+				// necessary data clean-up in the inner while loop above and
+				// sent an output tuple to inform the upstream operator via a
+				// feedback loop to do retranmission of the pending data item 
+				// at a later time. In that case, we can return now.
+				return;
+			}
 		} // End of the if segment
 		
 		// Check if there is data waiting to be sent to the remote WebSocket server.
 		if ((blobDataVectorSize > 0 || strDataVectorSize > 0) && 
 			wsConnectionEstablished == true) {
+			// V1.1.1 change (Jan/28/2023)
+			// Since there is more sender thread starting in this release,
+			// we have no need for a mutex to coordinate with the
+			// input tuple process method. This sender method will simply be
+			// called from that other method whenever there is 
+			// data available to be sent.
+			//
+			/*
 			// There are multiple methods (process and ws_data_sender) that
 			// regularly access (read, write and delete) the vector member variables.
 			// All those methods work in parallel inside their own threads.
 			// To make that vector access thread safe, we will use this mutex.
 			SPL::AutoMutex autoMutex1(wsMutex1);
+			*/
+			
 			uint64_t payloadSize = 0;
 			
 			if (blobDataVectorSize > 0) {
@@ -768,11 +909,20 @@ void MY_OPERATOR::ws_data_sender() {
 				strDataVectorSize--;
 			}			
 
+			// Calculate the time it took to send the data item.
+			SPL:timestamp tsAfterSendingDataItem = SPL::Functions::Time::getTimestamp();
+			timeTakenToSendDataItem = 
+				SPL::Functions::Time::diffAsNanos(tsAfterSendingDataItem, tsBeforeSendingDataItem);
+			// Convert nanoseconds to milliseconds.
+			timeTakenToSendDataItem /= 1000000;
+			
 			// Update the operator metric only if the user asked for a live update.
 			if (websocketLiveMetricsUpdateNeeded == true && payloadSize > 0) {
 				nDataItemsSentToRemoteServerMetric->setValueNoLock(numberOfDataItemsSent);
 				nDataBytesSentToRemoteServerMetric->setValueNoLock(numberOfDataBytesSent);
-			}			
+				nTimeTakenToSendMostRecentDataItemMetric->setValueNoLock((SPL::uint64)timeTakenToSendDataItem);
+				nSizeOfMostRecentDataItemSentMetric->setValueNoLock(payloadSize);
+			}
 						
 			// We will return the status as success via the send status output port.
 			OPort1Type oTuple;
@@ -790,21 +940,31 @@ void MY_OPERATOR::ws_data_sender() {
 					<< "-->X1 Sent data to the remote WebSocket server. "
 					<< "messagesSentCnt="
 					<< numberOfDataItemsSent
-					<< ", currentDataPacketSize="
-					<< payloadSize
 					<< ", totalDataBytesSent="
 					<< numberOfDataBytesSent
 					<< ", size of blobDataToSend vector="
 					<< blobDataVectorSize
 					<< ", size of strDataToSend vector="
-					<< strDataVectorSize,
+					<< strDataVectorSize
+					<< ", timeTakenToSendMostRecentDataItemInMillis="
+					<< timeTakenToSendDataItem
+					<< ", sizeOfMostRecentDataItemSent="
+					<< payloadSize,
 					"ws_data_sender");
 			}
 			
 			// Continue from the top of the outer while loop.
-			continue;
+			// V1.1.1 change (Jan/28/2023)
+			// Since there is no more long running thread while loop
+			// starting in this release, we don't need the following
+			// while loop continue statement. Instead we will simply 
+			// return to the caller of this method.
+			//
+			// continue;
 		} // End of if ((blobDataVectorSize > 0 ||
-	} // End of the outer while loop	
+	// V1.1.1 change (Jan/28/2023)
+	// There is no more long running thread while loop starting in this release.
+	// } // End of the outer while loop	
 } // End of ws_data_sender
 
 // This method initializes the Websocket driver, TLS or non-TLS and then
@@ -935,8 +1095,14 @@ void MY_OPERATOR::ws_init() {
 			// Initialize ASIO
 			if (tlsIdx1 != -1 || tlsIdx2 != -1) {
 				tls_ws_client->init_asio();
+				// Set this TLS socket init handler.
+				tls_ws_client->set_socket_init_handler(
+					bind(&MY_OPERATOR::on_tls_socket_init, this, ::_1, ::_2));
 			} else {
 				non_tls_ws_client->init_asio();
+				// Set this non-TLS socket init handler.
+				non_tls_ws_client->set_socket_init_handler(
+					bind(&MY_OPERATOR::on_non_tls_socket_init, this, ::_1, ::_2));
 			}
 			
 			if (tlsIdx1 != -1 || tlsIdx2 != -1) {
@@ -1236,6 +1402,7 @@ void MY_OPERATOR::on_message(websocketpp::connection_hdl hdl, tls_message_ptr tl
 	if (websocketLiveMetricsUpdateNeeded == true) {
 		nDataItemsReceivedFromRemoteServerMetric->setValueNoLock(numberOfDataItemsReceived);
 		nDataBytesReceivedFromRemoteServerMetric->setValueNoLock(numberOfDataBytesReceived);
+		nSizeOfMostRecentDataItemReceivedMetric->setValueNoLock(payloadSize);
 	}	
 	
 	// Now let us set any attributes that the caller of this operator is trying to
@@ -1340,6 +1507,84 @@ void MY_OPERATOR::on_close(websocketpp::connection_hdl hdl, bool isTlsConnection
 	if (websocketLiveMetricsUpdateNeeded == true) {
 		nWebsocketConnectionActiveStatusMetric->setValueNoLock(0);
 	}	
+}
+
+// Added the following TCP socket init handlers on Jan/28/2023.
+//
+// This method will be called during non_tls socket init.
+// At that time, we can set the required socket options if any.
+//
+// Type definition for the non-TLS specific socket init handler can be
+// found inside this file.
+// https://github.com/zaphoyd/websocketpp/blob/master/websocketpp/transport/asio/security/none.hpp
+//
+void MY_OPERATOR::on_non_tls_socket_init(websocketpp::connection_hdl hdl, 
+	boost::asio::ip::tcp::socket & s) {
+	// Set user's choice for TCP_NODELAY to control Nagle's algorthim.
+	//
+	// IMPORTANT CAUTION: Setting TCP options is broken from 
+	// websocketpp library versions 0.8.0 to 0.8.2.
+	// We can uncomment the following code block and test with
+	// version 0.8.3 when it is released to verify if this feature works.
+	//
+	// Read the full details at this URL.
+	// https://github.com/zaphoyd/websocketpp/issues/812
+	//
+	/*
+	boost::asio::ip::tcp::no_delay option(tcpNoDelay);
+	s.set_option(option);
+	
+	SPLAPPTRC(L_ERROR,
+		"Operator "
+		<< operatorPhysicalName
+		<< "-->Channel " << boost::to_string(udpChannelNumber)
+		<< "-->I1 Non-TLS Socket Init Handler "
+		<< "successfully set TCP_NODELAY to "
+		<< tcpNoDelay
+		<< ".",
+		"on_non_tls_socket_init");
+	*/
+}
+
+// This method will be called during tls socket init.
+// At that time, we can set the required socket options if any.
+// The prototype for the handler for TLS takes a slightly different 
+// prototype for the second argument which is a socket stream wrapper.
+// In the case of non-TLS, it is a straight socket instead of stream wrapper.
+//
+// It is explained in this post by the websocketpp author.
+// https://stackoverflow.com/questions/23023317/proper-set-socket-init-handler-syntax-or-modify-source-to-turn-on-tcp-nodelay-wi
+//
+// Type definition for the TLS specific socket init handler can be
+// found inside this file.
+// https://github.com/zaphoyd/websocketpp/blob/master/websocketpp/transport/asio/security/tls.hpp
+//
+void MY_OPERATOR::on_tls_socket_init(websocketpp::connection_hdl hdl, 
+	boost::asio::ssl::stream<boost::asio::ip::tcp::socket> & s) {
+	// Set user's choice for TCP_NODELAY to control Nagle's algorthim.
+	//
+	// IMPORTANT CAUTION: Setting TCP options is broken from 
+	// websocketpp library versions 0.8.0 to 0.8.2.
+	// We can uncomment the following code block and test with
+	// version 0.8.3 when it is released to verify if this feature works.
+	//
+	// Read the full details at this URL.
+	// https://github.com/zaphoyd/websocketpp/issues/812
+	//
+	/*
+	boost::asio::ip::tcp::no_delay option(tcpNoDelay);
+	s.lowest_layer().set_option(option);
+
+	SPLAPPTRC(L_ERROR,
+		"Operator "
+		<< operatorPhysicalName
+		<< "-->Channel " << boost::to_string(udpChannelNumber)
+		<< "-->I2 TLS Socket Init Handler "
+		<< "successfully set TCP_NODELAY to "
+		<< tcpNoDelay
+		<< ".",
+		"on_tls_socket_init");
+	*/
 }
 
 // When a Websocket connection handshake happens with the remote WebSocket server for enabling

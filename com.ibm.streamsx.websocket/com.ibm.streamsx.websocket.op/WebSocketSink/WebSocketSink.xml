@@ -19,10 +19,17 @@
       allow a certain maximum number of concurrent connections from the remote
       clients depending on the needs of the application and based on the
       capacity of the underlying OS and hardware configuration such as  
-      networking, CPU cores and memory limits.
+      networking, CPU cores and memory limits. 
+      
+      Since WebSocket at its low level is based on TCP, you have to be aware of the 
+      effects of the Nagle's algorithm which is usually controlled by TCP_NODELAY.
+      This operator has an optional parameter named tcpNoDelay to enable or disable 
+      Nagle's algorithm for your needs. The tcpNoDelay parameter will do its job 
+      correctly only with the websocketpp library version 0.8.3 and higher.
       
       This is Send-only to multiple clients. 
-      This operator promotes One-To-Many data access pattern.
+      This operator promotes One-To-Many data access pattern. So, this operator will
+      take as much time as needed to send a given data item to all the connected clients.
       
       By default, any remote client that knows the WebSocket URL of this operator can
       connect to receive data sent by this operator. If only a specific set of remote
@@ -89,6 +96,30 @@
         </metric>
         
         <metric>
+          <name>nBlobDataItemsWaitingToBeSentToRemoteClients</name>
+          <description>Total number of blob data items waiting to be sent to the remote clients.</description>
+          <kind>Gauge</kind>
+        </metric>       
+
+        <metric>
+          <name>nStringDataItemsWaitingToBeSentToRemoteClients</name>
+          <description>Total number of string data items waiting to be sent to the remote clients.</description>
+          <kind>Gauge</kind>
+        </metric> 
+
+        <metric>
+          <name>nTimeTakenToSendMostRecentDataItem</name>
+          <description>Time taken in milliseconds to send the most recent data item to a remote client.</description>
+          <kind>Gauge</kind>
+        </metric>       
+        
+        <metric>
+          <name>nSizeOfMostRecentDataItemSent</name>
+          <description>Size of the most recent data item sent to a remote client.</description>
+          <kind>Gauge</kind>
+        </metric>       
+        
+        <metric>
           <name>nTlsPort</name>
           <description>TLS port number configured for this operator.</description>
           <kind>Gauge</kind>
@@ -103,6 +134,12 @@
         <metric>
           <name>nNonTlsPort</name>
           <description>Non-TLS port number configured for this operator.</description>
+          <kind>Gauge</kind>
+        </metric>    
+        
+        <metric>
+          <name>nTcpNoDelay</name>
+          <description>Did the user configure TCP_NODELAY for this operator?</description>
           <kind>Gauge</kind>
         </metric>    
       </metrics>
@@ -266,7 +303,17 @@
       
       <parameter>
         <name>ipv6Available</name>
-        <description>This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the IBMVoiceGatewaySource operator is running. (Default is true)</description>
+        <description>This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSink operator is running. (Default is true)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+
+      <parameter>
+        <name>tcpNoDelay</name>
+        <description>This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. (Default is false.)</description>
         <optional>true</optional>
         <rewriteAllowed>true</rewriteAllowed>
         <expressionMode>AttributeFree</expressionMode>
@@ -322,7 +369,7 @@
         <expressionMode>AttributeFree</expressionMode>
         <type>rstring</type>
         <cardinality>1</cardinality>
-      </parameter>
+      </parameter>      
     </parameters>
 
     <inputPorts>

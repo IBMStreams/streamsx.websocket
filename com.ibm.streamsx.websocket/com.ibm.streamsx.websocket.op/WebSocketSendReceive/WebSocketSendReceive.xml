@@ -31,13 +31,13 @@
       this operator is still active, any incoming tuple into this operator at that time 
       will not be sent to the remote server at all. In this case, the application logic 
       invoking this operator can retransmit that tuple at a later time just because 
-      this operator will keep trying to restablish the connection behind the scenes. 
+      this operator will keep trying to reestablish the connection behind the scenes. 
       It is a good practice for the application logic to backoff and wait for a 
       reasonable amount of time when there is a connection error with the
 	  remote WebSocket server before inputting a tuple again into this operator.
 	  Otherwise, it will trigger too many connection attempts on every incoming
 	  tuple to send it to the remote server. So, the application logic should make an 
-	  attempt to wait for a while before attempting to send the data after knowing that 
+	  attempt to wait for a while before deciding to send the data after knowing that 
 	  there is an ongoing connection problem with the remote server.
       
       This operator provides one input port through which an application can send data to the
@@ -55,6 +55,12 @@
       a successful sending of data, otherwise error in sending the data. If this attribute carries a
       non-zero value, then the application can have additional logic to retransmit that same 
       data item at a later time. Please refer to the output port section below for more details.
+      
+      Since WebSocket at its low level is based on TCP, you have to be aware of the 
+      effects of the Nagle's algorithm which is usually controlled by TCP_NODELAY.
+      This operator has an optional parameter named tcpNoDelay to enable or disable 
+      Nagle's algorithm for your needs. The tcpNoDelay parameter will do its job 
+      correctly only with the websocketpp library version 0.8.3 and higher.
       
       Requirements: 
       * Intel RHEL6 or RHEL7 hosts installed with IBM Streams. 
@@ -100,6 +106,30 @@
           <description>Indicates the current active status of the WebSocket connection.</description>
           <kind>Gauge</kind>
         </metric>
+        
+        <metric>
+          <name>nTimeTakenToSendMostRecentDataItem</name>
+          <description>Time taken in milliseconds to send the most recent data item to the remote server.</description>
+          <kind>Gauge</kind>
+        </metric>       
+
+        <metric>
+          <name>nSizeOfMostRecentDataItemSent</name>
+          <description>Size of the most recent data item sent to the remote server.</description>
+          <kind>Gauge</kind>
+        </metric>       
+
+        <metric>
+          <name>nSizeOfMostRecentDataItemReceived</name>
+          <description>Size of the most recent data item received from the remote server.</description>
+          <kind>Gauge</kind>
+        </metric>
+
+        <metric>
+          <name>nTcpNoDelay</name>
+          <description>Did the user configure TCP_NODELAY for this operator?</description>
+          <kind>Gauge</kind>
+        </metric>  
       </metrics>
 
      <customOutputFunctions>
@@ -274,6 +304,16 @@
         <type>float64</type>
         <cardinality>1</cardinality>
       </parameter>      
+
+      <parameter>
+        <name>tcpNoDelay</name>
+        <description>This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. (Default is false.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
     </parameters>
 
     <inputPorts>

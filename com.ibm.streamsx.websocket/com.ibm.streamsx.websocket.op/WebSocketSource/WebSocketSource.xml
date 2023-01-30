@@ -46,6 +46,12 @@
       connections from the remote clients depending on the needs of the application and based on the
       capacity of the underlying OS and hardware configuration such as networking, CPU cores and memory limits.
       
+      Since WebSocket at its low level is based on TCP, you have to be aware of the 
+      effects of the Nagle's algorithm which is usually controlled by TCP_NODELAY.
+      This operator has an optional parameter named tcpNoDelay to enable or disable 
+      Nagle's algorithm for your needs. The tcpNoDelay parameter will do its job 
+      correctly only with the websocketpp library version 0.8.3 and higher.
+      
       In summary, this operator supports data reception via both WebSocket and HTTP GET/PUT/POST on 
       plain as well as secure endpoints. Users will get a five-in-one benefit 
       (WebSocket, HTTP, plain, secure and roundtripping) from this operator.
@@ -156,6 +162,30 @@
           <description>Does this operator allow HTTP GET/PUT/POST from clients?</description>
           <kind>Gauge</kind>
         </metric>
+ 
+         <metric>
+          <name>nTimeTakenToSendMostRecentDataItem</name>
+          <description>Time taken in milliseconds to send the most recent data item to the remote server.</description>
+          <kind>Gauge</kind>
+        </metric>       
+
+        <metric>
+          <name>nSizeOfMostRecentDataItemSent</name>
+          <description>Size of the most recent data item sent to the remote server.</description>
+          <kind>Gauge</kind>
+        </metric>       
+
+        <metric>
+          <name>nSizeOfMostRecentDataItemReceived</name>
+          <description>Size of the most recent data item received from the remote server.</description>
+          <kind>Gauge</kind>
+        </metric>
+       
+        <metric>
+          <name>nTcpNoDelay</name>
+          <description>Did the user configure TCP_NODELAY for this operator?</description>
+          <kind>Gauge</kind>
+        </metric>    
       </metrics>
 
       <customOutputFunctions>
@@ -397,7 +427,17 @@
       
       <parameter>
         <name>ipv6Available</name>
-        <description>This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the IBMVoiceGatewaySource operator is running. (Default is true)</description>
+        <description>This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSource operator is running. (Default is true)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>boolean</type>
+        <cardinality>1</cardinality>
+      </parameter>
+      
+      <parameter>
+        <name>tcpNoDelay</name>
+        <description>This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. (Default is false.)</description>
         <optional>true</optional>
         <rewriteAllowed>true</rewriteAllowed>
         <expressionMode>AttributeFree</expressionMode>

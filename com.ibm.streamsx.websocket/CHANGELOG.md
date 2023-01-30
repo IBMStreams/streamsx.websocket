@@ -1,5 +1,12 @@
 Changes
 =======
+## v1.1.1:
+* Jan/29/2023
+* Fixed a major network performance impact in the ws_data_sender method of all the three WebSocket operators by changing it from a long running thread loop method into a non-thread one shot callable method that can send the text and/or binary data item via active WebSocket connection(s) and return back to the caller immediately after that..
+* Added a new tcpNoDelay parameter and a low level socket init handler to all the three WebSocket operators so that the user can turn on or off TCP_NODELAY to control Nagle's algorithm. This new feature will work only with a websocketpp library version 0.8.3 and higher.
+* Added a few more metrics for the three WebSocket operators to view send and receive performance numbers in terms of data transfer time and payload size.
+* Enhanced the operator documentation with more details about the above-mentioned changes.
+
 ## v1.1.0:
 * Nov/19/2021
 * Fixed a problem in the HttpPost operator where the HTTP GET query string not getting sent to the remote server.

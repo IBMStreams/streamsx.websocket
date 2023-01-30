@@ -18,7 +18,7 @@ The streamsx.websocket toolkit provides the following C++ and Java operators tha
 
 If you clone this toolkit from the IBMStreams GitHub, then you must build this toolkit via `ant all` and `ant download-clean` from this toolkit's top-level directory. If there is no direct Internet access from the IBM Streams machine and if there is a need to go through a proxy server, then the `ant all` command may not work. In that case, you can try this command instead. `ant all -Dwebsocket.archive=file://localhost$(pwd)/ext -Dwebsocket.version=0.8.2 -Dboost.archive.src0=file://localhost$(pwd)/ext/boost-install-files/boost_1_73_0.tar.gz`
 
-In a Streams application, these operators can either be used together or independent of each other. 
+In a Streams application, these operators can either be used together or independent of each other. When they are used in an IBM Streams application, the WebSocket operators in this toolkit generate important metrics data that can be viewed from the IBM Streams web console to observe details such as data transfer time, payload size, number of data items transferred etc.
 
 ## Documentation
 1. The official toolkit documentation with extensive learning and operational details is available at this URL:
