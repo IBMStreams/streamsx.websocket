@@ -121,7 +121,7 @@ gg=="
       ><text x="48.65" y="28.0"
       >wsClientSessionLoggingNeeded, websocketStaleConnectionPurgeInterval, </text
       ><text x="48.65" y="43.0"
-      >ipv6Available, tcpNoDelay, numberOfMessagesToReceiveBeforeAnAck, </text
+      >ipv6Available, numberOfMessagesToReceiveBeforeAnAck, </text
       ><text x="48.65" y="58.0"
       >allowHttpPost, newDataCpuYieldTimeInSenderThread, </text
       ><text x="48.65" y="73.0"

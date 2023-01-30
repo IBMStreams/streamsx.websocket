@@ -22,7 +22,7 @@
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.1.1</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSink</p>
+<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.1.0</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSink</p>
 
 </div>
 
@@ -32,13 +32,10 @@
 
 <div class="section">
 
-<p class="p">      The server-based WebSocketSink operator is designed to send data to the remote        WebSocket clients that are connected at any given time to the WebSocket       server running inside of this operator. This operator can be used to        send text (plain text, JSON or XML) and/or binary data. This operator will        accept a client connection either via plain WebSocket (ws or http) or        via TLS WebSocket (wss or https). Since any given WebSocket connection is       bidirectional (full duplex) in nature, this sink operator will focus only on        sending data to the connected remote clients and will simply ignore any        data received from them. In addition, this operator can be configured to       allow a certain maximum number of concurrent connections from the remote       clients depending on the needs of the application and based on the       capacity of the underlying OS and hardware configuration such as         networking, CPU cores and memory limits. 
+<p class="p">      The server-based WebSocketSink operator is designed to send data to the remote        WebSocket clients that are connected at any given time to the WebSocket       server running inside of this operator. This operator can be used to        send text (plain text, JSON or XML) and/or binary data. This operator will        accept a client connection either via plain WebSocket (ws or http) or        via TLS WebSocket (wss or https). Since any given WebSocket connection is       bidirectional (full duplex) in nature, this sink operator will focus only on        sending data to the connected remote clients and will simply ignore any        data received from them. In addition, this operator can be configured to       allow a certain maximum number of concurrent connections from the remote       clients depending on the needs of the application and based on the       capacity of the underlying OS and hardware configuration such as         networking, CPU cores and memory limits.
 </p>
 
-<p class="p">      Since WebSocket at its low level is based on TCP, you have to be aware of the        effects of the Nagle's algorithm which is usually controlled by TCP_NODELAY.       This operator has an optional parameter named tcpNoDelay to enable or disable        Nagle's algorithm for your needs. The tcpNoDelay parameter will do its job        correctly only with the websocketpp library version 0.8.3 and higher.
-</p>
-
-<p class="p">      This is Send-only to multiple clients.        This operator promotes One-To-Many data access pattern. So, this operator will       take as much time as needed to send a given data item to all the connected clients.
+<p class="p">      This is Send-only to multiple clients.        This operator promotes One-To-Many data access pattern.
 </p>
 
 <p class="p">      By default, any remote client that knows the WebSocket URL of this operator can       connect to receive data sent by this operator. If only a specific set of remote       clients should be allowed to connect to this operator, an optional operator       parameter named clientWhitelist can be used to provide a list&lt;rstring&gt; with       one or more client IP addresses. An empty list means connections will be accepted       from any client with no restrictions. A new whitelist can also be injected into this       operator via an optional input port in the middle of an application run. On receiving       such a new whitelist, this operator will start using it immediately and it will       terminate its existing connections with those remote clients that are no longer       specified in the whitelist. IP addresses can be exact or wildcard based as shown below.
@@ -90,9 +87,9 @@
  
   <dt class="dt dlterm">Parameters</dt>
 
-  <dd class="dd">This operator supports 20 parameters.
+  <dd class="dd">This operator supports 19 parameters.
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 </dd>
@@ -101,7 +98,7 @@
  
   <dt class="dt dlterm">Metrics</dt>
 
-  <dd class="dd">This operator reports 11 metrics.</dd>
+  <dd class="dd">This operator reports 6 metrics.</dd>
 
  
 </dl>
@@ -241,9 +238,9 @@
 
 <div class="section">
 <p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters">Parameters</a></strong></p>
-This operator supports 20 parameters.
+This operator supports 19 parameters.
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 <dl class="dl">
@@ -356,7 +353,7 @@ This operator supports 20 parameters.
      <dt class="dt dlterm"><a name="spldoc_operator__parameter__ipv6Available"><!-- --></a><tt class="ph tt">ipv6Available</tt></dt>
 
      <dd class="dd">
-<p class="p">This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSink operator is running. (Default is true)
+<p class="p">This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the IBMVoiceGatewaySource operator is running. (Default is true)
 </p>
 
   <dl class="dl">
@@ -540,41 +537,6 @@ This operator supports 20 parameters.
 
      <dd class="dd">   <ul class="sl simple">
      <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
-     </li>
-
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
-     </li>
-
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
-     </li>
-
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
-     </li>
-
-   </ul>
-
-     <p class="p"/>
-     </dd>
-
-    
-  </dl>
-
-     </dd>
-
-  
-  
-     <dt class="dt dlterm"><a name="spldoc_operator__parameter__tcpNoDelay"><!-- --></a><tt class="ph tt">tcpNoDelay</tt></dt>
-
-     <dd class="dd">
-<p class="p">This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. (Default is false.)
-</p>
-
-  <dl class="dl">
-    
-     <dt class="dt dlterm">Properties</dt>
-
-     <dd class="dd">   <ul class="sl simple">
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
      </li>
 
      <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
@@ -955,19 +917,6 @@ This operator supports 20 parameters.
 <p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics">Metrics</a></strong></p>
 <dl class="dl">
   
-    <dt class="dt dlterm"><tt class="ph tt">nBlobDataItemsWaitingToBeSentToRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
-
-    <dd class="dd">
-
-<p class="p">Total number of blob data items waiting to be sent to the remote clients.
-</p>
-
-     <p class="p"/>
-
-     </dd>
-
-  
-  
     <dt class="dt dlterm"><tt class="ph tt">nClientsConnected</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
 
     <dd class="dd">
@@ -1025,58 +974,6 @@ This operator supports 20 parameters.
     <dd class="dd">
 
 <p class="p">Did the user configure to exchange data via a non-TLS port?
-</p>
-
-     <p class="p"/>
-
-     </dd>
-
-  
-  
-    <dt class="dt dlterm"><tt class="ph tt">nSizeOfMostRecentDataItemSent</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
-
-    <dd class="dd">
-
-<p class="p">Size of the most recent data item sent to a remote client.
-</p>
-
-     <p class="p"/>
-
-     </dd>
-
-  
-  
-    <dt class="dt dlterm"><tt class="ph tt">nStringDataItemsWaitingToBeSentToRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
-
-    <dd class="dd">
-
-<p class="p">Total number of string data items waiting to be sent to the remote clients.
-</p>
-
-     <p class="p"/>
-
-     </dd>
-
-  
-  
-    <dt class="dt dlterm"><tt class="ph tt">nTcpNoDelay</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
-
-    <dd class="dd">
-
-<p class="p">Did the user configure TCP_NODELAY for this operator?
-</p>
-
-     <p class="p"/>
-
-     </dd>
-
-  
-  
-    <dt class="dt dlterm"><tt class="ph tt">nTimeTakenToSendMostRecentDataItem</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
-
-    <dd class="dd">
-
-<p class="p">Time taken in milliseconds to send the most recent data item to a remote client.
 </p>
 
      <p class="p"/>
