@@ -1,6 +1,6 @@
 ============================================================
 First created on: February/22/2020
-Last modified on: January/30/2023
+Last modified on: February/01/2023
 
 Purpose of this toolkit
 -----------------------
@@ -218,7 +218,9 @@ ant download-clean        [Approximately 2 minutes]
 
 If all those commands ran successfully, this toolkit is ready for use.
 
-If there is no direct Internet access from the IBM Streams machine and if there is a need to go through a proxy server, then the `ant all` command may not work. In that case, you can try this command instead. `ant all -Dwebsocket.archive=file://localhost$(pwd)/ext -Dwebsocket.version=0.8.2 -Dboost.archive.src0=file://localhost$(pwd)/ext/boost-install-files/boost_1_73_0.tar.gz`
+If there is no direct Internet access from the IBM Streams machine and if there is a need to go through a proxy server, then the `ant all` command may not work. In that case, please follow the specific instructions outlined in the following URL.
+
+https://ibmstreams.github.io/streamsx.websocket/docs/user/overview/
 
 A must do in the Streams applications that will use this toolkit
 ----------------------------------------------------------------

@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Apr/08/2020
- Last modified on: Jan/29/2023
+ Last modified on: Feb/01/2023
 
  This particular operator (WebSocketSendReceive) is used to
  send and receive either text data or binary data to and from a 
@@ -639,7 +639,9 @@ void MY_OPERATOR::process(Punctuation const & punct, uint32_t port)
 //
 void MY_OPERATOR::ws_data_sender() {
 	SPL::int64 timeTakenToSendDataItem = 0;
-	
+	// v1.1.3 change. (Feb/01/2023)
+	bool dataItemSentToRemoteServer = false;
+    
 	// v1.1.1 change (Jan/28/2023)
 	// Since it is no longer a long running thread loop,
 	// there is no need for this while loop.
@@ -868,15 +870,51 @@ void MY_OPERATOR::ws_data_sender() {
 				payloadSize = blobDataSize.at(0);
 				
 				if (buffer !=  NULL && payloadSize > 0) {
-					// c->get_alog().write(websocketpp::log::alevel::app, "Sent binary Message: " + boost::to_string(buffer.size()));  
-					if (tls_ws_client != NULL) {
-						tls_ws_client->send(wsHandle, buffer, payloadSize, websocketpp::frame::opcode::binary);
-					} else {
-						non_tls_ws_client->send(wsHandle, buffer, payloadSize, websocketpp::frame::opcode::binary);
-					}
-					
-					numberOfDataItemsSent++;
-					numberOfDataBytesSent += payloadSize;
+					// v1.1.3 change. (Feb/01/2023)
+					// Catch any exception from the send method below.
+					// I have seen it throw an invalid_state exception when
+					// we are inside the send method to send data to the  
+					// remote server that we are connected to and at that 
+					// time that server closes its WebSocket connection 
+					// due to the remote server application getting 
+					// shut down or for any other reason.
+                    try {
+						// c->get_alog().write(websocketpp::log::alevel::app, "Sent binary Message: " + boost::to_string(buffer.size()));  
+						if (tls_ws_client != NULL) {
+							tls_ws_client->send(wsHandle, buffer, payloadSize, websocketpp::frame::opcode::binary);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteServer = true;
+						} else {
+							non_tls_ws_client->send(wsHandle, buffer, payloadSize, websocketpp::frame::opcode::binary);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteServer = true;
+						}
+                    } catch (websocketpp::exception const & e) {
+                    	/*
+						// On a heavy load of data send situations, there will be 
+						// too many data item send operations that will throw 
+						// several thousands of exceptions during the few second period
+						// in which the remote server disconnect happens. That will 
+						// write the same PE log entry several thousands of times. 
+						// We don't want to log all of them. If you want to specifically 
+						// test this condition in a lab test environment, you can
+						// uncomment this block only for testing purposes.
+						SPLAPPTRC(L_ERROR,
+							"Caught an exception in the middle of sending data to the " << 
+							"remote server we are connected to. Server URL=" <<
+						 	this->url <<
+							". We are skipping the data send to that " <<
+							"disconnected server.", "ws_data_sender");
+                    	*/
+
+                    	// Do nothing here.
+                    }
+
+                    // v1.1.3 change. (Feb/01/2023)
+                    if(dataItemSentToRemoteServer == true) {
+                    	numberOfDataItemsSent++;
+                    	numberOfDataBytesSent += payloadSize;
+                    }
 				}
 				
 				// Remove the items from the vector. It is no longer needed. Also free the original 
@@ -893,21 +931,57 @@ void MY_OPERATOR::ws_data_sender() {
 				payloadSize = strDataToSend.at(0).length();				
 				
 				if (payloadSize > 0) {
-					if (tls_ws_client != NULL) {
-						tls_ws_client->send(wsHandle, strDataToSend.at(0), websocketpp::frame::opcode::text);
-					} else {
-						non_tls_ws_client->send(wsHandle, strDataToSend.at(0), websocketpp::frame::opcode::text);
-					}
-					
-					numberOfDataItemsSent++;
-					numberOfDataBytesSent += payloadSize;
+					// v1.1.3 change. (Feb/01/2023)
+					// Catch any exception from the send method below.
+					// I have seen it throw an invalid_state exception when
+					// we are inside the send method to send data to the  
+					// remote server that we are connected to and at that 
+					// time that server closes its WebSocket connection 
+					// due to the remote server application getting 
+					// shut down or for any other reason.
+                    try {
+						if (tls_ws_client != NULL) {
+							tls_ws_client->send(wsHandle, strDataToSend.at(0), websocketpp::frame::opcode::text);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteServer = true;
+						} else {
+							non_tls_ws_client->send(wsHandle, strDataToSend.at(0), websocketpp::frame::opcode::text);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteServer = true;
+						}
+                    } catch (websocketpp::exception const & e) {
+                    	/*
+						// On a heavy load of data send situations, there will be 
+						// too many data item send operations that will throw 
+						// several thousands of exceptions during the few second period
+						// in which the remote server disconnect happens. That will 
+						// write the same PE log entry several thousands of times. 
+						// We don't want to log all of them. If you want to specifically 
+						// test this condition in a lab test environment, you can
+						// uncomment this block only for testing purposes.
+						SPLAPPTRC(L_ERROR,
+							"Caught an exception in the middle of sending data to the " << 
+							"remote server we are connected to. Server URL=" <<
+						 	this->url <<
+							". We are skipping the data send to that " <<
+							"disconnected server.", "ws_data_sender");
+                    	*/
+
+                    	// Do nothing here.
+                    }
+
+                    // v1.1.3 change. (Feb/01/2023)
+                    if(dataItemSentToRemoteServer == true) {
+						numberOfDataItemsSent++;
+						numberOfDataBytesSent += payloadSize;
+                    }
 				}
 
 				// Erase the item pushed into the vector member (cache) earlier in the 
 				// process method for this data item. It is no longer needed.
 				strDataToSend.erase(strDataToSend.begin() + 0);
 				strDataVectorSize--;
-			}			
+			}
 
 			// Calculate the time it took to send the data item.
 			SPL:timestamp tsAfterSendingDataItem = SPL::Functions::Time::getTimestamp();
@@ -917,7 +991,9 @@ void MY_OPERATOR::ws_data_sender() {
 			timeTakenToSendDataItem /= 1000000;
 			
 			// Update the operator metric only if the user asked for a live update.
-			if (websocketLiveMetricsUpdateNeeded == true && payloadSize > 0) {
+			// v1.1.3 change. (Feb/01/2023)
+			if (websocketLiveMetricsUpdateNeeded == true && 
+				payloadSize > 0 && dataItemSentToRemoteServer == true) {
 				nDataItemsSentToRemoteServerMetric->setValueNoLock(numberOfDataItemsSent);
 				nDataBytesSentToRemoteServerMetric->setValueNoLock(numberOfDataBytesSent);
 				nTimeTakenToSendMostRecentDataItemMetric->setValueNoLock((SPL::uint64)timeTakenToSendDataItem);
@@ -926,13 +1002,25 @@ void MY_OPERATOR::ws_data_sender() {
 						
 			// We will return the status as success via the send status output port.
 			OPort1Type oTuple;
-			// Result code 0 means successful send.
-			oTuple.set_sendResultCode(0);
-			oTuple.set_sendResultMessage("Successfully sent " + 
-				boost::to_string(payloadSize) + " bytes of data to the remote WebSocket server.");
+			
+			// v1.1.3 change. (Feb/01/2023)
+			if(payloadSize > 0 && dataItemSentToRemoteServer == false) {
+				// Result code 2 means unsuccessful send.
+				oTuple.set_sendResultCode(2);
+				oTuple.set_sendResultMessage(boost::to_string("Unable to send data to the remote WebSocket server as it may have ") +
+					boost::to_string("closed its connection. You may try sending your data again later."));				
+			} else {
+				// Result code 0 means successful send.
+				oTuple.set_sendResultCode(0);
+				oTuple.set_sendResultMessage("Successfully sent " + 
+					boost::to_string(payloadSize) + " bytes of data to the remote WebSocket server.");
+			}
+			
 			submit(oTuple, 1);
 			
-			if (wsClientSessionLoggingNeeded == true && payloadSize > 0) {
+			// v1.1.3 change. (Feb/01/2023)
+			if (wsClientSessionLoggingNeeded == true && 
+				payloadSize > 0 && dataItemSentToRemoteServer) {
 				SPLAPPTRC(L_ERROR,
 					"Operator "
 					<< operatorPhysicalName

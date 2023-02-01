@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Apr/28/2020
- Last modified on: Jan/29/2023
+ Last modified on: Feb/01/2023
 
  This particular operator (WebSocketSink) is used to
  send text (plain text, JSON, XML) and/or binary data to
@@ -1093,6 +1093,8 @@ void MY_OPERATOR::ws_data_sender() {
 	SPL::int64 timeTakenToSendDataItem = 0;
 	SPL::int64 timeTakenToAcquireMutex1 = 0;
 	SPL::int64 timeTakenToAcquireMutex3 = 0;
+	// v1.1.3 change. (Feb/01/2023)
+	bool dataItemSentToRemoteClient = false;
 	
 	// v1.1.1 change (Jan/28/2023)
 	// Since it is no longer a long running thread loop,
@@ -1281,18 +1283,54 @@ void MY_OPERATOR::ws_data_sender() {
 						   continue;
 						}
 						
-						// We can now send a blob via either TLS or non-TLS. 
-						if(con_metadata.isTlsConnection == false) {
-							endpoint_non_tls.send(hdl, buffer, payloadSize, websocketpp::frame::opcode::binary);
-						} else {
-							endpoint_tls.send(hdl, buffer, payloadSize, websocketpp::frame::opcode::binary);
-						}
+						// v1.1.3 change. (Feb/01/2023)
+						// Catch any exception from the send method below.
+						// I have seen it throw an invalid_state exception when
+						// we are inside the send method to send data to a 
+						// connected client and at that time that client
+						// closes its WebSocket connection due to the
+						// remote client application getting shut down or 
+						// for any other reason.
+						try {
+							// We can now send a blob via either TLS or non-TLS. 
+							if(con_metadata.isTlsConnection == false) {
+								endpoint_non_tls.send(hdl, buffer, payloadSize, websocketpp::frame::opcode::binary);
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
+							} else {
+								endpoint_tls.send(hdl, buffer, payloadSize, websocketpp::frame::opcode::binary);
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
+							}
+						} catch (websocketpp::exception const & e) {
+							/*
+							// On a heavy load of data send situations, there will be 
+							// too many data item send operations that will throw 
+							// several thousands of exceptions during the few second period
+							// in which the remote client disconnect happens. That will 
+							// write the same PE log entry several thousands of times. 
+							// We don't want to log all of them. If you want to specifically 
+							// test this condition in a lab test environment, you can
+							// uncomment this block only for testing purposes.
+							SPLAPPTRC(L_ERROR,
+								"Caught an exception in the middle of sending data to a " << 
+								"remote client connected here from the client IP address " <<
+								con_metadata.clientIpAddress <<
+								" and a client WebSocket port " << 
+								con_metadata.clientPort <<
+								". We are skipping the data send to that " <<
+								"disconnected client.", "ws_data_sender");
+							*/
+							
+							// Do nothing here.
+                        }
 						
 						it++;
 					} // End of the inner while loop.
 				}
 
-				if (buffer !=  NULL && payloadSize > 0) {
+				// v1.1.3 change. (Feb/01/2023)
+				if (buffer !=  NULL && payloadSize > 0 && dataItemSentToRemoteClient == true) {
 					// We compute the following two values only for one remote 
 					// client connected to this operator. That is what will get 
 					// displayed in the PE log file and in the Streams web console's 
@@ -1348,19 +1386,55 @@ void MY_OPERATOR::ws_data_sender() {
 						   it++;
 						   continue;
 						}
-						
-						// We can now send a string via either TLS or non-TLS.
-						if(con_metadata.isTlsConnection == false) {
-							endpoint_non_tls.send(hdl, strDataToSend.at(0), websocketpp::frame::opcode::text);
-						} else {
-							endpoint_tls.send(hdl, strDataToSend.at(0), websocketpp::frame::opcode::text);
-						}
+
+						// v1.1.3 change. (Feb/01/2023)
+						// Catch any exception from the send method below.
+						// I have seen it throw an invalid_state exception when
+						// we are inside the send method to send data to a 
+						// connected client and at that time that client
+						// closes its WebSocket connection due to the
+						// remote client application getting shut down or 
+						// for any other reason.
+						try {
+							// We can now send a string via either TLS or non-TLS.
+							if(con_metadata.isTlsConnection == false) {
+								endpoint_non_tls.send(hdl, strDataToSend.at(0), websocketpp::frame::opcode::text);
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
+							} else {
+								endpoint_tls.send(hdl, strDataToSend.at(0), websocketpp::frame::opcode::text);
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
+							}
+						} catch (websocketpp::exception const & e) {
+							/*
+							// On a heavy load of data send situations, there will be 
+							// too many data item send operations that will throw 
+							// several thousands of exceptions during the few second period
+							// in which the remote client disconnect happens. That will 
+							// write the same PE log entry several thousands of times. 
+							// We don't want to log all of them. If you want to specifically 
+							// test this condition in a lab test environment, you can
+							// uncomment this block only for testing purposes.
+							SPLAPPTRC(L_ERROR,
+								"Caught an exception in the middle of sending data to a " << 
+								"remote client connected here from the client IP address " <<
+								con_metadata.clientIpAddress <<
+								" and a client WebSocket port " << 
+								con_metadata.clientPort <<
+								". We are skipping the data send to that " <<
+								"disconnected client.", "ws_data_sender");
+							*/
+							
+							// Do nothing here.
+                        }
 						
 						it++;
 					} // End of the inner while loop.
 				}
 				
-				if (payloadSize > 0) {
+				// v1.1.3 change. (Feb/01/2023)
+				if (payloadSize > 0 && dataItemSentToRemoteClient == true) {
 					// We compute the following two values only for one remote 
 					// client connected to this operator. That is what will get 
 					// displayed in the PE log file and in the Streams web console's 
@@ -1387,7 +1461,9 @@ void MY_OPERATOR::ws_data_sender() {
 			timeTakenToSendDataItem /= 1000000;
 			
 			// Update the operator metric only if the user asked for a live update.
-			if (websocketLiveMetricsUpdateNeeded == true && payloadSize > 0) {
+			// v1.1.3 change. (Feb/01/2023)
+			if (websocketLiveMetricsUpdateNeeded == true && 
+				payloadSize > 0 && dataItemSentToRemoteClient == true) {
 				nDataItemsSentToRemoteClientsMetric->setValueNoLock(numberOfDataItemsSent);
 				nDataBytesSentToRemoteClientsMetric->setValueNoLock(numberOfDataBytesSent);
 				nBlobDataItemsWaitingToBeSentToRemoteClientsMetric->setValueNoLock(blobDataVectorSize);
@@ -1395,8 +1471,10 @@ void MY_OPERATOR::ws_data_sender() {
 				nTimeTakenToSendMostRecentDataItemMetric->setValueNoLock((SPL::uint64)timeTakenToSendDataItem);
 				nSizeOfMostRecentDataItemSentMetric->setValueNoLock(payloadSize);
 			}			
-									
-			if (wsClientSessionLoggingNeeded == true && payloadSize > 0) {
+
+			// v1.1.3 change. (Feb/01/2023)
+			if (wsClientSessionLoggingNeeded == true && 
+				payloadSize > 0 && dataItemSentToRemoteClient == true) {
 				SPLAPPTRC(L_ERROR,
 					"Operator "
 					<< operatorPhysicalName

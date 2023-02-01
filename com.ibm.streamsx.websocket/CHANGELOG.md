@@ -1,5 +1,10 @@
 Changes
 =======
+## v1.1.3:
+* Feb/01/2023
+* Added a code fix to try/catch the invalid state exception thrown from within the websocketpp send method when sending data to a remote client or server and at that exact time that remote client or server closing its WebSocket connection due to that client or server application being shut down or for any other reason. This change was done for all the three WebSocket operators in this toolkit.
+* Optimized all the reference examples that use the WebSocketSendReceive operator to ignore if a tuple arrives with empty data to be sent to a remote WebSocket endpoint.
+
 ## v1.1.2:
 * Jan/30/2023
 * Optimized all the reference examples that use the WebSocketSendReceive operator to queue the incoming tuples in a map instead of a list to improve the data sending performance.

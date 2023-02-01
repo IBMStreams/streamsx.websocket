@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: May/01/2020
-Last modified on: Jan/30/2023
+Last modified on: Feb/01/2023
 
 This application is a companion application that must be used while
 demonstrating the use of the WebSocketSink operator available
@@ -181,6 +181,11 @@ composite WebSocketClientApp {
 				}
 				
 			onTuple D: {
+				if(length(D.strData) == 0 && blobSize(D.blobData) == 0ul) {
+					// Ignore if the incoming tuple has empty data to be sent out.
+					return;
+				}
+				
 				// We will send the data item from here only when there is
 				// no pending data send activity i.e. when we are not waiting to get a send result.
 				// If there is a pending data send activity, subsequent data will be 

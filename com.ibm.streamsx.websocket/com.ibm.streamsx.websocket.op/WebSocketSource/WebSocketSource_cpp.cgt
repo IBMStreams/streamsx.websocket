@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Feb/22/2020
- Last modified on: Jan/29/2023
+ Last modified on: Feb/01/2023
 
  This particular operator (WebSocketSource) is used to
  receive either text data or binary data from one or more
@@ -1603,6 +1603,8 @@ void MY_OPERATOR::process(
 //
 void MY_OPERATOR::ws_data_sender() {
 	SPL::int64 timeTakenToSendDataItem = 0;
+	// v1.1.3 change. (Feb/01/2023)
+	bool dataItemSentToRemoteClient = false;
 	
 	// v1.1.1 change (Jan/29/2023)
 	// Since it is no longer a long running thread loop,
@@ -1750,7 +1752,29 @@ void MY_OPERATOR::ws_data_sender() {
 						try {
 							endpoint_non_tls.send(con_metadata.hdl, buffer,
 								payloadSize, websocketpp::frame::opcode::binary);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteClient = true;
 						} catch (websocketpp::exception const & e) {
+							/*
+							// v1.1.3 change. (Feb/01/2023)
+							// On a heavy load of data send situations, there will be 
+							// too many data item send operations that will throw 
+							// several thousands of exceptions during the few second period
+							// in which the remote client disconnect happens. That will 
+							// write the same PE log entry several thousands of times. 
+							// We don't want to log all of them. If you want to specifically 
+							// test this condition in a lab test environment, you can
+							// uncomment this block only for testing purposes.
+							SPLAPPTRC(L_ERROR,
+								"Caught an exception in the middle of sending data to a " << 
+								"remote client connected here from the client IP address " <<
+								con_metadata.clientIpAddress <<
+								" and a client WebSocket port " << 
+								con_metadata.clientPort <<
+								". We are skipping the data send to that " <<
+								"disconnected client.", "ws_data_sender");
+							*/
+
 							// Do nothing here.
 						}
 					} else if(con_metadata.isHttpConnection == false && 
@@ -1758,7 +1782,29 @@ void MY_OPERATOR::ws_data_sender() {
 						try {
 							endpoint_tls.send(con_metadata.hdl, buffer, 
 								payloadSize, websocketpp::frame::opcode::binary);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteClient = true;
 						} catch (websocketpp::exception const & e) {
+							/*
+							// v1.1.3 change. (Feb/01/2023)
+							// On a heavy load of data send situations, there will be 
+							// too many data item send operations that will throw 
+							// several thousands of exceptions during the few second period
+							// in which the remote client disconnect happens. That will 
+							// write the same PE log entry several thousands of times. 
+							// We don't want to log all of them. If you want to specifically 
+							// test this condition in a lab test environment, you can
+							// uncomment this block only for testing purposes.
+							SPLAPPTRC(L_ERROR,
+								"Caught an exception in the middle of sending data to a " << 
+								"remote client connected here from the client IP address " <<
+								con_metadata.clientIpAddress <<
+								" and a client WebSocket port " << 
+								con_metadata.clientPort <<
+								". We are skipping the data send to that " <<
+								"disconnected client.", "ws_data_sender");
+							*/
+
 							// Do nothing here.
 						}
 					} else if(con_metadata.isHttpConnection == true && 
@@ -1821,7 +1867,29 @@ void MY_OPERATOR::ws_data_sender() {
 								con_non_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
 								con_non_tls->send_http_response(ec);	
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
 							} catch (websocketpp::exception const & e) {
+								/*
+								// v1.1.3 change. (Feb/01/2023)
+								// On a heavy load of data send situations, there will be 
+								// too many data item send operations that will throw 
+								// several thousands of exceptions during the few second period
+								// in which the remote client disconnect happens. That will 
+								// write the same PE log entry several thousands of times. 
+								// We don't want to log all of them. If you want to specifically 
+								// test this condition in a lab test environment, you can
+								// uncomment this block only for testing purposes.
+								SPLAPPTRC(L_ERROR,
+									"Caught an exception in the middle of sending data to a " << 
+									"remote client connected here from the client IP address " <<
+									con_metadata.clientIpAddress <<
+									" and a client WebSocket port " << 
+									con_metadata.clientPort <<
+									". We are skipping the data send to that " <<
+									"disconnected client.", "ws_data_sender");
+								*/
+
 								// Do nothing here.
 							}
 						}
@@ -1884,8 +1952,30 @@ void MY_OPERATOR::ws_data_sender() {
 								con_tls->set_body(std::string((const char*)buffer, payloadSize));
 								con_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
-								con_tls->send_http_response(ec);	
+								con_tls->send_http_response(ec);
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
 							} catch (websocketpp::exception const & e) {
+								/*
+								// v1.1.3 change. (Feb/01/2023)
+								// On a heavy load of data send situations, there will be 
+								// too many data item send operations that will throw 
+								// several thousands of exceptions during the few second period
+								// in which the remote client disconnect happens. That will 
+								// write the same PE log entry several thousands of times. 
+								// We don't want to log all of them. If you want to specifically 
+								// test this condition in a lab test environment, you can
+								// uncomment this block only for testing purposes.
+								SPLAPPTRC(L_ERROR,
+									"Caught an exception in the middle of sending data to a " << 
+									"remote client connected here from the client IP address " <<
+									con_metadata.clientIpAddress <<
+									" and a client WebSocket port " << 
+									con_metadata.clientPort <<
+									". We are skipping the data send to that " <<
+									"disconnected client.", "ws_data_sender");
+								*/
+
 								// Do nothing here.
 							}
 						}
@@ -1936,7 +2026,29 @@ void MY_OPERATOR::ws_data_sender() {
 							// This is a non_tls WebSocket based client.
 							endpoint_non_tls.send(con_metadata.hdl, strDataToSend.at(0), 
 								websocketpp::frame::opcode::text);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteClient = true;
 						} catch (websocketpp::exception const & e) {
+							/*
+							// v1.1.3 change. (Feb/01/2023)
+							// On a heavy load of data send situations, there will be 
+							// too many data item send operations that will throw 
+							// several thousands of exceptions during the few second period
+							// in which the remote client disconnect happens. That will 
+							// write the same PE log entry several thousands of times. 
+							// We don't want to log all of them. If you want to specifically 
+							// test this condition in a lab test environment, you can
+							// uncomment this block only for testing purposes.
+							SPLAPPTRC(L_ERROR,
+								"Caught an exception in the middle of sending data to a " << 
+								"remote client connected here from the client IP address " <<
+								con_metadata.clientIpAddress <<
+								" and a client WebSocket port " << 
+								con_metadata.clientPort <<
+								". We are skipping the data send to that " <<
+								"disconnected client.", "ws_data_sender");
+							*/
+
 							// Do nothing here.
 						}
 					} else if(con_metadata.isHttpConnection == false && 
@@ -1945,7 +2057,29 @@ void MY_OPERATOR::ws_data_sender() {
 							// This is a TLS WebSocket based client.
 							endpoint_tls.send(con_metadata.hdl, strDataToSend.at(0),
 								websocketpp::frame::opcode::text);
+							// v1.1.3 change. (Feb/01/2023)
+							dataItemSentToRemoteClient = true;
 						} catch (websocketpp::exception const & e) {
+							/*
+							// v1.1.3 change. (Feb/01/2023)
+							// On a heavy load of data send situations, there will be 
+							// too many data item send operations that will throw 
+							// several thousands of exceptions during the few second period
+							// in which the remote client disconnect happens. That will 
+							// write the same PE log entry several thousands of times. 
+							// We don't want to log all of them. If you want to specifically 
+							// test this condition in a lab test environment, you can
+							// uncomment this block only for testing purposes.
+							SPLAPPTRC(L_ERROR,
+								"Caught an exception in the middle of sending data to a " << 
+								"remote client connected here from the client IP address " <<
+								con_metadata.clientIpAddress <<
+								" and a client WebSocket port " << 
+								con_metadata.clientPort <<
+								". We are skipping the data send to that " <<
+								"disconnected client.", "ws_data_sender");
+							*/
+
 							// Do nothing here.
 						}
 					} else if(con_metadata.isHttpConnection == true && 
@@ -1994,8 +2128,30 @@ void MY_OPERATOR::ws_data_sender() {
 								con_non_tls->set_body(strDataToSend.at(0));
 								con_non_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
-								con_non_tls->send_http_response(ec);	
+								con_non_tls->send_http_response(ec);
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
 							} catch (websocketpp::exception const & e) {
+								/*
+								// v1.1.3 change. (Feb/01/2023)
+								// On a heavy load of data send situations, there will be 
+								// too many data item send operations that will throw 
+								// several thousands of exceptions during the few second period
+								// in which the remote client disconnect happens. That will 
+								// write the same PE log entry several thousands of times. 
+								// We don't want to log all of them. If you want to specifically 
+								// test this condition in a lab test environment, you can
+								// uncomment this block only for testing purposes.
+								SPLAPPTRC(L_ERROR,
+									"Caught an exception in the middle of sending data to a " << 
+									"remote client connected here from the client IP address " <<
+									con_metadata.clientIpAddress <<
+									" and a client WebSocket port " << 
+									con_metadata.clientPort <<
+									". We are skipping the data send to that " <<
+									"disconnected client.", "ws_data_sender");
+								*/
+
 								// Do nothing here.
 							}
 						}
@@ -2045,8 +2201,30 @@ void MY_OPERATOR::ws_data_sender() {
 								con_tls->set_body(strDataToSend.at(0));
 								con_tls->set_status(websocketpp::http::status_code::ok);
 								// This is a deferred response to a remote HTTP client.
-								con_tls->send_http_response(ec);	
+								con_tls->send_http_response(ec);
+								// v1.1.3 change. (Feb/01/2023)
+								dataItemSentToRemoteClient = true;
 							} catch (websocketpp::exception const & e) {
+								/*
+								// v1.1.3 change. (Feb/01/2023)
+								// On a heavy load of data send situations, there will be 
+								// too many data item send operations that will throw 
+								// several thousands of exceptions during the few second period
+								// in which the remote client disconnect happens. That will 
+								// write the same PE log entry several thousands of times. 
+								// We don't want to log all of them. If you want to specifically 
+								// test this condition in a lab test environment, you can
+								// uncomment this block only for testing purposes.
+								SPLAPPTRC(L_ERROR,
+									"Caught an exception in the middle of sending data to a " << 
+									"remote client connected here from the client IP address " <<
+									con_metadata.clientIpAddress <<
+									" and a client WebSocket port " << 
+									con_metadata.clientPort <<
+									". We are skipping the data send to that " <<
+									"disconnected client.", "ws_data_sender");
+								*/
+
 								// Do nothing here.
 							}
 						}
@@ -2068,7 +2246,10 @@ void MY_OPERATOR::ws_data_sender() {
 			}			
 			
 			// Update the metrics counters now.
-			if(payloadSize > 0 && con_metadata_valid == true) {
+			// v1.1.3 change. (Feb/01/2023)
+			if(payloadSize > 0 && 
+				con_metadata_valid == true && 
+				dataItemSentToRemoteClient == true) {
 				// Upate the client specific counters.
 				con_metadata.dataItemsSentCnt++;
 				con_metadata.dataBytesSent += payloadSize;
@@ -2094,16 +2275,20 @@ void MY_OPERATOR::ws_data_sender() {
 			timeTakenToSendDataItem /= 1000000;
 			
 			// Update the operator metric only if the user asked for a live update.
+			// v1.1.3 change. (Feb/01/2023)
 			if (websocketLiveMetricsUpdateNeeded == true && 
-				con_metadata_valid == true && payloadSize > 0) {
+				con_metadata_valid == true && payloadSize > 0 &&
+				dataItemSentToRemoteClient == true) {
 				nDataItemsSentToRemoteClientsMetric->setValueNoLock(nDataItemsSentToRemoteClients);
 				nDataBytesSentToRemoteClientsMetric->setValueNoLock(nDataBytesSentToRemoteClients);
 				nTimeTakenToSendMostRecentDataItemMetric->setValueNoLock((SPL::uint64)timeTakenToSendDataItem);
 				nSizeOfMostRecentDataItemSentMetric->setValueNoLock(payloadSize);
 			}
 									
+			// v1.1.3 change. (Feb/01/2023)
 			if (wsClientSessionLoggingNeeded == true && 
-				con_metadata_valid == true && payloadSize > 0) {
+				con_metadata_valid == true && payloadSize > 0 &&
+				dataItemSentToRemoteClient == true) {
 				SPLAPPTRC(L_ERROR,
 					"Operator "
 					<< operatorPhysicalName
@@ -2288,7 +2473,7 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 								con_non_tls->set_body(msg);
 								con_non_tls->set_status(websocketpp::http::status_code::im_a_teapot);
 								// This is a deferred response to a remote HTTP client.
-								con_non_tls->send_http_response(ec);	
+								con_non_tls->send_http_response(ec);
 							} catch (websocketpp::exception const & e) {
 								// Do nothing here.
 							}
@@ -2308,7 +2493,7 @@ void MY_OPERATOR::ws_response_timeout_handler() {
 								con_tls->set_body(msg);
 								con_tls->set_status(websocketpp::http::status_code::im_a_teapot);
 								// This is a deferred response to a remote HTTP client.
-								con_tls->send_http_response(ec);	
+								con_tls->send_http_response(ec);
 							} catch (websocketpp::exception const & e) {
 								// Do nothing here.
 							}
