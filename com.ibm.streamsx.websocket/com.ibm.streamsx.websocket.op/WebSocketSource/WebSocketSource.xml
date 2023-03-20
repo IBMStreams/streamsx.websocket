@@ -534,6 +534,16 @@
         <type>rstring</type>
         <cardinality>1</cardinality>
       </parameter>
+      
+      <parameter>
+        <name>metricsResetInterval</name>
+        <description>This parameter can be used to specify a non-zero periodic time interval in minutes after which all the metrics counters will be reset to 0. (Default is 0 which will never reset the metrics counters.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
     </parameters>
 
     <inputPorts>

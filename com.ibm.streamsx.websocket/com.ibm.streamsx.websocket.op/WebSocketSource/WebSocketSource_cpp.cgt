@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Feb/22/2020
- Last modified on: Feb/01/2023
+ Last modified on: Mar/20/2023
 
  This particular operator (WebSocketSource) is used to
  receive either text data or binary data from one or more
@@ -592,6 +592,10 @@ my $allowHttpPost = $model->getParameterByName("allowHttpPost");
 # Default: 0
 $allowHttpPost = $allowHttpPost ? $allowHttpPost->getValueAt(0)->getCppExpression() : 0;
 
+my $metricsResetInterval = $model->getParameterByName("metricsResetInterval");
+# Default: 0 minutes 
+$metricsResetInterval = $metricsResetInterval ? $metricsResetInterval->getValueAt(0)->getCppExpression() : 0;
+
 my $newDataCpuYieldTimeInSenderThread = $model->getParameterByName("newDataCpuYieldTimeInSenderThread");
 # Default: 0.001 second i.e. 1 millisecond of CPU yield time inside a tight loop.
 $newDataCpuYieldTimeInSenderThread = $newDataCpuYieldTimeInSenderThread ? $newDataCpuYieldTimeInSenderThread->getValueAt(0)->getCppExpression() : 0.001;
@@ -647,16 +651,16 @@ MY_OPERATOR::MY_OPERATOR() {
 		"nDataBytesSentToRemoteClients");
 	nResponseTimeoutOccurrencesMetric = &opm.getCustomMetricByName(
 		"nResponseTimeoutOccurrences");
+	nTimeTakenToSendMostRecentDataItemMetric = 
+		&opm.getCustomMetricByName("nTimeTakenToSendMostRecentDataItem");
+	nSizeOfMostRecentDataItemSentMetric = 
+		&opm.getCustomMetricByName("nSizeOfMostRecentDataItemSent");
 	<%}%>
 	
 	nTlsPortMetric = &opm.getCustomMetricByName("nTlsPort");
 	nNonTlsPortNeededMetric = &opm.getCustomMetricByName("nNonTlsPortNeeded");
 	nNonTlsPortMetric = &opm.getCustomMetricByName("nNonTlsPort");
 	nHttpPostAllowedMetric = &opm.getCustomMetricByName("nHttpPostAllowed");
-	nTimeTakenToSendMostRecentDataItemMetric = 
-		&opm.getCustomMetricByName("nTimeTakenToSendMostRecentDataItem");
-	nSizeOfMostRecentDataItemSentMetric = 
-		&opm.getCustomMetricByName("nSizeOfMostRecentDataItemSent");
 	nSizeOfMostRecentDataItemReceivedMetric = 
 		&opm.getCustomMetricByName("nSizeOfMostRecentDataItemReceived");
 	nTcpNoDelayMetric = &opm.getCustomMetricByName("nTcpNoDelay");
@@ -747,6 +751,7 @@ MY_OPERATOR::MY_OPERATOR() {
 	<%}%>
 	
 	allowHttpPost = <%=$allowHttpPost%>;
+	metricsResetInterval = <%=$metricsResetInterval%>;
 	
 	// For string based assignment using a perl variable, it can't be
 	// assigned directly to the value of that perl variable. If we do that,
@@ -868,7 +873,8 @@ MY_OPERATOR::MY_OPERATOR() {
 		", noDataCpuYieldTimeInSenderThread=" << noDataCpuYieldTimeInSenderThread <<
 		", clientWhitelist=" << clientWhitelist <<
 		", maxClientConnectionsAllowed=" << maxClientConnectionsAllowed <<
-		", responseTimeout=" << responseTimeout, "constructor");	
+		", responseTimeout=" << responseTimeout <<
+		", metricsResetInterval=" << metricsResetInterval, "constructor");	
 	
 	tlsEndpointStarted = false;
 	nonTlsEndpointStarted = false;
@@ -941,6 +947,25 @@ void MY_OPERATOR::allPortsReady() {
     	SPL::Functions::Utility::abort(__FILE__, __LINE__);
     }    
     <%}%>
+    
+    // v1.1.4 change (Mar/15/2023)
+    // If this operator is configured with a non-zero metrics reset interval,
+    // we will go ahead and start a thread to periodically reset all the
+    // metrics counters to zero. Metrics reset interval is given in minutes.
+    // We will also start this thread only when the live update metrics is enabled.
+    if(metricsResetInterval > 0 && websocketLiveMetricsUpdateNeeded == true) {
+        try {
+        	auto callback3 = std::bind(&MY_OPERATOR::reset_metrics_counters, this);
+        	boost::thread* myThread3 = new boost::thread(callback3);
+        } catch(std::exception& e) {
+        	SPLAPPTRC(L_ERROR, "Operator " << operatorPhysicalName <<
+    			"-->Channel " << boost::to_string(udpChannelNumber) <<
+    			"-->Exception in creating the reset_metrics_counters thread. " << 
+    			e.what(), "reset_metrics_counters thread creation");
+        	// We can't do what the user asked for without this thread. Abort this operator now.
+        	SPL::Functions::Utility::abort(__FILE__, __LINE__);
+        } 
+    }
 } // End of allPortsReady.
 
 // Notify pending shutdown
@@ -1562,6 +1587,72 @@ void MY_OPERATOR::process(
 	 }
 	 */
 }
+
+// v1.1.4 change.
+// This is a thread that gets started in the allPortsReady method above to
+// reset metrics counters if the user configured this operator to do that.
+// In this method, we will keep resetting the metrics counters to zero at a 
+// user configured time interval in minutes.
+void MY_OPERATOR::reset_metrics_counters() {
+	// If the metrics reset interval is set to zero, 
+	// we can return from this method now.
+	// We can also return from this method when the live metrics update is not enabled.
+	if(metricsResetInterval <= 0 || websocketLiveMetricsUpdateNeeded == false) {
+		return;
+	}
+	
+	SPL::uint32 timeElapsed = 0;
+	
+	while (!getPE().getShutdownRequested()) {
+		// Wait for a minute.
+		SPL::Functions::Utility::block(60.0);
+		// Advance it by a minute.
+		timeElapsed += 1;
+		
+		if (timeElapsed >= metricsResetInterval)  {
+			// Set our time counter to 0 for a fresh start.
+			timeElapsed = 0;
+			
+			SPLAPPTRC(L_ERROR, 
+				"Operator " <<
+				operatorPhysicalName <<
+				"-->Channel " << boost::to_string(udpChannelNumber) <<
+				", metricsResetInterval=" << metricsResetInterval <<
+				". Values of the metrics counters just before resetting them to zero. " <<
+				"nDataItemsReceivedFromRemoteClients=" << nDataItemsReceivedFromRemoteClients <<
+				", nDataBytesReceivedFromRemoteClients=" << nDataBytesReceivedFromRemoteClients <<
+				", nHttpMessagesReceivedFromRemoteClients=" << nHttpMessagesReceivedFromRemoteClients <<
+				", nDataItemsSentToRemoteClients=" << nDataItemsSentToRemoteClients <<
+				", nDataBytesSentToRemoteClients=" << nDataBytesSentToRemoteClients <<
+				", nResponseTimeoutOccurrences=" << nResponseTimeoutOccurrences, "reset_metrics_counters");
+			
+			// It is time now to reset the metrics counters to zero.
+			// Please note that we are blindly resetting the 
+			// counters here without acquiring any mutex to avoid
+			// variable write collisions with other threds (data sender and data receiver)
+			// If tests prove that this kind of resetting counters is 
+			// not effective, plan to wait on a mutex here to coordinate with the other threads.
+			nDataItemsReceivedFromRemoteClients = 0;
+			nDataBytesReceivedFromRemoteClients = 0;
+			nHttpMessagesReceivedFromRemoteClients = 0;
+			nDataItemsSentToRemoteClients = 0;
+			nDataBytesSentToRemoteClients = 0;
+			nResponseTimeoutOccurrences = 0;
+			
+			nDataItemsReceivedFromRemoteClientsMetric->setValueNoLock(nDataItemsReceivedFromRemoteClients);
+			nDataBytesReceivedFromRemoteClientsMetric->setValueNoLock(nDataBytesReceivedFromRemoteClients);
+			nHttpMessagesReceivedFromRemoteClientsMetric->setValueNoLock(nHttpMessagesReceivedFromRemoteClients);
+
+			<% if (defined($dataResponseToClientPortFound)) { %>
+			// We will have these metrics only if this operator is configured with a
+			// "result/response back to a client" input port.
+			nDataItemsSentToRemoteClientsMetric->setValueNoLock(nDataItemsSentToRemoteClients);
+			nDataBytesSentToRemoteClientsMetric->setValueNoLock(nDataBytesSentToRemoteClients);
+			nResponseTimeoutOccurrencesMetric->setValueNoLock(nResponseTimeoutOccurrences);
+			<%}%>
+		}
+	} // End of the while loop.
+} // End of reset_metrics_counters
 
 // We need the following data sender thread only if there is a 
 // data response to client input port.

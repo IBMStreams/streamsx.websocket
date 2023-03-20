@@ -8,7 +8,7 @@
 /*
  ============================================================
  First created on: Apr/08/2020
- Last modified on: Feb/01/2023
+ Last modified on: Mar/20/2023
 
  This particular operator (WebSocketSendReceive) is used to
  send and receive either text data or binary data to and from a 
@@ -154,51 +154,56 @@ if ($blobDataOutputAttributeFound == 1 and !(defined($dataOutputAsBlob))) {
 	SPL::CodeGen::exitln("WebSocketSendReceive_cpp.cgt: The required output tuple attribute 'blobData' is not of type 'blob' in the first output port.");
 }
 
-# Check the output port number 1 i.e. the second output port.
-# It will carry the send result code of the most recent tuple transmission to
-# the remote WebSocket server and the send error message if there is any error during transmission.
-my $outputPort2 = $model->getOutputPortAt(1);
-my $outputTupleName2 = $outputPort2->getCppTupleName();
-my $sendResultCodeInt32 = undef;
-my $sendResultMessageRString = undef;
-my $outputAttrs2 = $outputPort2->getAttributes();
-my $sendResultCodeAttributeFound = 0;
-my $sendResultMessageAttributeFound = 0;
 
-foreach my $outputAttr2 (@$outputAttrs2) {
-	my $outAttrName2 = $outputAttr2->getName();
-	my $outAttrType2 = $outputAttr2->getSPLType();
+# Second output port i.e. output port number 1 is optional in this operator.
+# Do the following if that output port is present.
+if ($numberOfOutputPorts > 1) {
+	# Check the output port number 1 i.e. the second output port.
+	# It will carry the send result code of the most recent tuple transmission to
+	# the remote WebSocket server and the send error message if there is any error during transmission.
+	my $outputPort2 = $model->getOutputPortAt(1);
+	my $outputTupleName2 = $outputPort2->getCppTupleName();
+	my $sendResultCodeInt32 = undef;
+	my $sendResultMessageRString = undef;
+	my $outputAttrs2 = $outputPort2->getAttributes();
+	my $sendResultCodeAttributeFound = 0;
+	my $sendResultMessageAttributeFound = 0;
 	
-	if ($outAttrName2 eq "sendResultCode") {
-		$sendResultCodeAttributeFound = 1;
+	foreach my $outputAttr2 (@$outputAttrs2) {
+		my $outAttrName2 = $outputAttr2->getName();
+		my $outAttrType2 = $outputAttr2->getSPLType();
 		
-		if ($outAttrType2 eq "int32") {
-			# This tuple attribute will carry the result code for sending the most recent tuple.
-			$sendResultCodeInt32 = 1;
-		}
-	}	
-	
-	if ($outAttrName2 eq "sendResultMessage") {
-		$sendResultMessageAttributeFound = 1;
+		if ($outAttrName2 eq "sendResultCode") {
+			$sendResultCodeAttributeFound = 1;
+			
+			if ($outAttrType2 eq "int32") {
+				# This tuple attribute will carry the result code for sending the most recent tuple.
+				$sendResultCodeInt32 = 1;
+			}
+		}	
 		
-		if ($outAttrType2 eq "rstring") {
-			# This tuple attribute will carry the error message if any while sending the most recent tuple.
-			$sendResultMessageRString = 1;
-		}
-	}	
+		if ($outAttrName2 eq "sendResultMessage") {
+			$sendResultMessageAttributeFound = 1;
+			
+			if ($outAttrType2 eq "rstring") {
+				# This tuple attribute will carry the error message if any while sending the most recent tuple.
+				$sendResultMessageRString = 1;
+			}
+		}	
+		
+	}
 	
-}
-
-if ($sendResultCodeAttributeFound == 0 and $sendResultMessageAttributeFound == 0) {
-	SPL::CodeGen::exitln("WebSocketSendReceive_cpp.cgt: The required output tuple attribute 'sendResultCode' or 'sendResultMessage' is missing in the second output port.");
-}
-
-if ($sendResultCodeAttributeFound == 1 and !(defined($sendResultCodeInt32))) {
-	SPL::CodeGen::exitln("WebSocketSendReceive_cpp.cgt: The required output tuple attribute 'sendResultCode' is not of type 'int32' in the second output port.");
-}
-
-if ($sendResultMessageAttributeFound == 1 and !(defined($sendResultMessageRString))) {
-	SPL::CodeGen::exitln("WebSocketSendReceive_cpp.cgt: The required output tuple attribute 'sendResultMessage' is not of type 'rstring' in the second output port.");
+	if ($sendResultCodeAttributeFound == 0 and $sendResultMessageAttributeFound == 0) {
+		SPL::CodeGen::exitln("WebSocketSendReceive_cpp.cgt: The required output tuple attribute 'sendResultCode' or 'sendResultMessage' is missing in the second output port.");
+	}
+	
+	if ($sendResultCodeAttributeFound == 1 and !(defined($sendResultCodeInt32))) {
+		SPL::CodeGen::exitln("WebSocketSendReceive_cpp.cgt: The required output tuple attribute 'sendResultCode' is not of type 'int32' in the second output port.");
+	}
+	
+	if ($sendResultMessageAttributeFound == 1 and !(defined($sendResultMessageRString))) {
+		SPL::CodeGen::exitln("WebSocketSendReceive_cpp.cgt: The required output tuple attribute 'sendResultMessage' is not of type 'rstring' in the second output port.");
+	}
 }
 
 # Following are the operator parameters.
@@ -257,6 +262,10 @@ $noDataCpuYieldTimeInSenderThread = $noDataCpuYieldTimeInSenderThread ? $noDataC
 my $reconnectionInterval = $model->getParameterByName("reconnectionInterval");
 # Default: 60.0 seconds 
 $reconnectionInterval = $reconnectionInterval ? $reconnectionInterval->getValueAt(0)->getCppExpression() : 60.0;
+
+my $metricsResetInterval = $model->getParameterByName("metricsResetInterval");
+# Default: 0 minutes 
+$metricsResetInterval = $metricsResetInterval ? $metricsResetInterval->getValueAt(0)->getCppExpression() : 0;
 %>
 
 <%SPL::CodeGen::implementationPrologue($model);%>
@@ -362,6 +371,8 @@ MY_OPERATOR::MY_OPERATOR()
 			boost::to_string(reconnectionInterval) + " is given for the reconnectionInterval parameter." +
 			" Valid value must be greater than 0.0.");		
 	}	
+
+	metricsResetInterval = <%=$metricsResetInterval%>;
 	
 	operatorPhysicalName = getContext().getName();
 	udpChannelNumber = getContext().getChannel();
@@ -382,7 +393,8 @@ MY_OPERATOR::MY_OPERATOR()
 		", wsClientSessionLoggingNeeded=" << wsClientSessionLoggingNeeded <<
 		", newDataCpuYieldTimeInSenderThread=" << newDataCpuYieldTimeInSenderThread <<
 		", noDataCpuYieldTimeInSenderThread=" << noDataCpuYieldTimeInSenderThread <<
-		", reconnectionInterval=" << reconnectionInterval, "constructor");
+		", reconnectionInterval=" << reconnectionInterval <<
+		", metricsResetInterval=" << metricsResetInterval, "constructor");
 } // End of Constructor
 
 // Destructor
@@ -459,6 +471,25 @@ void MY_OPERATOR::allPortsReady()
     	SPL::Functions::Utility::abort(__FILE__, __LINE__);
     } 
     */   
+    
+    // v1.1.4 change (Mar/15/2023)
+    // If this operator is configured with a non-zero metrics reset interval,
+    // we will go ahead and start a thread to periodically reset all the
+    // metrics counters to zero. Metrics reset interval is given in minutes.
+    // We will also start this thread only when the live update metrics is enabled.
+    if(metricsResetInterval > 0 && websocketLiveMetricsUpdateNeeded == true) {
+        try {
+        	auto callback3 = std::bind(&MY_OPERATOR::reset_metrics_counters, this);
+        	boost::thread* myThread3 = new boost::thread(callback3);
+        } catch(std::exception& e) {
+        	SPLAPPTRC(L_ERROR, "Operator " << operatorPhysicalName <<
+    			"-->Channel " << boost::to_string(udpChannelNumber) <<
+    			"-->Exception in creating the reset_metrics_counters thread. " << 
+    			e.what(), "reset_metrics_counters thread creation");
+        	// We can't do what the user asked for without this thread. Abort this operator now.
+        	SPL::Functions::Utility::abort(__FILE__, __LINE__);
+        } 
+    }
 } // End of allPortsReady.
  
 // Notify pending shutdown
@@ -768,6 +799,12 @@ void MY_OPERATOR::ws_data_sender() {
 						strDataVectorSize--;
 					}
 					
+					<%
+					if ($numberOfOutputPorts > 1) {
+					%>
+					
+					// Second output port for this operator is optional. 
+					// Do the following only if that output port is present.
 					// We will return the status as connection error via the send status output port.
 					// On receiving this error status, the application logic that invoked this operator can
 					// decide to retransmit that data at a later time.
@@ -788,6 +825,10 @@ void MY_OPERATOR::ws_data_sender() {
 						websocketConnectionErrorReason + 
 						std::string(" Unable to connect to the remote WebSocket server. You may try sending your data again later."));
 					submit(oTuple, 1);
+					
+					<%
+					}
+					%>
 					
 					if (wsClientSessionLoggingNeeded == true) {
 						SPLAPPTRC(L_ERROR,
@@ -1000,6 +1041,12 @@ void MY_OPERATOR::ws_data_sender() {
 				nSizeOfMostRecentDataItemSentMetric->setValueNoLock(payloadSize);
 			}
 						
+			<%
+			if ($numberOfOutputPorts > 1) {
+			%>
+			
+			// Second output port for this operator is optional. 
+			// Do the following only if that output port is present.
 			// We will return the status as success via the send status output port.
 			OPort1Type oTuple;
 			
@@ -1017,6 +1064,10 @@ void MY_OPERATOR::ws_data_sender() {
 			}
 			
 			submit(oTuple, 1);
+			
+			<%
+			}
+			%>
 			
 			// v1.1.3 change. (Feb/01/2023)
 			if (wsClientSessionLoggingNeeded == true && 
@@ -1054,6 +1105,60 @@ void MY_OPERATOR::ws_data_sender() {
 	// There is no more long running thread while loop starting in this release.
 	// } // End of the outer while loop	
 } // End of ws_data_sender
+
+// v1.1.4 change.
+// This is a thread that gets started in the allPortsReady method above to
+// reset metrics counters if the user configured this operator to do that.
+// In this method, we will keep resetting the metrics counters to zero at a 
+// user configured time interval in minutes.
+void MY_OPERATOR::reset_metrics_counters() {
+	// If the metrics reset interval is set to zero, 
+	// we can return from this method now.
+	// We can also return from this method when the live metrics update is not enabled.
+	if(metricsResetInterval <= 0 || websocketLiveMetricsUpdateNeeded == false) {
+		return;
+	}
+	
+	SPL::uint32 timeElapsed = 0;
+	
+	while (!getPE().getShutdownRequested()) {
+		// Wait for a minute.
+		SPL::Functions::Utility::block(60.0);
+		// Advance it by a minute.
+		timeElapsed += 1;
+		
+		if (timeElapsed >= metricsResetInterval)  {
+			// Set our time counter to 0 for a fresh start.
+			timeElapsed = 0;
+			
+			SPLAPPTRC(L_ERROR, 
+				"Operator " <<
+				operatorPhysicalName <<
+				"-->Channel " << boost::to_string(udpChannelNumber) <<
+				", metricsResetInterval=" << metricsResetInterval <<
+				". Values of the metrics counters just before resetting them to zero. " <<
+				"numberOfDataItemsSent=" << numberOfDataItemsSent <<
+				", numberOfDataBytesSent=" << numberOfDataBytesSent <<
+				", numberOfDataItemsReceived=" << numberOfDataItemsReceived <<
+				", numberOfDataBytesReceived=" << numberOfDataBytesReceived, "reset_metrics_counters");
+			
+			// It is time now to reset the metrics counters to zero.
+			// Please note that we are blindly resetting the 
+			// counters here without acquiring any mutex to avoid
+			// variable write collisions with other threds (data sender and data receiver)
+			// If tests prove that this kind of resetting counters is 
+			// not effective, plan to wait on a mutex here to coordinate with the other threads.
+			numberOfDataItemsSent = 0;
+			numberOfDataBytesSent = 0;
+			numberOfDataItemsReceived = 0;
+			numberOfDataBytesReceived = 0;
+			nDataItemsSentToRemoteServerMetric->setValueNoLock(numberOfDataItemsSent);
+			nDataBytesSentToRemoteServerMetric->setValueNoLock(numberOfDataBytesSent);
+			nDataItemsReceivedFromRemoteServerMetric->setValueNoLock(numberOfDataItemsReceived);
+			nDataBytesReceivedFromRemoteServerMetric->setValueNoLock(numberOfDataBytesReceived);
+		}
+	} // End of the while loop.
+} // End of reset_metrics_counters
 
 // This method initializes the Websocket driver, TLS or non-TLS and then
 // opens a connection. This is going to run on its own thread.

@@ -8,7 +8,7 @@
 /*
 ==============================================
 First created on: Apr/24/2020
-Last modified on: Feb/01/2023
+Last modified on: Mar/16/2023
 
 This example demonstrates the use of the WebSocketSendReceive operator available
 in the streamsx.websocket toolkit. This operator can be configured with a remote
@@ -166,6 +166,15 @@ composite WebSocketSendReceiveTester {
 					(rstring)(IterationCount() + 1ul) + " is sent as a text.";
 		}		
 
+		// NOTE:
+		// This operator logic is needed only if your application requires
+		// data retransmission in case of an error while sending data to a remote 
+		// WebSocket server. If data retransmission is not needed, you can comment out this
+		// entire Custom operator code block and feed the data coming from the 
+		// source operators above directly to the input port of the WebSocketSendReceive 
+		// operator below. If you decide to comment out this logic, then you can also comment out  
+		// the second (optional) output port in the WebSocketSendReceive operator below.
+		//
 		// ========= START OF THE CODE BLOCK WITH DATA RETRANSMISSION LOGIC =========
 		// Any data item we send to the remote WebSocket server will have a result to
 		// indicate whether that data item was sent successfully or not.
@@ -308,22 +317,22 @@ composite WebSocketSendReceiveTester {
 				// If punctuations are important for a given application,
 				// the return statement above can be commented out followed by
 				// uncommenting of the code block below.
-				/*
+				//
 				// We will send only one window and one final punctuation.
-				if (currentPunct() == Sys.WindowMarker) {
-					if (++_numberOfWindowPunctuations == 2) {
+				//
+				/////if (currentPunct() == Sys.WindowMarker) {
+					/////if (++_numberOfWindowPunctuations == 2) {
 						// Forward a single window punctuation.
-						submit(currentPunct(), SD);
-					}
-				}
+						/////submit(currentPunct(), SD);
+					/////}
+				/////}
 				
-				if (currentPunct() == Sys.FinalMarker) {
-					if (++_numberOfFinalPunctuations == 2) {
+				/////if (currentPunct() == Sys.FinalMarker) {
+					/////if (++_numberOfFinalPunctuations == 2) {
 						// Forward a single final punctuation.
-						submit(currentPunct(), SD);
-					}
-				}
-				*/
+						/////submit(currentPunct(), SD);
+					/////}
+				/////}
 			}
 						
 			config
@@ -346,6 +355,12 @@ composite WebSocketSendReceiveTester {
 		// remote WebSocket server. This is done by checking the sendDataResult output
 		// stream and then trying to retransmit the data item if there was an error in sending.
 		// It will require a feedback loop logic as shown in the Custom operator above.
+		//
+		// NOTE:
+		// The second output port below is purely optional to receive the 
+		// status of the data sending. If such status report is not needed, you can
+		// choose not to have the second output port.
+		//
 		(stream<ReceivedData_t> ReceivedData as RD;
 		 stream<SendDataResult_t> SendDataResult as SDR) 
 			as WebSocketDataSenderReceiver = WebSocketSendReceive(SendData) {
@@ -365,7 +380,7 @@ composite WebSocketSendReceiveTester {
 			// Get these values via custom output functions	provided by this operator.
 			output
 			    // strData and/or blobData attributes will be automatically
-			    // assigned with received data values withing the operator logic.
+			    // assigned with received data values within the operator logic.
 			    // Other attributes can be assigned manually as done below.
 				RD: totalDataItemsReceived = getTotalDataItemsReceived(),
 					totalDataBytesReceived = getTotalDataBytesReceived(),

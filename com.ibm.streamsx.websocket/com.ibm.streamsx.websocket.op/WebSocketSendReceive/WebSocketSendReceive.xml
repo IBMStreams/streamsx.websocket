@@ -44,11 +44,12 @@
       remote WebSocket server. This input port must have either rstring strData or 
       blob blobData or both of them as the incoming tuple attribute(s).
       
-      This operator provides two output ports. On the first output port, it keeps returning the data
+      This operator provides two output ports where the first output port is mandatory and
+      the second output port is optional. On the first output port, it keeps returning the data
       received from the remote server. This output port must have either rstring strData or 
       blob blobData or both of them as the output tuple attribute(s). Optionally, it can have
       uint64 numberOfDataItemsReceived and uint64 numberOfDataBytesReceived attributes to be
-      assigned via the output functions provided by this operator. On the second output port, 
+      assigned via the output functions provided by this operator. If the second output port is present, 
       it keeps returning the result about whether a given incoming tuple was successfully
       sent to the remote server or not. This output port must have int32 sendResultCode and
       rstring sendResultMessage as its output tuple attributes. A value of 0 in sendResultCode means
@@ -314,6 +315,16 @@
         <type>boolean</type>
         <cardinality>1</cardinality>
       </parameter>
+      
+      <parameter>
+        <name>metricsResetInterval</name>
+        <description>This parameter can be used to specify a non-zero periodic time interval in minutes after which all the metrics counters will be reset to 0. (Default is 0 which will never reset the metrics counters.)</description>
+        <optional>true</optional>
+        <rewriteAllowed>true</rewriteAllowed>
+        <expressionMode>AttributeFree</expressionMode>
+        <type>uint32</type>
+        <cardinality>1</cardinality>
+      </parameter>
     </parameters>
 
     <inputPorts>
@@ -367,9 +378,10 @@
       
       <outputPortSet>
       	<description>
-      	This port returns the result about whether a given input tuple consumed by this 
-      	operator was successfully sent to the remote WebSocket server or not. The schema 
-      	for this port must have two attributes: int32 sendResultCode, rstring sendResultMessage.
+      	This is an optional output port. If it is present, it returns the result about 
+      	whether a given input tuple consumed by this operator was successfully sent to 
+      	the remote WebSocket server or not. The schema for this port must have two attributes: 
+      	int32 sendResultCode, rstring sendResultMessage.
       	sendResultCode will carry a value of  0 on a successful send to the remote server and a
       	non-zero result in case of an error in sending the data. sendResultMessage will
       	carry a descriptive message about the send result. Application logic can check these 
@@ -383,7 +395,7 @@
         <windowPunctuationOutputMode>Free</windowPunctuationOutputMode>
         <tupleMutationAllowed>false</tupleMutationAllowed>
         <cardinality>1</cardinality>
-        <optional>false</optional>
+        <optional>true</optional>
       </outputPortSet>          
     </outputPorts>
    </cppOperatorModel>

@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Apr/08/2020
-Last modified on: Jan/29/2023
+Last modified on: Mar/16/2023
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables and
@@ -86,6 +86,7 @@ public:
 	SPL::float64 newDataCpuYieldTimeInSenderThread;
 	SPL::float64 noDataCpuYieldTimeInSenderThread;
 	SPL::float64 reconnectionInterval;
+	SPL::uint32 metricsResetInterval;
 		
 	// Custom metrics for this operator.
 	Metric *nDataItemsSentToRemoteServerMetric;
@@ -191,6 +192,9 @@ public:
 	
 	// Websocket data sender thread method
 	void ws_data_sender();
+	
+	// Reset metrics counters thread method
+	void reset_metrics_counters();
   
 private:
 	// These are the output attribute assignment functions for this operator.

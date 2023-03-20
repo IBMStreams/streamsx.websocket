@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Feb/23/2020
-Last modified on: Jan/29/2023
+Last modified on: Mar/16/2023
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables and
@@ -81,6 +81,7 @@ public:
 	SPL::int64 websocketStaleConnectionPurgeInterval;
 	bool ipv6Available;
 	bool tcpNoDelay;
+	SPL::uint32 metricsResetInterval;
 	// This variable is set via an operator parameter to
 	// indicate whether this operator will allow HTTP(S) GET/PUT/POST from remote clients.
 	bool allowHttpPost;
@@ -318,6 +319,9 @@ public:
 	
 	// Websocket response timeout handler thread method.
 	void ws_response_timeout_handler();
+	
+	// Reset metrics counters thread method
+	void reset_metrics_counters();
 	
 	// Method that looks up connection metadata for a given connection handle in our associate container.
 	MY_OPERATOR::connection_metadata & get_con_metadata_from_hdl(websocketpp::connection_hdl hdl);

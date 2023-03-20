@@ -8,7 +8,7 @@
 /*
 ============================================================
 First created on: Apr/27/2020
-Last modified on: Jan/29/2023
+Last modified on: Mar/16/2023
 
 This include file contains the necessary inclusion of 
 other C++ header files, declaration of member variables 
@@ -78,6 +78,7 @@ public:
 	SPL::int64 websocketStaleConnectionPurgeInterval;
 	bool ipv6Available;
 	bool tcpNoDelay;
+	SPL::uint32 metricsResetInterval;
 	SPL::float64 newDataCpuYieldTimeInSenderThread;
 	SPL::float64 noDataCpuYieldTimeInSenderThread;
 	// Behind the scenes, an SPL list is nothing but a C++ std::vector.
@@ -243,6 +244,9 @@ public:
 	
 	// Websocket data sender thread method
 	void ws_data_sender();
+	
+	// Reset metrics counters thread method
+	void reset_metrics_counters();
 	
 	// Method that looks up connection metadata for a connection handle in our associate container.
 	MY_OPERATOR::connection_metadata& get_con_metadata_from_hdl(websocketpp::connection_hdl hdl);
