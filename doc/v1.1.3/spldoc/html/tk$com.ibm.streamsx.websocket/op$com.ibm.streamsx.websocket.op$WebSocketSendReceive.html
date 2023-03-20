@@ -22,7 +22,7 @@
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.1.4</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSendReceive</p>
+<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.1.3</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSendReceive</p>
 
 </div>
 
@@ -44,7 +44,7 @@
 <p class="p">      This operator provides one input port through which an application can send data to the       remote WebSocket server. This input port must have either rstring strData or        blob blobData or both of them as the incoming tuple attribute(s).
 </p>
 
-<p class="p">      This operator provides two output ports where the first output port is mandatory and       the second output port is optional. On the first output port, it keeps returning the data       received from the remote server. This output port must have either rstring strData or        blob blobData or both of them as the output tuple attribute(s). Optionally, it can have       uint64 numberOfDataItemsReceived and uint64 numberOfDataBytesReceived attributes to be       assigned via the output functions provided by this operator. If the second output port is present,        it keeps returning the result about whether a given incoming tuple was successfully       sent to the remote server or not. This output port must have int32 sendResultCode and       rstring sendResultMessage as its output tuple attributes. A value of 0 in sendResultCode means       a successful sending of data, otherwise error in sending the data. If this attribute carries a       non-zero value, then the application can have additional logic to retransmit that same        data item at a later time. Please refer to the output port section below for more details.
+<p class="p">      This operator provides two output ports. On the first output port, it keeps returning the data       received from the remote server. This output port must have either rstring strData or        blob blobData or both of them as the output tuple attribute(s). Optionally, it can have       uint64 numberOfDataItemsReceived and uint64 numberOfDataBytesReceived attributes to be       assigned via the output functions provided by this operator. On the second output port,        it keeps returning the result about whether a given incoming tuple was successfully       sent to the remote server or not. This output port must have int32 sendResultCode and       rstring sendResultMessage as its output tuple attributes. A value of 0 in sendResultCode means       a successful sending of data, otherwise error in sending the data. If this attribute carries a       non-zero value, then the application can have additional logic to retransmit that same        data item at a later time. Please refer to the output port section below for more details.
 </p>
 
 <p class="p">      Since WebSocket at its low level is based on TCP, you have to be aware of the        effects of the Nagle's algorithm which is usually controlled by TCP_NODELAY.       This operator has an optional parameter named tcpNoDelay to enable or disable        Nagle's algorithm for your needs. The tcpNoDelay parameter will do its job        correctly only with the websocketpp library version 0.8.3 and higher.
@@ -87,14 +87,14 @@
  
   <dt class="dt dlterm">Parameters</dt>
 
-  <dd class="dd">This operator supports 14 parameters.
+  <dd class="dd">This operator supports 13 parameters.
 <p class="p"> Required: 
 <a class="xref" href="#spldoc_operator__parameter__url">url</a>
 
 </p>
 
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__metricsResetInterval">metricsResetInterval</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__reconnectionInterval">reconnectionInterval</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerCertificateFileName">trustedServerCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerX509SubjectIdentifiers">trustedServerX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__reconnectionInterval">reconnectionInterval</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerCertificateFileName">trustedServerCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerX509SubjectIdentifiers">trustedServerX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 </dd>
@@ -329,7 +329,7 @@
 
    <dd class="dd">
 
-<p class="p">      	This is an optional output port. If it is present, it returns the result about        	whether a given input tuple consumed by this operator was successfully sent to        	the remote WebSocket server or not. The schema for this port must have two attributes:        	int32 sendResultCode, rstring sendResultMessage.       	sendResultCode will carry a value of  0 on a successful send to the remote server and a       	non-zero result in case of an error in sending the data. sendResultMessage will       	carry a descriptive message about the send result. Application logic can check these        	output tuple attributes and have additional logic to retransmit a given        	input tuple if it was not sent to the remote server due to an error (e-g: broken connection).
+<p class="p">      	This port returns the result about whether a given input tuple consumed by this        	operator was successfully sent to the remote WebSocket server or not. The schema        	for this port must have two attributes: int32 sendResultCode, rstring sendResultMessage.       	sendResultCode will carry a value of  0 on a successful send to the remote server and a       	non-zero result in case of an error in sending the data. sendResultMessage will       	carry a descriptive message about the send result. Application logic can check these        	output tuple attributes and have additional logic to retransmit a given        	input tuple if it was not sent to the remote server due to an error (e-g: broken connection).
 </p>
 
     <p class="p"/>
@@ -339,7 +339,7 @@
       <dt class="dt dlterm">Properties</dt>
 
       <dd class="dd">   <ul class="sl simple">
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__optional">Optional</a>: true
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__optional">Optional</a>: false
      </li>
 
    </ul>
@@ -368,14 +368,14 @@
 
 <div class="section">
 <p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters">Parameters</a></strong></p>
-This operator supports 14 parameters.
+This operator supports 13 parameters.
 <p class="p"> Required: 
 <a class="xref" href="#spldoc_operator__parameter__url">url</a>
 
 </p>
 
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__metricsResetInterval">metricsResetInterval</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__reconnectionInterval">reconnectionInterval</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerCertificateFileName">trustedServerCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerX509SubjectIdentifiers">trustedServerX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__reconnectionInterval">reconnectionInterval</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerCertificateFileName">trustedServerCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedServerX509SubjectIdentifiers">trustedServerX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 <dl class="dl">
@@ -427,41 +427,6 @@ This operator supports 14 parameters.
 
      <dd class="dd">   <ul class="sl simple">
      <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: rstring
-     </li>
-
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
-     </li>
-
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
-     </li>
-
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
-     </li>
-
-   </ul>
-
-     <p class="p"/>
-     </dd>
-
-    
-  </dl>
-
-     </dd>
-
-  
-  
-     <dt class="dt dlterm"><a name="spldoc_operator__parameter__metricsResetInterval"><!-- --></a><tt class="ph tt">metricsResetInterval</tt></dt>
-
-     <dd class="dd">
-<p class="p">This parameter can be used to specify a non-zero periodic time interval in minutes after which all the metrics counters will be reset to 0. (Default is 0 which will never reset the metrics counters.)
-</p>
-
-  <dl class="dl">
-    
-     <dt class="dt dlterm">Properties</dt>
-
-     <dd class="dd">   <ul class="sl simple">
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
      </li>
 
      <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1

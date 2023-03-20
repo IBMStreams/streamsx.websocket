@@ -78,7 +78,7 @@ gg=="
     ><rect width="16.0" x="146.0" height="12.0" id="sdt4" y="14.0" style="stroke-opacity:0; fill-opacity:0;"
     /><g style="fill:rgb(236,131,101); font-size:9; font-weight:bold; font-family:sans-serif; stroke:rgb(236,131,101);"
     ><rect x="146" y="58" width="16" style="stroke:none;" rx="1" ry="1" height="16"
-      /><rect x="148" y="60" width="12" style="fill:gray; stroke:none;" rx="0.75" ry="0.75" height="12"
+      /><rect x="148" y="60" width="12" style="fill:rgb(255,247,142); stroke:none;" rx="0.75" ry="0.75" height="12"
     /></g
     ><g style="font-family:sans-serif;"
     ><path style="stroke:none;" d="M151.4844 70 L153.4219 70 L153.4219 63.3281 L151.3125 63.75 L151.3125 62.6719 L153.4062 62.25 L154.5938 62.25 L154.5938 70 L156.5312 70 L156.5312 71 L151.4844 71 L151.4844 70 Z"
@@ -112,7 +112,7 @@ gg=="
       ><text x="48.65" y="88.0"
       >noDataCpuYieldTimeInSenderThread, reconnectionInterval, </text
       ><text x="48.65" y="103.0"
-      >tcpNoDelay, metricsResetInterval</text
+      >tcpNoDelay</text
       ><set attributeName="visibility" from="hidden" end="sdt2.mouseout" to="visible" begin="sdt2.mouseover"
     /></g
     ><g visibility="hidden" style="stroke:none;font-style:italic;font-size:12px;font-family:&apos;Helvetica&apos;,&apos;SansSerif&apos;;"

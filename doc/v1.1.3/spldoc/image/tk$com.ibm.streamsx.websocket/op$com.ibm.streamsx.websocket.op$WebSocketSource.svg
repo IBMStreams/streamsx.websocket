@@ -107,31 +107,29 @@ gg=="
       ><set attributeName="visibility" from="hidden" end="sdt1.mouseout" to="visible" begin="sdt1.mouseover"
     /></g
     ><g visibility="hidden" style="stroke:none;font-style:italic;font-size:12px;font-family:&apos;Helvetica&apos;,&apos;SansSerif&apos;;"
-    ><rect x="47.65" y="-75.0" width="495.95996" style="fill:rgb(230,230,255);stroke:rgb(0,0,80);" rx="2.0" ry="2.0" height="182.0"
-      /><text x="48.65" y="-62.0"
+    ><rect x="47.65" y="-60.0" width="495.95996" style="fill:rgb(230,230,255);stroke:rgb(0,0,80);" rx="2.0" ry="2.0" height="167.0"
+      /><text x="48.65" y="-47.0"
       >Optional: tlsPort, certificateFileName, certificatePassword, </text
-      ><text x="48.65" y="-47.0"
-      >trustedClientCertificateFileName, trustedClientX509SubjectIdentifiers, </text
       ><text x="48.65" y="-32.0"
-      >nonTlsEndpointNeeded, nonTlsPort, urlContextPath, </text
+      >trustedClientCertificateFileName, trustedClientX509SubjectIdentifiers, </text
       ><text x="48.65" y="-17.0"
-      >initDelay, websocketLiveMetricsUpdateNeeded, </text
+      >nonTlsEndpointNeeded, nonTlsPort, urlContextPath, </text
       ><text x="48.65" y="-2.0"
-      >websocketLoggingNeeded, wsConnectionLoggingNeeded, </text
+      >initDelay, websocketLiveMetricsUpdateNeeded, </text
       ><text x="48.65" y="13.0"
-      >wsClientSessionLoggingNeeded, websocketStaleConnectionPurgeInterval, </text
+      >websocketLoggingNeeded, wsConnectionLoggingNeeded, </text
       ><text x="48.65" y="28.0"
-      >ipv6Available, tcpNoDelay, numberOfMessagesToReceiveBeforeAnAck, </text
+      >wsClientSessionLoggingNeeded, websocketStaleConnectionPurgeInterval, </text
       ><text x="48.65" y="43.0"
-      >allowHttpPost, newDataCpuYieldTimeInSenderThread, </text
+      >ipv6Available, tcpNoDelay, numberOfMessagesToReceiveBeforeAnAck, </text
       ><text x="48.65" y="58.0"
-      >noDataCpuYieldTimeInSenderThread, clientWhitelist, </text
+      >allowHttpPost, newDataCpuYieldTimeInSenderThread, </text
       ><text x="48.65" y="73.0"
-      >maxClientConnectionsAllowed, responseTimeout, </text
+      >noDataCpuYieldTimeInSenderThread, clientWhitelist, </text
       ><text x="48.65" y="88.0"
-      >allowPersistentHttpConnections, tlsCipherWhitelist, </text
+      >maxClientConnectionsAllowed, responseTimeout, </text
       ><text x="48.65" y="103.0"
-      >metricsResetInterval</text
+      >allowPersistentHttpConnections, tlsCipherWhitelist</text
       ><set attributeName="visibility" from="hidden" end="sdt2.mouseout" to="visible" begin="sdt2.mouseover"
     /></g
     ><g visibility="hidden" style="stroke:none;font-style:italic;font-size:12px;font-family:&apos;Helvetica&apos;,&apos;SansSerif&apos;;"

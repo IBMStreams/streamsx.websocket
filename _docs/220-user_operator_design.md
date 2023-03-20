@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the streamsx.websocket toolkit operators."
-last_modified_at: 2023-01-30T18:01:48+01:00
+last_modified_at: 2023-03-20T12:44:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -70,6 +70,7 @@ Following are the parameters accepted by the WebSocketSource operator. Some para
 | maxClientConnectionsAllowed | `uint32` | `32` | This parameter specifies the maximum number of concurrent clients allowed to connect with this operator. After this limit is reached, new client connections will be denied until any existing clients close their connections. |
 | responseTimeout | `uint32` | `20` | This parameter specifies the time in seconds before which the application logic should send its pending response to a remote client. If this time expires, a timeout handler thread in this operator will do the necessary internal clean-up work. |
 | allowPersistentHttpConnections | `boolean` | `false` | This parameter indicates whether this operator will allow the client applications to make persistent (Keep-Alive) HTTP connections. It is better to allow this only for non-browser based client applications. |
+| metricsResetInterval | `uint32` | `0` | This parameter specifies a periodic time in minutes after which the metrics counter values will be reset to zero. If this parameter is configured as 0, then the metrics counters will never get reset to zero. |
 
 ### WebSocketSource operator's custom output functions
 Following are the custom output functions supported by the WebSocketSource operator. These functions can be called as needed within the output clause of this operator's SPL invocation code.
@@ -118,6 +119,7 @@ Following are the parameters accepted by the WebSocketSendReceive operator. Some
 | noDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote server. It should be >= 0.0 |
 | reconnectionInterval | `float64` | `60.0` | This parameter specifies the periodic time interval (in partial seconds) at which reconnection to the remote WebSocket server will be attempted. It should be > 0.0 |
 | tcpNoDelay | `boolean` | `false` | This parameter can be used to control the TCP Nagle's algorithm. Setting it to true will disable Nagle's algorithm and setting it to false will enable. |
+| metricsResetInterval | `uint32` | `0` | This parameter specifies a periodic time in minutes after which the metrics counter values will be reset to zero. If this parameter is configured as 0, then the metrics counters will never get reset to zero. |
 
 ### WebSocketSendReceive operator's custom output functions
 Following are the custom output functions supported by the WebSocketSendReceive operator. These functions can be called as needed within the output clause of this operator's SPL invocation code.
@@ -162,6 +164,7 @@ Following are the parameters accepted by the WebSocketSink operator. Some parame
 | noDataCpuYieldTimeInSenderThread | `float64` | `0.001` | This parameter specifies the CPU yield time (in partial seconds) needed inside the thread that spin loops when no data is available to send to the remote clients. It should be >= 0.0. |
 | clientWhitelist | `list<rstring>` | `An empty list` | This parameter specifies a list of client IP addresses to accept connections only from those clients. Default is an empty list to have no client connection restrictions. |
 | maxClientConnectionsAllowed | `uint32` | `32` | This parameter specifies the maximum number of concurrent clients allowed to connect with this operator. After this limit is reached, new client connections will be denied until any existing clients close their connections. |
+| metricsResetInterval | `uint32` | `0` | This parameter specifies a periodic time in minutes after which the metrics counter values will be reset to zero. If this parameter is configured as 0, then the metrics counters will never get reset to zero. |
 
 *******************************
 
