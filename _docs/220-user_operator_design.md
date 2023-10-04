@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the streamsx.websocket toolkit operators."
-last_modified_at: 2023-03-20T12:44:48+01:00
+last_modified_at: 2023-10-04T16:12:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -187,5 +187,7 @@ Following are the parameters accepted by the HttpPost operator. Some parameters 
 | tlsTrustStoreFile | `rstring` | `An empty string` | This parameter if present should point to a trust store file in JKS format which will be used for authenticating the remote web server. This store should have server's "public certificate to verify its identity. When this parameter is present, then the tlsTrustStorePassword can be optional. |
 | tlsTrustStorePassword | `rstring` | `An empty string` | This parameter specifies the password for the trust store. |
 | createPersistentHttpConnection | `boolean` | `false` | This parameter specifies if we have to a create a persistent (Keep-Alive) HTTP connection or not. |
+| maxRetryAttempts | `int32` | `0` | This parameter specifies maximum retry attempts before giving up on a PUT, POST or GET operation for a given incoming tuple. Use this feature sparingly so as not to cause back pressure when this operator is processing a high volume of incoming tuples. |
+| waitTimeBetweenRetry | `int32` | `2000` | This parameter specifies wait time in milliseconds between retry attempts after an error on a PUT, POST or GET operation for a given incoming tuple. Use this feature sparingly so as not to cause back pressure when this operator is processing a high volume of incoming tuples. |
 
 *******************************
