@@ -2,14 +2,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2020
+# Copyright IBM Corp. 2020, 2023
 ==============================================
 */
 
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Nov/19/2021
+Last modified on: Oct/04/2023
 
 This Java operator is an utility operator available in the
 streamsx.websocket toolkit. It can be used to do HTTP(S) post of
@@ -157,13 +157,13 @@ cardinality=1, optional=false, windowingMode=WindowMode.NonWindowed, windowPunct
 "This tuple's schema should bec`int32 statusCode, rstring statusMessage, map<rstring, rstring> responseHeaders, rstring strData, blob blobData`. " +
 "Any other matching attributes from the incoming tuple will be forwarded via the output tuple.", 
 cardinality=1, optional=false, windowPunctuationOutputMode=WindowPunctuationOutputMode.Generating), @OutputPortSet(description="Optional output ports", optional=true, windowPunctuationOutputMode=WindowPunctuationOutputMode.Generating)})
-@Libraries("opt/HTTPClient-4.5.12/lib/*")
+@Libraries("opt/HTTPClient-4.5.14/lib/*")
 public class HttpPost extends AbstractOperator {
 	private CloseableHttpClient httpClient = null;
 	private String url = null;
 	private String contentType = "text/plain";
 	private boolean logHttpPostActions  = false;
-	// Impose a tiny delay in milliseconds between continously happening non-stop 
+	// Impose a tiny delay in milliseconds between continuously happening non-stop 
 	// HTTP POSTs at a faster pace. HTTP POST in general is not 
 	// meant for that kind of high speed data exchanges. This minor delay 
 	// between consecutive posts will avoid opening too many quick 
@@ -179,7 +179,13 @@ public class HttpPost extends AbstractOperator {
 	private String tlsTrustStorePassword = "";
 	// This tells us if we have to a create a persistent (Keep-Alive) HTTP connection or not.
 	private boolean createPersistentHttpConnection = false;
-
+	// Following two instance variables will control how the
+	// retry attempt for a PUT, POST or GET will be done after  
+	// encountering an error during that operation.
+	private int maxRetryAttempts = 0;
+	// Wait time is specified in Milliseconds
+	private int waitTimeBetweenRetry = 2000;
+	
     // Create a HTTP put or post object.
 	// As of May/24/2020, this operator supports the posting of 
 	// both text data and binary data.
@@ -187,6 +193,10 @@ public class HttpPost extends AbstractOperator {
 	org.apache.http.client.methods.HttpPost httpPost = null;
 	org.apache.http.client.methods.HttpGet httpGet = null;
 	
+	// It keeps a count of how many tuples get sent to this 
+	// operator for processing i.e. number of times this 
+	// operator's process method gets called to do a 
+	// PUT, POST or GET operation.
 	private long httpPostCnt = 0;
 	
 	private boolean httpMethodInputAttributePresent = false;
@@ -424,510 +434,594 @@ public class HttpPost extends AbstractOperator {
         	}
         }
 
-        if(httpMethod.equalsIgnoreCase("PUT") == true || 
-           httpMethod.equalsIgnoreCase("POST") == true) {
-	        // ============= START OF HTTP PUT/POST PROCESSING =============
-	    	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-		    	// At this time, the incoming tuple must have its string or 
-		    	// blob PUT content in one of its attributes. 
-		    	httpPut.setHeader("Content-Type", contentType);
-	    	} else {
-		    	// At this time, the incoming tuple must have its string or 
-		    	// blob POST content in one of its attributes. 
-		    	httpPost.setHeader("Content-Type", contentType);
-	    	}
-	    	
-	        if (contentType.equalsIgnoreCase("application/x-www-form-urlencoded") == true) {
-	            // If the content-type is set to application/x-www-form-urlencoded, then we will
-	            // conform to the normal practice of having the request body's format as the query string.
-	            // e-g: param1=value
-	        	//
-	        	// This particular technique about posting as query string is explained in this URL: 
-	        	// https://stackoverflow.com/questions/8120220/how-to-use-parameters-with-httppost
-	        	ArrayList<NameValuePair> postParameters;
-	        	postParameters = new ArrayList<NameValuePair>();
-	        	postParameters.add(new BasicNameValuePair("strData", tuple.getString("strData")));
-	        	UrlEncodedFormEntity ue = new UrlEncodedFormEntity(postParameters, "UTF-8");
-	        	
-	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        		httpPut.setEntity(ue);
-	        	} else {
-	        		httpPost.setEntity(ue);
-	        	}
-	        } else if (contentType.equalsIgnoreCase("application/octet-stream") == true) {
-	        	// If the content-type is set to application/octet-stream, then we will
-	        	// make this operator post raw binary data passed via the blobData 
-	        	// attribute in the input tuple.
-	        	// Some useful links that explain the use of application/octet-stream to send
-	        	// any arbitrary piece of binary data:
-	        	// https://www.iana.org/assignments/media-types/application/octet-stream
-	        	// https://stackoverflow.com/questions/20508788/do-i-need-content-type-application-octet-stream-for-file-download
-	        	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
-	        	// This particular technique about posting binary data is explained in this URL:
-	        	// https://www.baeldung.com/httpclient-multipart-upload 
-	        	MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-	        	builder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
-	        	builder.addBinaryBody("blobData", tuple.getBlob("blobData").getData());
-	        	HttpEntity entity = builder.build();
-	        	
-	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        		httpPut.setEntity(entity);
-	        	} else {
-	        		httpPost.setEntity(entity);
-	        	}
-	        	
-	        	dataBytesSent += tuple.getBlob("blobData").getLength();
-	        } else  {
-		    	org.apache.http.entity.ContentType ct = 
-			    	org.apache.http.entity.ContentType.create(contentType);
-			    	
-		    	if (ct == null) {
-		    		OperatorContext context = getOperatorContext();
-		            Logger.getLogger(this.getClass()).error("Operator " + 
-		            	context.getName() + ", Unable to create a MIME content type object from " + 
-		            	contentType + ": " + context.getPE().getPEId() + 
-		            	" in Job: " + context.getPE().getJobId());
-		            return;
-		    	}
-			    	
-	        	// Any other content type that the user specified must be
-	        	// related to posting text data.
-	        	StringEntity se = new StringEntity(tuple.getString("strData"), ct);
-	        	
-	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        		httpPut.setEntity(se);
-	        	} else {
-	        		httpPost.setEntity(se);
-	        	}
-	        	
-	        	dataBytesSent += tuple.getString("strData").length();
-	        }
-	        
-	        // Set the connection close request header.
-	        // We must do this for the Apache HttpClient versions greater than 4.3.6.
-	        // If we don't have this header in those versions of the HttpClient, 
-	        // it will give the following exception when trying to do a burst of
-	        // POST data with a very little time gap between them (say 50 msecs spacing
-	        // between each HTTP POST).
-	        //
-	        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
-	        //
-	        // You can learn more about this fix from these URLs.
-	        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
-	        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
-	        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
-	        //
-	        if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        	if(createPersistentHttpConnection == true) {
-	        		// If user opted for a persistent HTTP connection, we can
-	        		// send this header to the server. It is upto the server to honor this option.
-	        		httpPut.setHeader("connection", "Keep-Alive");
-	        	} else {
-	        		httpPut.setHeader("connection", "close");
-	        	}
-	        } else {
-	        	if(createPersistentHttpConnection == true) {
-	        		// If user opted for a persistent HTTP connection, we can
-	        		// send this header to the server. It is upto the server to honor this option.
-	        		httpPost.setHeader("connection", "Keep-Alive");
-	        	} else {
-	        		httpPost.setHeader("connection", "close");
-	        	}
-	        }
-	        
-	        // We will now set the application-specific custom HTTP request headers if any sent via
-	        // the requestHeaders attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
-	        // This map iteration technique is explained in the following URL. 
-	        // https://www.geeksforgeeks.org/map-interface-java-examples/
-	        Map<RString, RString> requestHeadersMap = 
-	        	(Map<RString, RString>) tuple.getMap("requestHeaders");
-	        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
-	        
-	        // Set the customer HTTP request headers.
-	        for(Map.Entry<RString, RString> mapEntry : setView) {
-	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        		httpPut.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
-	        	} else {
-	        		httpPost.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
-	        	}
-	        }
-	        
-	        httpPostCnt++;
-	        
-	        if(logHttpPostActions == true) {
-	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-		        	System.out.println((httpPostCnt) + 
-			        	") Executing request " + httpPut.getRequestLine());	        		
-	        	} else {
-		        	System.out.println((httpPostCnt) + 
-		        		") Executing request " + httpPost.getRequestLine());
-	        	}
-	        }
-	
-	        // Do the HTTP PUT/POST now.
-	        CloseableHttpResponse response = null;
-	        
-	        try {
-	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        		response = httpClient.execute(httpPut);
-	        	} else {
-	        		response = httpClient.execute(httpPost);
-	        	}
-	        } catch (Exception ex) {
-	        	URI uri = null;
-	        	
-	        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	        		uri = httpPut.getURI();
-	        	} else {
-	        		uri = httpPost.getURI();
-	        	}
-	        	
-	    		OperatorContext context = getOperatorContext();
-	            Logger.getLogger(this.getClass()).error("Operator " + 
-	            	context.getName() + ", HTTP " + httpMethod + 
-	            	" " + httpPostCnt + " failed to " + uri + ". Exception=" + 
-	            	ex.getMessage() + ". PE " + context.getPE().getPEId() + 
-	            	" in Job: " + context.getPE().getJobId());
-	            // Release the HTTP connection which is a must after 
-	            // consuming the response from the remote web server.
-	            // If we don't do this, it will start hanging when doing the 
-	            // next HTTP GET/PUT/POST for the next incoming  tuple.
-	            if(httpMethod.equalsIgnoreCase("PUT") == true) {
-	            	httpPut.releaseConnection();
-	            } else {
-	            	httpPost.releaseConnection();
-	            }
-	            
-	            // Update the operator metrics.
-	            nHttpPostFailed.increment();
-	            
-	            // Even in the case of an exception, we will emit an
-	            // output tuple to inform the application that invoked this operator.
-		        outTuple.setInt("statusCode", 12345);
-		        outTuple.setString("statusMessage", ex.getMessage());
-		        outStream.submit(outTuple);
-	            return;
-	        }
-	                
-	        int responseStatusCode = response.getStatusLine().getStatusCode();
-	        
-	        // Update the operator metrics.
-	        if (responseStatusCode < 200 || responseStatusCode > 299) {
-	        	nHttpPostFailed.increment();
-	        } else {
-	        	nDataItemsSent.increment();
-	        	nDataBytesSent.setValue(dataBytesSent);
-	        }
-	        
-	        String responseStatusReason = response.getStatusLine().getReasonPhrase();
-	        // Let us now parse all the response headers and populate them in
-	        // a map to be sent in the output tuple later in the code below.
-	        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
-	        Header[] responseHeaders = response.getAllHeaders();
-	        
-	        // Store the response headers in a map for later use.
-	        for (Header header : responseHeaders) {
-	        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
-	        }
-	        
-	        HttpEntity resEntity = response.getEntity();
-	        String responseStrData = "";
-	        byte[] responseBlobData = null;
-	        
-	        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
-	        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
-	        if (resEntity != null) {
-	        	// This technique is explained well in this URL:
-	        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
-	        	org.apache.http.entity.ContentType contentType = 
-	        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
-	            String mimeType = contentType.getMimeType();
-	            
-	            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
-	            	// It is binary based response sent by the remote web server.
-	            	responseBlobData = EntityUtils.toByteArray(resEntity);
-	            	dataBytesReceived += responseBlobData.length;
-	            } else {
-	            	// It is text based response sent by the remote web server.
-	            	responseStrData = EntityUtils.toString(resEntity);
-	            	dataBytesReceived += responseStrData.length();
-	            	// This is string based response. So, we can safely 
-	            	// clear the blobData attribute.
-	            	byte[] emptyBytes = new byte[0];
-	            	outTuple.setBlob("blobData", 
-	                	ValueFactory.newBlob(emptyBytes, 0, 0));
-	            }
-	            
-	            if (responseStatusCode >= 200 && responseStatusCode < 300) {
-	            	// Update the metrics if it is a successful response code.
-	            	nDataItemsReceived.increment();
-	            	nDataBytesReceived.setValue(dataBytesReceived);
-	            }
-	        }
-	        
-	        if (resEntity != null) {
-	        	EntityUtils.consume(resEntity);
-	        }
-	        
-	        if(logHttpPostActions == true) {
-	        	System.out.println((httpPostCnt) + ") Response=" + 
-	        		response.getStatusLine() + " " + responseStrData);
-	        }
-	      
-	        // We can close this response object now.
-	        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
-	        response.close();
-	        
-	        // Release the HTTP connection which is a must after 
-	        // consuming the response from the remote web server.
-	        // If we don't do this, it will start hanging when doing the 
-	        // next HTTP GET/PUT/POST for the next incoming tuple.
-	        if(httpMethod.equalsIgnoreCase("PUT") == true) {
-		        httpPut.releaseConnection();
-	        } else {
-		        httpPost.releaseConnection();
-	        }
-	        
-	        outTuple.setInt("statusCode", responseStatusCode);
-	        outTuple.setString("statusMessage", responseStatusReason);
-	        outTuple.setMap("responseHeaders", responseHeadersMap);
-	        outTuple.setString("strData", responseStrData);
-	        
-	        if(responseBlobData != null) {
-	        	outTuple.setBlob("blobData", 
-	        		ValueFactory.newBlob(responseBlobData, 0,
-	        		responseBlobData.length));
-	        }
-	        
-	        // If the response status code is not 200, clear the blob output attribute.
-	        // Because, in case of an HTTP PUT/POST error, we want only the strData attribute to
-	        // carry the error reason. In that case, we don't want any blobData auto assigned 
-	        // from the input tuple. So, we can safely empty the contents if any in the 
-	        // blobData attribute. This may be a redundant exercise since there is similar
-	        // logic performed above when any kind of text response is received from HTTP POST.
-	        // Since it is such a minimal logic here, that redundancy is something we can live with.
-	        if(responseStatusCode != 200) {
-	        	byte[] emptyBytes = new byte[0];
-	        	outTuple.setBlob("blobData", 
-	            	ValueFactory.newBlob(emptyBytes, 0, 0));
-	        }
-	
-	        // Submit new tuple to output port 0
-	        outStream.submit(outTuple);
-	        // ============= END OF HTTP PUT/POST PROCESSING =============
-        } // End of if(httpMethod.equalsIgnoreCase("PUT") == true ||    
+        int retryAttemptCnt = -1;
+        long bytesSent = 0;
+        OperatorContext context = getOperatorContext();
         
-        if(httpMethod.equalsIgnoreCase("GET") == true) {
-        	// ============= START OF HTTP GET PROCESSING =============
-        	// In HTTP GET, we can only send the data via a query string as
-        	// key=value pairs. The content type application/x-www-form-urlencoded is
-        	// not applicable for HTTP GET since that particular content type is associated 
-        	// only with putting/posting data from HTML forms or in a programmatic way.
-        	String urlQueryString = "";
+    	// Senthil added this while loop on Oct/02/2023 to support
+    	// retry of PUT, POST or GET in case of any error while
+    	// performing that operation. We will surround the entire
+    	// logic inside a while loop. The very last statement inside 
+    	// this while loop must be a break so that we will always break 
+    	// from this loop in case of a successful PUT, POST or GET operation.
+    	while(true) {
+    		retryAttemptCnt++;
+    		
+    		// Check if we must retry the intended PUT, POST or GET operation.
+    		if(maxRetryAttempts == 0 && retryAttemptCnt == 1) {
+    			// No retry attempt count was configured for this operator instance.
+    			// So, no retry attempt needed and we can exit after just making the 
+    			// intended PUT, POST or GET operation once.
+    			break;
+    		}
+    		
+    		if(maxRetryAttempts > 0 && retryAttemptCnt > maxRetryAttempts) {
+    			// We are done with the maximum retry attempts that was 
+    			// configured for this operator instance.
+    			Logger.getLogger(this.getClass()).error("Operator=" + context.getName() + ", PE=" + 
+    				context.getPE().getPEId() + ", Job=" + context.getPE().getJobId() +
+    				", Incoming tuple number=" + httpPostCnt + 
+    				". Giving up the HTTP " + httpMethod + 
+    				" operation for the current incoming tuple after making " + 
+    				maxRetryAttempts + " retry attempts.");
+    			break;
+    		}
+    		
+    		if(maxRetryAttempts > 0 && retryAttemptCnt > 0) {
+    			// We are now retrying the PUT, POST or GET operation.
+    			// Wait if needed before the retry attempt.
+    			if (waitTimeBetweenRetry > 0) {
+    				try {
+    					Thread.sleep(waitTimeBetweenRetry);
+    				} catch(Exception  ex) {
+    					// We can ignore any exception for this tiny sleep.
+    				}
+    			}
+    			
+    			// Write a log entry about the retry attempt.
+    			Logger.getLogger(this.getClass()).error("Operator=" + context.getName() + ", PE=" + 
+    				context.getPE().getPEId() + ", Job=" + context.getPE().getJobId() + 
+    				", Incoming tuple number=" + httpPostCnt + 
+    				". HTTP operation=" + httpMethod + ", Wait time between retry=" +  
+    				waitTimeBetweenRetry + " msec" +
+    				", Retry attempt=" + retryAttemptCnt + " of " + maxRetryAttempts + ".");
+    		}
+    		
+	        if(httpMethod.equalsIgnoreCase("PUT") == true || 
+	           httpMethod.equalsIgnoreCase("POST") == true) {
+		        // ============= START OF HTTP PUT/POST PROCESSING =============
+		    	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+			    	// At this time, the incoming tuple must have its string or 
+			    	// blob PUT content in one of its attributes. 
+			    	httpPut.setHeader("Content-Type", contentType);
+		    	} else {
+			    	// At this time, the incoming tuple must have its string or 
+			    	// blob POST content in one of its attributes. 
+			    	httpPost.setHeader("Content-Type", contentType);
+		    	}
+		    	
+		        if (contentType.equalsIgnoreCase("application/x-www-form-urlencoded") == true) {
+		            // If the content-type is set to application/x-www-form-urlencoded, then we will
+		            // conform to the normal practice of having the request body's format as the query string.
+		            // e-g: param1=value
+		        	//
+		        	// This particular technique about posting as query string is explained in this URL: 
+		        	// https://stackoverflow.com/questions/8120220/how-to-use-parameters-with-httppost
+		        	ArrayList<NameValuePair> postParameters;
+		        	postParameters = new ArrayList<NameValuePair>();
+		        	postParameters.add(new BasicNameValuePair("strData", tuple.getString("strData")));
+		        	UrlEncodedFormEntity ue = new UrlEncodedFormEntity(postParameters, "UTF-8");
+		        	
+		        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        		httpPut.setEntity(ue);
+		        	} else {
+		        		httpPost.setEntity(ue);
+		        	}
+		        	
+		        	bytesSent = tuple.getString("strData").length();
+		        } else if (contentType.equalsIgnoreCase("application/octet-stream") == true) {
+		        	// If the content-type is set to application/octet-stream, then we will
+		        	// make this operator post raw binary data passed via the blobData 
+		        	// attribute in the input tuple.
+		        	// Some useful links that explain the use of application/octet-stream to send
+		        	// any arbitrary piece of binary data:
+		        	// https://www.iana.org/assignments/media-types/application/octet-stream
+		        	// https://stackoverflow.com/questions/20508788/do-i-need-content-type-application-octet-stream-for-file-download
+		        	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+		        	// This particular technique about posting binary data is explained in this URL:
+		        	// https://www.baeldung.com/httpclient-multipart-upload 
+		        	MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+		        	builder.setMode(HttpMultipartMode.BROWSER_COMPATIBLE);
+		        	builder.addBinaryBody("blobData", tuple.getBlob("blobData").getData());
+		        	HttpEntity entity = builder.build();
+		        	
+		        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        		httpPut.setEntity(entity);
+		        	} else {
+		        		httpPost.setEntity(entity);
+		        	}
+		        	
+		        	bytesSent = tuple.getBlob("blobData").getLength();
+		        } else  {
+			    	org.apache.http.entity.ContentType ct = 
+				    	org.apache.http.entity.ContentType.create(contentType);
+				    	
+			    	if (ct == null) {
+			            Logger.getLogger(this.getClass()).error("Operator " + 
+			            	context.getName() + ", Unable to create a MIME content type object from " + 
+			            	contentType + ": " + context.getPE().getPEId() + 
+			            	" in Job: " + context.getPE().getJobId());
+			            return;
+			    	}
+				    	
+		        	// Any other content type that the user specified must be
+		        	// related to posting text data.
+		        	StringEntity se = new StringEntity(tuple.getString("strData"), ct);
+		        	
+		        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        		httpPut.setEntity(se);
+		        	} else {
+		        		httpPost.setEntity(se);
+		        	}
+		        	
+		        	bytesSent = tuple.getString("strData").length();
+		        }
+		        
+		        // Set the connection close request header.
+		        // We must do this for the Apache HttpClient versions greater than 4.3.6.
+		        // If we don't have this header in those versions of the HttpClient, 
+		        // it will give the following exception when trying to do a burst of
+		        // POST data with a very little time gap between them (say 50 msecs spacing
+		        // between each HTTP POST).
+		        //
+		        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
+		        //
+		        // You can learn more about this fix from these URLs.
+		        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
+		        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
+		        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
+		        //
+		        if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        	if(createPersistentHttpConnection == true) {
+		        		// If user opted for a persistent HTTP connection, we can
+		        		// send this header to the server. It is upto the server to honor this option.
+		        		httpPut.setHeader("connection", "Keep-Alive");
+		        	} else {
+		        		httpPut.setHeader("connection", "close");
+		        	}
+		        } else {
+		        	if(createPersistentHttpConnection == true) {
+		        		// If user opted for a persistent HTTP connection, we can
+		        		// send this header to the server. It is upto the server to honor this option.
+		        		httpPost.setHeader("connection", "Keep-Alive");
+		        	} else {
+		        		httpPost.setHeader("connection", "close");
+		        	}
+		        }
+		        
+		        // We will now set the application-specific custom HTTP request headers if any sent via
+		        // the requestHeaders attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
+		        // This map iteration technique is explained in the following URL. 
+		        // https://www.geeksforgeeks.org/map-interface-java-examples/
+		        Map<RString, RString> requestHeadersMap = 
+		        	(Map<RString, RString>) tuple.getMap("requestHeaders");
+		        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
+		        
+		        // Set the customer HTTP request headers.
+		        for(Map.Entry<RString, RString> mapEntry : setView) {
+		        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        		httpPut.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
+		        	} else {
+		        		httpPost.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
+		        	}
+		        }
 
-        	if(urlQueryStringInputAttributePresent == true) {
-        		// Get the user specified URL query string value.
-        		urlQueryString = tuple.getString("urlQueryString");
-        	}
-        	
-        	if(urlQueryString.equalsIgnoreCase("") == true) {
-        		// No URL query string specified by the user.
-        		// We can use just the URL that is configured and
-        		// get a new http GET object for us to work with.
-        		httpGet = new org.apache.http.client.methods.HttpGet(url);
-        	} else {
-        		// There is a user specified URL query string. Let us create a 
-        		// new URI with a combination of the URL and the query string.
-        		// Then, we can use that URI get a new http GET object for us to work with.
-        		URIBuilder uriBuilder = new URIBuilder(url);
-        		uriBuilder = uriBuilder.setCustomQuery(urlQueryString);
-        		URI uri = uriBuilder.build();
-        		httpGet = new org.apache.http.client.methods.HttpGet(uri);
-        	}
-        	
-	    	httpGet.setHeader("Content-Type", contentType);
-	        dataBytesSent += urlQueryString.length();
-	        
-	        // Set the connection close request header.
-	        // We must do this for the Apache HttpClient versions greater than 4.3.6.
-	        // If we don't have this header in those versions of the HttpClient, 
-	        // it will give the following exception when trying to do a burst of
-	        // GET/PUT/POST data with a very little time gap between them (say 50 msecs spacing
-	        // between each HTTP GET/PUT/POST).
-	        //
-	        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
-	        //
-	        // You can learn more about this fix from these URLs.
-	        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
-	        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
-	        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
-	        //
-	        // For GET, we will not do persistent connections even if the user opted for it.
-	        // Because, it is not clear whether persistent connection brings us a great benefit as 
-	        // GET URLs can keep changing with new query strings. So, we will always send this header.
-	        // httpGet.setHeader("connection", "close");
-        	if(createPersistentHttpConnection == true) {
-        		// If user opted for a persistent HTTP connection, we can
-        		// send this header to the server. It is upto the server to honor this option.
-        		httpGet.setHeader("connection", "Keep-Alive");
-        	} else {
-        		httpGet.setHeader("connection", "close");
-        	}
-	        
-	        // We will now set the application-specific custom HTTP request headers if any sent via
-	        // the requestHeaders attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
-	        // This map iteration technique is explained in the following URL. 
-	        // https://www.geeksforgeeks.org/map-interface-java-examples/
-	        Map<RString, RString> requestHeadersMap = 
-	        	(Map<RString, RString>) tuple.getMap("requestHeaders");
-	        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
-	        
-	        // Set the customer HTTP request headers.
-	        for(Map.Entry<RString, RString> mapEntry : setView) {
-	        	httpGet.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
-	        }
-	        
-	        httpPostCnt++;
-	        
-	        if(logHttpPostActions == true) {
-		        System.out.println((httpPostCnt) + 
-			        ") Executing request " + httpGet.getRequestLine());	        		
-	        }
-	
-	        // Do the HTTP GET now.
-	        CloseableHttpResponse response = null;
-	        
-	        try {
-	        	response = httpClient.execute(httpGet);
-	        } catch (Exception ex) {
-	        	URI uri = null;
-	        	uri = httpGet.getURI();
-	        	
-	    		OperatorContext context = getOperatorContext();
-	            Logger.getLogger(this.getClass()).error("Operator " + 
-	            	context.getName() + ", HTTP GET " + httpPostCnt + 
-	            	" failed to " + uri + ". Exception=" + 
-	            	ex.getMessage() + ". PE " + context.getPE().getPEId() + 
-	            	" in Job: " + context.getPE().getJobId());
-	            // Release the HTTP connection which is a must after 
-	            // consuming the response from the remote web server.
-	            // If we don't do this, it will start hanging when doing the 
-	            // next HTTP GET/PUT/POST for the next incoming tuple.
-	            httpGet.releaseConnection();
-	            // Update the operator metrics.
-	            nHttpPostFailed.increment();
-	            
-	            // Even in the case of an exception, we will emit an
-	            // output tuple to inform the application that invoked this operator.
-		        outTuple.setInt("statusCode", 12345);
-		        outTuple.setString("statusMessage", ex.getMessage());
+		        if(retryAttemptCnt == 0) {
+		        	// Increment it only once during the very first 
+		        	// PUT or POST operation attempt for a given input tuple.
+		        	// i.e. don't increment it during retry attempts.
+		        	httpPostCnt++;
+		        }
+		        
+		        if(logHttpPostActions == true) {
+		        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+			        	System.out.println((httpPostCnt) + 
+				        	") Executing request " + httpPut.getRequestLine());	        		
+		        	} else {
+			        	System.out.println((httpPostCnt) + 
+			        		") Executing request " + httpPost.getRequestLine());
+		        	}
+		        }
+		
+		        // Do the HTTP PUT/POST now.
+		        CloseableHttpResponse response = null;
+		        
+		        try {
+		        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        		response = httpClient.execute(httpPut);
+		        	} else {
+		        		response = httpClient.execute(httpPost);
+		        	}
+		        	
+		        	dataBytesSent += bytesSent;
+		        } catch (Exception ex) {
+		        	URI uri = null;
+		        	
+		        	if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		        		uri = httpPut.getURI();
+		        	} else {
+		        		uri = httpPost.getURI();
+		        	}
+		        	
+		        	Logger.getLogger(this.getClass()).error("Operator " + 
+		        		context.getName() + ", HTTP " + httpMethod + 
+		        		" " + httpPostCnt + " failed to " + uri + ". Exception=" + 
+		        		ex.getMessage() + ". PE " + context.getPE().getPEId() + 
+		        		" in Job: " + context.getPE().getJobId());
+		        	
+		            // Release the HTTP connection which is a must after 
+		            // consuming the response from the remote web server.
+		            // If we don't do this, it will start hanging when doing the 
+		            // next HTTP GET/PUT/POST for the next incoming  tuple.
+		            if(httpMethod.equalsIgnoreCase("PUT") == true) {
+		            	httpPut.releaseConnection();
+		            } else {
+		            	httpPost.releaseConnection();
+		            }
+		            
+		            // Update the operator metrics.
+		            nHttpPostFailed.increment();
+		            
+		            if(maxRetryAttempts == 0 || retryAttemptCnt == maxRetryAttempts) {
+		            	// Even in the case of an exception, we will emit an
+		            	// output tuple to inform the application that invoked this operator.
+		            	outTuple.setInt("statusCode", 12345);
+		            	outTuple.setString("statusMessage", ex.getMessage());
+		            	outStream.submit(outTuple);
+		            }
+		            
+		            // Continue the while loop to decide if we must make a 
+		            // retry attempt after this PUT/POST exception.
+		            continue;
+		        }
+
+		        int responseStatusCode = response.getStatusLine().getStatusCode();
+		        
+		        // Update the operator metrics.
+		        if (responseStatusCode < 200 || responseStatusCode > 299) {
+		        	nHttpPostFailed.increment();
+		        } else {
+		        	nDataItemsSent.increment();
+		        	nDataBytesSent.setValue(dataBytesSent);
+		        }
+		        
+		        String responseStatusReason = response.getStatusLine().getReasonPhrase();
+		        // Let us now parse all the response headers and populate them in
+		        // a map to be sent in the output tuple later in the code below.
+		        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
+		        Header[] responseHeaders = response.getAllHeaders();
+		        
+		        // Store the response headers in a map for later use.
+		        for (Header header : responseHeaders) {
+		        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
+		        }
+		        
+		        HttpEntity resEntity = response.getEntity();
+		        String responseStrData = "";
+		        byte[] responseBlobData = null;
+		        
+		        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
+		        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+		        if (resEntity != null) {
+		        	// This technique is explained well in this URL:
+		        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+		        	org.apache.http.entity.ContentType contentType = 
+		        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
+		            String mimeType = contentType.getMimeType();
+		            
+		            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
+		            	// It is binary based response sent by the remote web server.
+		            	responseBlobData = EntityUtils.toByteArray(resEntity);
+		            	dataBytesReceived += responseBlobData.length;
+		            } else {
+		            	// It is text based response sent by the remote web server.
+		            	responseStrData = EntityUtils.toString(resEntity);
+		            	dataBytesReceived += responseStrData.length();
+		            	// This is string based response. So, we can safely 
+		            	// clear the blobData attribute.
+		            	byte[] emptyBytes = new byte[0];
+		            	outTuple.setBlob("blobData", 
+		                	ValueFactory.newBlob(emptyBytes, 0, 0));
+		            }
+		            
+		            if (responseStatusCode >= 200 && responseStatusCode < 300) {
+		            	// Update the metrics if it is a successful response code.
+		            	nDataItemsReceived.increment();
+		            	nDataBytesReceived.setValue(dataBytesReceived);
+		            }
+		        }
+		        
+		        if (resEntity != null) {
+		        	EntityUtils.consume(resEntity);
+		        }
+		        
+		        if(logHttpPostActions == true) {
+		        	System.out.println((httpPostCnt) + ") Response=" + 
+		        		response.getStatusLine() + " " + responseStrData);
+		        }
+		      
+		        // We can close this response object now.
+		        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
+		        response.close();
+		        
+		        // Release the HTTP connection which is a must after 
+		        // consuming the response from the remote web server.
+		        // If we don't do this, it will start hanging when doing the 
+		        // next HTTP GET/PUT/POST for the next incoming tuple.
+		        if(httpMethod.equalsIgnoreCase("PUT") == true) {
+			        httpPut.releaseConnection();
+		        } else {
+			        httpPost.releaseConnection();
+		        }
+		        
+		        outTuple.setInt("statusCode", responseStatusCode);
+		        outTuple.setString("statusMessage", responseStatusReason);
+		        outTuple.setMap("responseHeaders", responseHeadersMap);
+		        outTuple.setString("strData", responseStrData);
+		        
+		        if(responseBlobData != null) {
+		        	outTuple.setBlob("blobData", 
+		        		ValueFactory.newBlob(responseBlobData, 0,
+		        		responseBlobData.length));
+		        }
+		        
+		        // If the response status code is not 200, clear the blob output attribute.
+		        // Because, in case of an HTTP PUT/POST error, we want only the strData attribute to
+		        // carry the error reason. In that case, we don't want any blobData auto assigned 
+		        // from the input tuple. So, we can safely empty the contents if any in the 
+		        // blobData attribute. This may be a redundant exercise since there is similar
+		        // logic performed above when any kind of text response is received from HTTP POST.
+		        // Since it is such a minimal logic here, that redundancy is something we can live with.
+		        if(responseStatusCode != 200) {
+		        	byte[] emptyBytes = new byte[0];
+		        	outTuple.setBlob("blobData", 
+		            	ValueFactory.newBlob(emptyBytes, 0, 0));
+		        }
+		
+		        // Submit new tuple to output port 0
 		        outStream.submit(outTuple);
-	            return;
-	        }
-	                
-	        int responseStatusCode = response.getStatusLine().getStatusCode();
+		        // ============= END OF HTTP PUT/POST PROCESSING =============
+	        } // End of if(httpMethod.equalsIgnoreCase("PUT") == true ||    
 	        
-	        // Update the operator metrics.
-	        if (responseStatusCode < 200 || responseStatusCode > 299) {
-	        	nHttpPostFailed.increment();
-	        } else {
-	        	nDataItemsSent.increment();
-	        	nDataBytesSent.setValue(dataBytesSent);
-	        }
-	        
-	        String responseStatusReason = response.getStatusLine().getReasonPhrase();
-	        // Let us now parse all the response headers and populate them in
-	        // a map to be sent in the output tuple later in the code below.
-	        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
-	        Header[] responseHeaders = response.getAllHeaders();
-	        
-	        // Store the response headers in a map for later use.
-	        for (Header header : responseHeaders) {
-	        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
-	        }
-	        
-	        HttpEntity resEntity = response.getEntity();
-	        String responseStrData = "";
-	        byte[] responseBlobData = null;
-	        
-	        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
-	        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
-	        if (resEntity != null) {
-	        	// This technique is explained well in this URL:
-	        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
-	        	org.apache.http.entity.ContentType contentType = 
-	        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
-	            String mimeType = contentType.getMimeType();
-	            
-	            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
-	            	// It is binary based response sent by the remote web server.
-	            	responseBlobData = EntityUtils.toByteArray(resEntity);
-	            	dataBytesReceived += responseBlobData.length;
-	            } else {
-	            	// It is text based response sent by the remote web server.
-	            	responseStrData = EntityUtils.toString(resEntity);
-	            	dataBytesReceived += responseStrData.length();
-	            	// This is string based response. So, we can safely 
-	            	// clear the blobData attribute.
-	            	byte[] emptyBytes = new byte[0];
-	            	outTuple.setBlob("blobData", 
-	                	ValueFactory.newBlob(emptyBytes, 0, 0));
-	            }
-	            
-	            if (responseStatusCode >= 200 && responseStatusCode < 300) {
-	            	// Update the metrics if it is a successful response code.
-	            	nDataItemsReceived.increment();
-	            	nDataBytesReceived.setValue(dataBytesReceived);
-	            }
-	        }
-	        
-	        if (resEntity != null) {
-	        	EntityUtils.consume(resEntity);
-	        }
-	        
-	        if(logHttpPostActions == true) {
-	        	System.out.println((httpPostCnt) + ") Response=" + 
-	        		response.getStatusLine() + " " + responseStrData);
-	        }
-	      
-	        // We can close this response object now.
-	        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
-	        response.close();
-	        
-	        // Release the HTTP connection which is a must after 
-	        // consuming the response from the remote web server.
-	        // If we don't do this, it will start hanging when doing the 
-	        // next HTTP GET/PUT/POST for the next incoming tuple.
-		    httpGet.releaseConnection();
-	        
-	        outTuple.setInt("statusCode", responseStatusCode);
-	        outTuple.setString("statusMessage", responseStatusReason);
-	        outTuple.setMap("responseHeaders", responseHeadersMap);
-	        outTuple.setString("strData", responseStrData);
-	        
-	        if(responseBlobData != null) {
-	        	outTuple.setBlob("blobData", 
-	        		ValueFactory.newBlob(responseBlobData, 0,
-	        		responseBlobData.length));
-	        }
-	        
-	        // If the response status code is not 200, clear the blob output attribute.
-	        // Because, in case of an HTTP POST error, we want only the strData attribute to
-	        // carry the error reason. In that case, we don't want any blobData auto assigned 
-	        // from the input tuple. So, we can safely empty the contents if any in the 
-	        // blobData attribute. This may be a redundant exercise since there is similar
-	        // logic performed above when any kind of text response is received from HTTP POST.
-	        // Since it is such a minimal logic here, that redundancy is something we can live with.
-	        if(responseStatusCode != 200) {
-	        	byte[] emptyBytes = new byte[0];
-	        	outTuple.setBlob("blobData", 
-	            	ValueFactory.newBlob(emptyBytes, 0, 0));
-	        }
+	        if(httpMethod.equalsIgnoreCase("GET") == true) {
+	        	// ============= START OF HTTP GET PROCESSING =============
+	        	// In HTTP GET, we can only send the data via a query string as
+	        	// key=value pairs. The content type application/x-www-form-urlencoded is
+	        	// not applicable for HTTP GET since that particular content type is associated 
+	        	// only with putting/posting data from HTML forms or in a programmatic way.
+	        	String urlQueryString = "";
 	
-	        // Submit new tuple to output port 0
-	        outStream.submit(outTuple);
-        	// ============= END OF HTTP GET PROCESSING =============
-        } // End of if(httpMethod.equalsIgnoreCase("GET") == true)
+	        	if(urlQueryStringInputAttributePresent == true) {
+	        		// Get the user specified URL query string value.
+	        		urlQueryString = tuple.getString("urlQueryString");
+	        	}
+	        	
+	        	if(urlQueryString.equalsIgnoreCase("") == true) {
+	        		// No URL query string specified by the user.
+	        		// We can use just the URL that is configured and
+	        		// get a new http GET object for us to work with.
+	        		httpGet = new org.apache.http.client.methods.HttpGet(url);
+	        	} else {
+	        		// There is a user specified URL query string. Let us create a 
+	        		// new URI with a combination of the URL and the query string.
+	        		// Then, we can use that URI get a new http GET object for us to work with.
+	        		URIBuilder uriBuilder = new URIBuilder(url);
+	        		uriBuilder = uriBuilder.setCustomQuery(urlQueryString);
+	        		URI uri = uriBuilder.build();
+	        		httpGet = new org.apache.http.client.methods.HttpGet(uri);
+	        	}
+	        	
+		    	httpGet.setHeader("Content-Type", contentType);
+		    	bytesSent = urlQueryString.length();
+		        
+		        // Set the connection close request header.
+		        // We must do this for the Apache HttpClient versions greater than 4.3.6.
+		        // If we don't have this header in those versions of the HttpClient, 
+		        // it will give the following exception when trying to do a burst of
+		        // GET/PUT/POST data with a very little time gap between them (say 50 msecs spacing
+		        // between each HTTP GET/PUT/POST).
+		        //
+		        // org.apache.http.NoHttpResponseException: b0513:8080 failed to respond
+		        //
+		        // You can learn more about this fix from these URLs.
+		        // https://stackoverflow.com/questions/29104643/httpclienterror-the-target-server-failed-to-respond
+		        // https://doc.nuxeo.com/blog/using-httpclient-properly-avoid-closewait-tcp-connections/
+		        // https://serverfault.com/questions/790197/what-does-connection-close-mean-when-used-in-the-response-message
+		        //
+		        // For GET, we will not do persistent connections even if the user opted for it.
+		        // Because, it is not clear whether persistent connection brings us a great benefit as 
+		        // GET URLs can keep changing with new query strings. So, we will always send this header.
+		        // httpGet.setHeader("connection", "close");
+	        	if(createPersistentHttpConnection == true) {
+	        		// If user opted for a persistent HTTP connection, we can
+	        		// send this header to the server. It is upto the server to honor this option.
+	        		httpGet.setHeader("connection", "Keep-Alive");
+	        	} else {
+	        		httpGet.setHeader("connection", "close");
+	        	}
+		        
+		        // We will now set the application-specific custom HTTP request headers if any sent via
+		        // the requestHeaders attribute of the input tuple. It is of SPL type map<rstring, rstring>. 
+		        // This map iteration technique is explained in the following URL. 
+		        // https://www.geeksforgeeks.org/map-interface-java-examples/
+		        Map<RString, RString> requestHeadersMap = 
+		        	(Map<RString, RString>) tuple.getMap("requestHeaders");
+		        Set<Map.Entry<RString, RString>> setView = requestHeadersMap.entrySet();
+		        
+		        // Set the customer HTTP request headers.
+		        for(Map.Entry<RString, RString> mapEntry : setView) {
+		        	httpGet.setHeader(mapEntry.getKey().toString(), mapEntry.getValue().toString());
+		        }
+		        
+		        if(retryAttemptCnt == 0) {
+		        	// Increment it only once during the very first 
+		        	// GET operation attempt for a given input tuple.
+		        	// i.e. don't increment it during retry attempts.
+		        	httpPostCnt++;
+		        }
+		        
+		        if(logHttpPostActions == true) {
+			        System.out.println((httpPostCnt) + 
+				        ") Executing request " + httpGet.getRequestLine());	        		
+		        }
+		
+		        // Do the HTTP GET now.
+		        CloseableHttpResponse response = null;
+		        
+		        try {
+		        	response = httpClient.execute(httpGet);
+		        	dataBytesSent += bytesSent;
+		        } catch (Exception ex) {
+		        	URI uri = null;
+		        	uri = httpGet.getURI();
+		        	
+		        	Logger.getLogger(this.getClass()).error("Operator " + 
+		        		context.getName() + ", HTTP GET " + httpPostCnt + 
+		        		" failed to " + uri + ". Exception=" + 
+		        		ex.getMessage() + ". PE " + context.getPE().getPEId() + 
+		        		" in Job: " + context.getPE().getJobId());
+		        	
+		        	// Release the HTTP connection which is a must after 
+		        	// consuming the response from the remote web server.
+		        	// If we don't do this, it will start hanging when doing the 
+		        	// next HTTP GET/PUT/POST for the next incoming tuple.
+		        	httpGet.releaseConnection();
+		        	// Update the operator metrics.
+		        	nHttpPostFailed.increment();
+		            
+		        	if(maxRetryAttempts == 0 || retryAttemptCnt == maxRetryAttempts) {
+		        		// Even in the case of an exception, we will emit an
+		        		// output tuple to inform the application that invoked this operator.
+		        		outTuple.setInt("statusCode", 12345);
+		        		outTuple.setString("statusMessage", ex.getMessage());
+		        		outStream.submit(outTuple);
+		        	}
+
+		        	// Continue the while loop to decide if we must make a 
+		        	// retry attempt after this GET exception.
+		        	continue;
+		        }
+		                
+		        int responseStatusCode = response.getStatusLine().getStatusCode();
+		        
+		        // Update the operator metrics.
+		        if (responseStatusCode < 200 || responseStatusCode > 299) {
+		        	nHttpPostFailed.increment();
+		        } else {
+		        	nDataItemsSent.increment();
+		        	nDataBytesSent.setValue(dataBytesSent);
+		        }
+		        
+		        String responseStatusReason = response.getStatusLine().getReasonPhrase();
+		        // Let us now parse all the response headers and populate them in
+		        // a map to be sent in the output tuple later in the code below.
+		        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
+		        Header[] responseHeaders = response.getAllHeaders();
+		        
+		        // Store the response headers in a map for later use.
+		        for (Header header : responseHeaders) {
+		        	responseHeadersMap.put(new RString(header.getName()), new RString(header.getValue()));
+		        }
+		        
+		        HttpEntity resEntity = response.getEntity();
+		        String responseStrData = "";
+		        byte[] responseBlobData = null;
+		        
+		        // https://stackoverflow.com/questions/6660243/how-do-i-use-httpclient-in-java-to-retrieve-a-binary-file
+		        // https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+		        if (resEntity != null) {
+		        	// This technique is explained well in this URL:
+		        	// https://kodejava.org/how-do-i-get-entity-contenttype-in-httpclient/
+		        	org.apache.http.entity.ContentType contentType = 
+		        		org.apache.http.entity.ContentType.getOrDefault(resEntity);
+		            String mimeType = contentType.getMimeType();
+		            
+		            if (mimeType.equalsIgnoreCase("application/octet-stream") == true) {
+		            	// It is binary based response sent by the remote web server.
+		            	responseBlobData = EntityUtils.toByteArray(resEntity);
+		            	dataBytesReceived += responseBlobData.length;
+		            } else {
+		            	// It is text based response sent by the remote web server.
+		            	responseStrData = EntityUtils.toString(resEntity);
+		            	dataBytesReceived += responseStrData.length();
+		            	// This is string based response. So, we can safely 
+		            	// clear the blobData attribute.
+		            	byte[] emptyBytes = new byte[0];
+		            	outTuple.setBlob("blobData", 
+		                	ValueFactory.newBlob(emptyBytes, 0, 0));
+		            }
+		            
+		            if (responseStatusCode >= 200 && responseStatusCode < 300) {
+		            	// Update the metrics if it is a successful response code.
+		            	nDataItemsReceived.increment();
+		            	nDataBytesReceived.setValue(dataBytesReceived);
+		            }
+		        }
+		        
+		        if (resEntity != null) {
+		        	EntityUtils.consume(resEntity);
+		        }
+		        
+		        if(logHttpPostActions == true) {
+		        	System.out.println((httpPostCnt) + ") Response=" + 
+		        		response.getStatusLine() + " " + responseStrData);
+		        }
+		      
+		        // We can close this response object now.
+		        // https://stackoverflow.com/questions/21574478/what-is-the-difference-between-closeablehttpclient-and-httpclient-in-apache-http
+		        response.close();
+		        
+		        // Release the HTTP connection which is a must after 
+		        // consuming the response from the remote web server.
+		        // If we don't do this, it will start hanging when doing the 
+		        // next HTTP GET/PUT/POST for the next incoming tuple.
+			    httpGet.releaseConnection();
+		        
+		        outTuple.setInt("statusCode", responseStatusCode);
+		        outTuple.setString("statusMessage", responseStatusReason);
+		        outTuple.setMap("responseHeaders", responseHeadersMap);
+		        outTuple.setString("strData", responseStrData);
+		        
+		        if(responseBlobData != null) {
+		        	outTuple.setBlob("blobData", 
+		        		ValueFactory.newBlob(responseBlobData, 0,
+		        		responseBlobData.length));
+		        }
+		        
+		        // If the response status code is not 200, clear the blob output attribute.
+		        // Because, in case of an HTTP POST error, we want only the strData attribute to
+		        // carry the error reason. In that case, we don't want any blobData auto assigned 
+		        // from the input tuple. So, we can safely empty the contents if any in the 
+		        // blobData attribute. This may be a redundant exercise since there is similar
+		        // logic performed above when any kind of text response is received from HTTP POST.
+		        // Since it is such a minimal logic here, that redundancy is something we can live with.
+		        if(responseStatusCode != 200) {
+		        	byte[] emptyBytes = new byte[0];
+		        	outTuple.setBlob("blobData", 
+		            	ValueFactory.newBlob(emptyBytes, 0, 0));
+		        }
+		
+		        // Submit new tuple to output port 0
+		        outStream.submit(outTuple);
+	        	// ============= END OF HTTP GET PROCESSING =============
+	        } // End of if(httpMethod.equalsIgnoreCase("GET") == true)
+	        
+	        // As explained in the commentary at the start of this while loop,
+	        // we must have a break statement as the very last statement within this while loop.
+	        // This will allow us not to keep looping unnecessarily in case of a 
+	        // successful PUT, POST or GET operation.
+	        break;
+    	} // End of the while loop that allows us to retry PUT, POST and GET on error.
     } // End of process method.
     
     /**
@@ -1052,7 +1146,25 @@ public class HttpPost extends AbstractOperator {
     public void setCreatePersistentHttpConnection(boolean val) {
     	createPersistentHttpConnection= val;
     }
-        
+      
+    @Parameter (name="maxRetryAttempts", 
+		description="This parameter specifies maximum retry attempts before giving up on a PUT, POST or GET operation for a given incoming tuple. Use this feature sparingly so as not to cause back pressure when this operator is processing a high volume of incoming tuples. (Default: 0 i.e. no retry attempt)", optional=true)
+    public void setMaxRetryAttempts(int val) {
+    	// We will not allow a negative value for this parameter.
+    	if(val >= 0) {
+    		maxRetryAttempts = val;
+    	}
+    }
+
+    @Parameter (name="waitTimeBetweenRetry", 
+		description="This parameter specifies wait time in milliseconds between retry attempts after an error on a PUT, POST or GET operation for a given incoming tuple. Use this feature sparingly so as not to cause back pressure when this operator is processing a high volume of incoming tuples. (Default: 2000 milliseconds)", optional=true)
+    public void setWaitTimeBetweenRetry(int val) {
+    	// We will not allow a negative value for this parameter.
+    	if(val >= 0) {
+    		waitTimeBetweenRetry = val;
+    	}
+    }
+    
     public static final String DESC = "This operator posts/sends the incoming tuple's text or binary content to a " +
     		"HTTP or HTTPS persistent (Keep-Alive) or non-persistent endpoint specified in the operator parameter named url. " + 
     		"If needed, this operator can also be made to perform GET and PUT HTTP request activities as explained here. " +

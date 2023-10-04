@@ -1,5 +1,11 @@
 Changes
 =======
+## v1.1.5:
+* Oct/04/2023
+* Added new logic in the HttpPost operator to retry PUT, POST or GET operation in case of an error.
+* Added two HttpPost operator parameters to control retry: maxRetryAttempts, waitTimeBetweenRetry
+* Upgraded the HTTP Client jar files from HTTPClient-4.5.12 to HTTPClient-4.5.14.
+
 ## v1.1.4:
 * Mar/20/2023
 * Made the second output port of the WebSocketSendReceive operator optional.

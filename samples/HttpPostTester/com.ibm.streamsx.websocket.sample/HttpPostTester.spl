@@ -1,14 +1,14 @@
 /*
 ==============================================
 # Licensed Materials - Property of IBM
-# Copyright IBM Corp. 2020
+# Copyright IBM Corp. 2020, 2023
 ==============================================
 */
 
 /*
 ==================================================================
 First created on: Feb/13/2020
-Last modified on: Aug/27/2020
+Last modified on: Oct/04/2023
 
 This main composite file contains the logic to send
 a payload (plain text, JSON or XML) to a given HTTP(S) endpoint.
@@ -126,6 +126,14 @@ composite HttpPostTester {
 		// Do you want to create a persistent (Keep-Alive) HTTP connection?
 		expression<boolean> $createPersistentHttpConnection :
 			(boolean)getSubmissionTimeValue("createPersistentHttpConnection", "false");		
+
+		// Do you want to retry PUT, POST or GET operation if it encounters an error?
+		expression<int32> $maxRetryAttempts :
+			(int32)getSubmissionTimeValue("maxRetryAttempts", "0");		
+
+		// Do you want to wait between retry attempts for PUT, POST or GET operation?
+		expression<int32> $waitTimeBetweenRetry :
+			(int32)getSubmissionTimeValue("waitTimeBetweenRetry", "2000");		
 			
 		// What is the desired message rate we want to test with.
 		expression<float64> $maxMessageRate : 
@@ -374,6 +382,12 @@ composite HttpPostTester {
 				// connection refused errors.
 				// A delay of 50 milliseconds between every HTTP POST is a good place to start.
 				delayBetweenConsecutiveHttpPosts: $delayBetweenConsecutiveHttpPosts;
+				//
+				// Do you want to retry PUT, POST or GET operation if it encounters an error?
+				maxRetryAttempts: $maxRetryAttempts;
+				//		
+				// Do you want to wait between retry attempts for PUT, POST or GET operation?
+				waitTimeBetweenRetry: $waitTimeBetweenRetry;
 		}
 
 		// We can write the HTTP response somewhere or nowhere.
@@ -463,6 +477,12 @@ composite HttpPostTester {
 				// A delay of 10 milliseconds between every HTTP POST is a good place to start.
 				// Default is 0 for no delay. You may use it as needed.
 				delayBetweenConsecutiveHttpPosts: $delayBetweenConsecutiveHttpPosts;
+				//
+				// Do you want to retry PUT, POST or GET operation if it encounters an error?
+				maxRetryAttempts: $maxRetryAttempts;
+				//		
+				// Do you want to wait between retry attempts for PUT, POST or GET operation?
+				waitTimeBetweenRetry: $waitTimeBetweenRetry;
 		}
 
 		// Let us write the HTTP text based response received from the remote server to a file.
