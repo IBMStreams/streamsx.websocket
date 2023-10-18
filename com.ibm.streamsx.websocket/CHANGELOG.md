@@ -1,5 +1,10 @@
 Changes
 =======
+## v1.1.6:
+* Oct/18/2023
+* Added new logic in the HttpPost operator to retry PUT, POST or GET operation in case of both for Java exceptions and for a user configured list of HTTP status codes such as 503, 408, 504 etc.
+* Added a HttpPost operator parameter to control which HTTP status codes will trigger retry: httpStatusCodesThatRequireRetry
+
 ## v1.1.5:
 * Oct/04/2023
 * Added new logic in the HttpPost operator to retry PUT, POST or GET operation in case of an error.

@@ -9,7 +9,7 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Oct/04/2023
+Last modified on: Oct/18/2023
 
 This Java operator is an utility operator available in the
 streamsx.websocket toolkit. It can be used to do HTTP(S) post of
@@ -56,9 +56,11 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringTokenizer;
 
 import javax.net.ssl.SSLContext;
 import org.apache.http.conn.ssl.NoopHostnameVerifier;
@@ -185,6 +187,9 @@ public class HttpPost extends AbstractOperator {
 	private int maxRetryAttempts = 0;
 	// Wait time is specified in Milliseconds
 	private int waitTimeBetweenRetry = 2000;
+	// Following instance variable will hold the HTTP status codes as 
+	// configured by the user for which we should trigger retry PUT, POST or GET.
+	private Set<Integer> httpStatusCodesSet = new HashSet<Integer>();
 	
     // Create a HTTP put or post object.
 	// As of May/24/2020, this operator supports the posting of 
@@ -452,6 +457,9 @@ public class HttpPost extends AbstractOperator {
     			// No retry attempt count was configured for this operator instance.
     			// So, no retry attempt needed and we can exit after just making the 
     			// intended PUT, POST or GET operation once.
+    			//
+    			// Set this operator metrics.
+    			nHttpPostFailed.increment();
     			break;
     		}
     		
@@ -464,6 +472,9 @@ public class HttpPost extends AbstractOperator {
     				". Giving up the HTTP " + httpMethod + 
     				" operation for the current incoming tuple after making " + 
     				maxRetryAttempts + " retry attempts.");
+
+    			// Set this operator metrics.
+    			nHttpPostFailed.increment();
     			break;
     		}
     		
@@ -687,14 +698,6 @@ public class HttpPost extends AbstractOperator {
 
 		        int responseStatusCode = response.getStatusLine().getStatusCode();
 		        
-		        // Update the operator metrics.
-		        if (responseStatusCode < 200 || responseStatusCode > 299) {
-		        	nHttpPostFailed.increment();
-		        } else {
-		        	nDataItemsSent.increment();
-		        	nDataBytesSent.setValue(dataBytesSent);
-		        }
-		        
 		        String responseStatusReason = response.getStatusLine().getReasonPhrase();
 		        // Let us now parse all the response headers and populate them in
 		        // a map to be sent in the output tuple later in the code below.
@@ -762,6 +765,28 @@ public class HttpPost extends AbstractOperator {
 			        httpPut.releaseConnection();
 		        } else {
 			        httpPost.releaseConnection();
+		        }
+		        
+		        // Before sending the output tuple, check if the HTTP status code that we received 
+		        // now is configured by the user to trigger a retry of PUT or POST operation.
+		        if(httpStatusCodesSet.contains(new Integer(responseStatusCode))) {
+	    			Logger.getLogger(this.getClass()).error("Operator=" + context.getName() + ", PE=" + 
+	        			context.getPE().getPEId() + ", Job=" + context.getPE().getJobId() +
+	        			", Incoming tuple number=" + httpPostCnt + 
+	        			". HTTP " + httpMethod + 
+	        			" operation for the current incoming tuple received a HTTP status code " +
+	        			responseStatusCode + " that must trigger a retry as configured by the user.");
+		        	// Continue the while loop to decide if we must make a 
+		        	// retry attempt after this executed PUT or POST operation.
+	    			continue;
+		        }
+
+		        // Update the operator metrics.
+		        if (responseStatusCode < 200 || responseStatusCode > 299) {
+		        	nHttpPostFailed.increment();
+		        } else {
+		        	nDataItemsSent.increment();
+		        	nDataBytesSent.setValue(dataBytesSent);
 		        }
 		        
 		        outTuple.setInt("statusCode", responseStatusCode);
@@ -914,14 +939,6 @@ public class HttpPost extends AbstractOperator {
 		                
 		        int responseStatusCode = response.getStatusLine().getStatusCode();
 		        
-		        // Update the operator metrics.
-		        if (responseStatusCode < 200 || responseStatusCode > 299) {
-		        	nHttpPostFailed.increment();
-		        } else {
-		        	nDataItemsSent.increment();
-		        	nDataBytesSent.setValue(dataBytesSent);
-		        }
-		        
 		        String responseStatusReason = response.getStatusLine().getReasonPhrase();
 		        // Let us now parse all the response headers and populate them in
 		        // a map to be sent in the output tuple later in the code below.
@@ -986,7 +1003,29 @@ public class HttpPost extends AbstractOperator {
 		        // If we don't do this, it will start hanging when doing the 
 		        // next HTTP GET/PUT/POST for the next incoming tuple.
 			    httpGet.releaseConnection();
-		        
+
+		        // Before sending the output tuple, check if the HTTP status code that we received 
+		        // now is configured by the user to trigger a retry of GET operation.
+		        if(httpStatusCodesSet.contains(new Integer(responseStatusCode))) {
+	    			Logger.getLogger(this.getClass()).error("Operator=" + context.getName() + ", PE=" + 
+	        			context.getPE().getPEId() + ", Job=" + context.getPE().getJobId() +
+	        			", Incoming tuple number=" + httpPostCnt + 
+	        			". HTTP " + httpMethod + 
+	        			" operation for the current incoming tuple received a HTTP status code " +
+	        			responseStatusCode + " that must trigger a retry as configured by the user.");
+		        	// Continue the while loop to decide if we must make a 
+		        	// retry attempt after this executed GET operation.
+	    			continue;
+		        }
+
+		        // Update the operator metrics.
+		        if (responseStatusCode < 200 || responseStatusCode > 299) {
+		        	nHttpPostFailed.increment();
+		        } else {
+		        	nDataItemsSent.increment();
+		        	nDataBytesSent.setValue(dataBytesSent);
+		        }
+
 		        outTuple.setInt("statusCode", responseStatusCode);
 		        outTuple.setString("statusMessage", responseStatusReason);
 		        outTuple.setMap("responseHeaders", responseHeadersMap);
@@ -1154,7 +1193,7 @@ public class HttpPost extends AbstractOperator {
     	if(val >= 0) {
     		maxRetryAttempts = val;
     	}
-    }
+    }	
 
     @Parameter (name="waitTimeBetweenRetry", 
 		description="This parameter specifies wait time in milliseconds between retry attempts after an error on a PUT, POST or GET operation for a given incoming tuple. Use this feature sparingly so as not to cause back pressure when this operator is processing a high volume of incoming tuples. (Default: 2000 milliseconds)", optional=true)
@@ -1162,6 +1201,26 @@ public class HttpPost extends AbstractOperator {
     	// We will not allow a negative value for this parameter.
     	if(val >= 0) {
     		waitTimeBetweenRetry = val;
+    	}
+    }
+
+    @Parameter (name="httpStatusCodesThatRequireRetry",
+    	description="This parameter specifies a comma separated string containing zero or more HTTP status codes that must trigger a retry attempt on a PUT, POST or GET operation for a given incoming tuple. e-g: '503, 408, 504' (Default: Empty string)", optional=true)
+    public void setHttpStatusCodesThatRequireRetry(String val) {
+    	// We will parse this comma separated string containing zero or more
+    	// HTTP status codes and store them as elements in a set.
+    	if(val.length() > 0) {
+    		// Tokenize the given string using comma as a separator.
+    		StringTokenizer st = new StringTokenizer(val, ",");
+    		
+    		// Iterate through the available tokens and store them in the set as an Integer.
+    		while(st.hasMoreTokens()) {
+    			String token = st.nextToken();
+    			// Trim the leading and trailing space characters.
+    			token = token.trim();
+    			Integer httpStatusCode = Integer.parseInt(token);
+    			httpStatusCodesSet.add(httpStatusCode);
+    		}
     	}
     }
     

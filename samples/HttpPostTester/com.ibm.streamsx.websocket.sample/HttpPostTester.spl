@@ -8,7 +8,7 @@
 /*
 ==================================================================
 First created on: Feb/13/2020
-Last modified on: Oct/04/2023
+Last modified on: Oct/18/2023
 
 This main composite file contains the logic to send
 a payload (plain text, JSON or XML) to a given HTTP(S) endpoint.
@@ -134,7 +134,17 @@ composite HttpPostTester {
 		// Do you want to wait between retry attempts for PUT, POST or GET operation?
 		expression<int32> $waitTimeBetweenRetry :
 			(int32)getSubmissionTimeValue("waitTimeBetweenRetry", "2000");		
-			
+
+		// Which HTTP status codes must trigger a retry operation?	
+		//	
+		// All Java exceptions will trigger retrying of the PUT, POST or GET operation when
+		// the max retry attempts parameter specified above is set to a non-zero value.
+		// However, if a retry is required for certain HTTP status codes, then the user 
+		// must give a comma separated string containing zero or more HTTP status codes.
+		// e-g: "503, 408, 504" 
+		expression<rstring> $httpStatusCodesThatRequireRetry :
+			getSubmissionTimeValue("httpStatusCodesThatRequireRetry", "");
+		
 		// What is the desired message rate we want to test with.
 		expression<float64> $maxMessageRate : 
 			(float64)getSubmissionTimeValue("MaxMessageRate", "500.00");
@@ -388,6 +398,15 @@ composite HttpPostTester {
 				//		
 				// Do you want to wait between retry attempts for PUT, POST or GET operation?
 				waitTimeBetweenRetry: $waitTimeBetweenRetry;
+				
+				// Which HTTP status codes must trigger a retry operation?
+				//		
+				// All Java exceptions will trigger retrying of the PUT, POST or GET operation when
+				// the max retry attempts parameter specified above is set to a non-zero value.
+				// However, if a retry is required for certain HTTP status codes, then the user 
+				// must give a comma separated string containing zero or more HTTP status codes.
+				// e-g: "503, 408, 504" 
+				httpStatusCodesThatRequireRetry : $httpStatusCodesThatRequireRetry;
 		}
 
 		// We can write the HTTP response somewhere or nowhere.
@@ -483,6 +502,15 @@ composite HttpPostTester {
 				//		
 				// Do you want to wait between retry attempts for PUT, POST or GET operation?
 				waitTimeBetweenRetry: $waitTimeBetweenRetry;
+				
+				// Which HTTP status codes must trigger a retry operation?	
+				//	
+				// All Java exceptions will trigger retrying of the PUT, POST or GET operation when
+				// the max retry attempts parameter specified above is set to a non-zero value.
+				// However, if a retry is required for certain HTTP status codes, then the user 
+				// must give a comma separated string containing zero or more HTTP status codes.
+				// e-g: "503, 408, 504" 
+				httpStatusCodesThatRequireRetry : $httpStatusCodesThatRequireRetry;
 		}
 
 		// Let us write the HTTP text based response received from the remote server to a file.
