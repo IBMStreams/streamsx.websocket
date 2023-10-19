@@ -2,7 +2,7 @@
 title: "Operator Design"
 permalink: /docs/user/OperatorDesign/
 excerpt: "Describes the design of the streamsx.websocket toolkit operators."
-last_modified_at: 2023-10-04T16:12:48+01:00
+last_modified_at: 2023-10-18T21:55:48+01:00
 redirect_from:
    - /theme-setup/
 sidebar:
@@ -189,5 +189,6 @@ Following are the parameters accepted by the HttpPost operator. Some parameters 
 | createPersistentHttpConnection | `boolean` | `false` | This parameter specifies if we have to a create a persistent (Keep-Alive) HTTP connection or not. |
 | maxRetryAttempts | `int32` | `0` | This parameter specifies maximum retry attempts before giving up on a PUT, POST or GET operation for a given incoming tuple. Use this feature sparingly so as not to cause back pressure when this operator is processing a high volume of incoming tuples. |
 | waitTimeBetweenRetry | `int32` | `2000` | This parameter specifies wait time in milliseconds between retry attempts after an error on a PUT, POST or GET operation for a given incoming tuple. Use this feature sparingly so as not to cause back pressure when this operator is processing a high volume of incoming tuples. |
+| httpStatusCodesThatRequireRetry | `rstring` | `An empty string` | This parameter specifies a comma separated string containing zero or more HTTP status codes that must trigger a retry attempt on a PUT, POST or GET operation for a given incoming tuple. e-g: "503, 408, 504" |
 
 *******************************
