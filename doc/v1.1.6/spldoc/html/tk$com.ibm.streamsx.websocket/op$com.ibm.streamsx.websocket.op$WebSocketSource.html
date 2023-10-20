@@ -7,50 +7,62 @@
 <meta name="copyright" content="(C) Copyright 2005"/>
 <meta name="DC.rights.owner" content="(C) Copyright 2005"/>
 <meta name="DC.Type" content="reference"/>
-<meta name="DC.Title" content="Operator WebSocketSink"/>
+<meta name="DC.Title" content="Operator WebSocketSource"/>
 <meta name="DC.Format" content="XHTML"/>
 <meta name="DC.Identifier" content="spldoc_operator"/>
 <link rel="stylesheet" type="text/css" href="../../html/commonltr.css"/>
 <link rel="stylesheet" type="text/css" href="../../html/spldoc.css"/>
-<title>Operator WebSocketSink</title>
+<title>Operator WebSocketSource</title>
 </head>
 <body id="spldoc_operator">
 
 
-<h1 class="title topictitle1">Operator <tt class="ph tt">WebSocketSink</tt></h1>
+<h1 class="title topictitle1">Operator <tt class="ph tt">WebSocketSource</tt></h1>
 
 <div class="body refbody">
 <div class="section">
 <p class="p">
-<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.1.7</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSink</p>
+<a class="xref" href="../toolkits/toolkits.html">C++ WebSocket toolkit for IBM Streams</a> &gt; <a class="xref" href="tk$com.ibm.streamsx.websocket.html">com.ibm.streamsx.websocket 1.1.6</a> &gt; <a class="xref" href="ns$com.ibm.streamsx.websocket.op.html">com.ibm.streamsx.websocket.op</a> &gt; WebSocketSource</p>
 
 </div>
 
 <div class="section splprimop">
-  <embed class="image" src="../../image/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSink.svg" width="872" height="112"/>
+  <embed class="image" src="../../image/tk$com.ibm.streamsx.websocket/op$com.ibm.streamsx.websocket.op$WebSocketSource.svg" width="872" height="112"/>
 </div>
 
 <div class="section">
 
-<p class="p">      The server-based WebSocketSink operator is designed to send data to the remote        WebSocket clients that are connected at any given time to the WebSocket       server running inside of this operator. This operator can be used to        send text (plain text, JSON or XML) and/or binary data. This operator will        accept a client connection either via plain WebSocket (ws or http) or        via TLS WebSocket (wss or https). Since any given WebSocket connection is       bidirectional (full duplex) in nature, this sink operator will focus only on        sending data to the connected remote clients and will simply ignore any        data received from them. In addition, this operator can be configured to       allow a certain maximum number of concurrent connections from the remote       clients depending on the needs of the application and based on the       capacity of the underlying OS and hardware configuration such as         networking, CPU cores and memory limits. 
+<p class="p">      The server-based WebSocketSource operator is designed to receive        text (plain text, JSON or XML) or binary data from the remote WebSocket and HTTP clients.        This operator can also accept HTTP GET, HTTP PUT and HTTP POST requests from the remote HTTP clients.       One or more remote clients can connect to this operator either via plain WebSocket/HTTP (ws or http) or       via TLS WebSocket/HTTP (wss or https). For a TLS WebSocket/HTTP, a server side certificate must be       generated first and the text file available in the etc directory of this toolkit provides        useful details on that topic. For a HTTP(S) GET/PUT/POST client to send text based data, it can have       its Content-Type header as text/plain or application/xml or application/json. To send        binary based data, a HTTP(S) PUT/POST client must have its Content-Type header as        application/octet-stream and it can use a standard mechanism available in many web frameworks       for including multipart MIME content. WebSocket connections established with this operator are       always persistent and long running. HTTP connections established with this operator can also       be made persistent (Keep-Alive) by configuring it to do so. Persistent (Keep-Alive) HTTP       connections will be useful in improving throughput for non-browser based client applications with a        need to send data items iteratively in a tight loop.
+</p>
+
+<p class="p">      This operator can also be optionally configured to send an ack back to the remote WebSocket clients after receiving a       certain number of data items (tuples) from a given client. This is configured by one of the operator parameters explained below.       This feature can be used by a remote WebSocket client to wait for an ack after sending a certain number of data items.       A missing ack can indicate the remote client about a server side network error or an operator crash/error and make that       remote WebSocket client to retransmit the previously sent, but unacknowledged data items (tuples).
+</p>
+
+<p class="p">      This operator can be configured with a WebSocket server port number which is optional. If the user of this       operator doesn't specify a WebSocket server port number, then a default port number of 443 will be used.
+</p>
+
+<p class="p">      This operator also provides an option for the client applications to do the HTTP/HTTPS GET/PUT/POST for       sending text based data (plain text, JSON or XML). If this operator's allowHttpPost parameter is       set to true, client applications can connect to this operator's HTTP/HTTPS URL endpoint and        send their data via HTTP/HTTPS GET, PUT and POST. This feature will be handy for the        traditional HTTP(S) based web applications that are not suitable for quick modernization to use        WebSocket instead of HTTP(S).
+</p>
+
+<p class="p">      Even though it is labeled as a source operator, it can be configured to perform like an        analytic operator to receive data from a client, process that data and send result/response back to        that client. More details about this feature can be found in a different section below.       In addition, this operator can be configured to allow a certain maximum number of concurrent        connections from the remote clients depending on the needs of the application and based on the       capacity of the underlying OS and hardware configuration such as networking, CPU cores and memory limits.
 </p>
 
 <p class="p">      Since WebSocket at its low level is based on TCP, you have to be aware of the        effects of the Nagle's algorithm which is usually controlled by TCP_NODELAY.       This operator has an optional parameter named tcpNoDelay to enable or disable        Nagle's algorithm for your needs. The tcpNoDelay parameter will do its job        correctly only with the websocketpp library version 0.8.3 and higher.
 </p>
 
-<p class="p">      This is Send-only to multiple clients.        This operator promotes One-To-Many data access pattern. So, this operator will       take as much time as needed to send a given data item to all the connected clients.
+<p class="p">      In summary, this operator supports data reception via both WebSocket and HTTP GET/PUT/POST on        plain as well as secure endpoints. Users will get a five-in-one benefit        (WebSocket, HTTP, plain, secure and roundtripping) from this operator.       This is Receive-only from multiple clients with an option to make it a        Receive-Process-Send operator. This operator promotes Many-To-One data access pattern.
 </p>
 
-<p class="p">      By default, any remote client that knows the WebSocket URL of this operator can       connect to receive data sent by this operator. If only a specific set of remote       clients should be allowed to connect to this operator, an optional operator       parameter named clientWhitelist can be used to provide a list&lt;rstring&gt; with       one or more client IP addresses. An empty list means connections will be accepted       from any client with no restrictions. A new whitelist can also be injected into this       operator via an optional input port in the middle of an application run. On receiving       such a new whitelist, this operator will start using it immediately and it will       terminate its existing connections with those remote clients that are no longer       specified in the whitelist. IP addresses can be exact or wildcard based as shown below.
+<p class="p">      By default, any remote client that knows the WebSocket URL of this operator can       connect to this operator for sending and receiving data. If only a specific set of remote       clients should be allowed to connect to this operator, an optional operator       parameter named clientWhitelist can be used to provide a list&lt;rstring&gt; with       one or more client IP addresses. An empty list means connections will be accepted       from any client with no restrictions. A new whitelist can also be injected into this       operator via an optional input port in the middle of an application run. On receiving       such a new whitelist, this operator will start using it immediately and it will       terminate its existing connections with those remote clients that are no longer       specified in the whitelist. IP addresses can be exact or wildcard based as shown below.
 </p>
 
 <p class="p">      clientWhitelist: ["172.34.18.212", "10.5.23.17", "172.<em class="ph i">.42.</em>", "10.29.42.*"];
 </p>
 
-<p class="p">      This operator provides two input ports. First input port is used for an application to       send data to the remote WebSocket clients. This input port must have either        rstring strData or blob blobData or both of them and        list&lt;rstring&gt; sendToUrlContextPaths as the incoming tuple attribute(s).       The input attribute sendToUrlContextPaths can be used to send a given data item       to one or more remote clients that accessed a particular url context path by including       such context paths as elements in the list. If this attribute has an empty list, then a       given data item will be sent to all the connected clients irrespective of the       url context paths they accessed.       Second input port is optional and it is used to send a new client whitelist into this       operator to accept client connections only from the specified IP addresses. This input       port must have only one attribute named clientWhitelist that is of type list&lt;rstring&gt;.        This can be an empty list for accepting connections from any client with no restrictions or        a list with one or more remote client IP addresses that are allowed to receive data       from this operator.
+<p class="p">      This operator provides two output ports. On the first output port, it keeps sending the data       received from the remote clients. On the second output port, it keeps sending the "End of Client Session"       signal whenever a remote WebSocket client closes its connection.        Please refer to the output port section below to learn more.
 </p>
 
-<p class="p">      This being a sink operator, it has no output ports.
+<p class="p">      This operator provides two optional input ports. The presence of these two input ports are       purely based on the needs of the application. They can be completely absent or only one of       them can be present or both of them can be present. One of them is used to send response to a        remote client and the other is used to dynamically change the client whitelist as explained        in a previous paragraph. Please refer to the input port section below to learn more.
 </p>
 
 <div class="p">      Requirements: 
@@ -78,7 +90,7 @@
  
   <dt class="dt dlterm">Ports</dt>
 
-  <dd class="dd">This operator has 2 input ports and 0 output ports.</dd>
+  <dd class="dd">This operator has 2 input ports and 2 output ports.</dd>
 
  
  
@@ -90,9 +102,9 @@
  
   <dt class="dt dlterm">Parameters</dt>
 
-  <dd class="dd">This operator supports 21 parameters.
+  <dd class="dd">This operator supports 26 parameters.
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__metricsResetInterval">metricsResetInterval</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__allowHttpPost">allowHttpPost</a>, <a class="xref" href="#spldoc_operator__parameter__allowPersistentHttpConnections">allowPersistentHttpConnections</a>, <a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__initDelay">initDelay</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__metricsResetInterval">metricsResetInterval</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__numberOfMessagesToReceiveBeforeAnAck">numberOfMessagesToReceiveBeforeAnAck</a>, <a class="xref" href="#spldoc_operator__parameter__responseTimeout">responseTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 </dd>
@@ -101,7 +113,7 @@
  
   <dt class="dt dlterm">Metrics</dt>
 
-  <dd class="dd">This operator reports 11 metrics.</dd>
+  <dd class="dd">This operator reports 15 metrics.</dd>
 
  
 </dl>
@@ -133,7 +145,10 @@
    <dt class="dt dlterm">Ports (0)</dt>
 
    <dd class="dd">
-<p class="p">      	This port brings the data into this operator for sending it to the remote WebSocket clients.
+<p class="p">      	Even though this operator is labeled as a source, it can optionally be configured to         function like an analytic operator. In this changed role, it will accept an input port         to receive tuples and send them to the remote clients. In addition, this operator can         also have another optional port to receive a client whitelist and dynamically update it         inside this operator for allowing or rejecting connections from remote clients.         To meet that requirement, this operator provides two optional input ports.          The presence of these two input ports are purely based on the needs of the application.          They can be completely absent or only one of them can be present or both of them can be          present. One of them is used to send response to a remote client and the other is used to          dynamically change the client whitelist. That is why it is not possible to impose a          particular ordering between them. These input ports can be used in any order and the          internal operator logic knows how to identify which is which. 
+</p>
+
+<p class="p">        This is one of those two input ports. It is used for an application to send data to a          remote WebSocket client as a response to the data it received earlier from that client         and finished processing it. This input port must have either rstring strData or          blob blobData or both of them and uint64 clientSessionId as the tuple attribute(s).          By using the client session id, this operator will correlate to find the correct          remote client to where a given response should be sent. If HTTP based remote clients         are sending data to this operator, application logic can send its own custom         HTTP response headers back to those HTTP clients. In order to do that, this         input port can have an optional attribute map&lt;rstring, rstring&gt; httpResponseHeaders         which the application logic can populate with its custom HTTP headers. When this input port is         present, it is required for the application logic to send a (round-trip) response          back to the client from where it received a data item. Such a response should be sent as         quick as possible before the configured response timeout value. If not, a timeout handler         thread running inside this operator will detect that missed reponse and do the necessary          clean-up work for the remote client connection that is waiting for a response.  
 </p>
 
 <div class="p">      	Attributes on this input port:
@@ -142,7 +157,9 @@
 
 <li class="li"> <strong class="ph b">blobData</strong> (required, blob) - Any binary (blob) data can be sent to the remote WebSocket clients via this attribute.</li>
 
-<li class="li"> <strong class="ph b">sendToUrlContextPaths</strong> (required, list&lt;rstring&gt;) - This input attribute can be used to send a given data item to one or more remote clients that accessed a particular url context path by including such context paths as elements in the list. If this attribute has an empty list, then a given data item will be sent to all the connected clients irrespective of the url context paths they accessed.        </li>
+<li class="li"> <strong class="ph b">clientSessionId</strong> (required, uint64) - Client session id to where a given response should be sent.</li>
+
+<li class="li"> <strong class="ph b">httpResponseHeaders</strong> (optional, map&lt;rstring, rstring&gt;) - This map attribute can be present if the application logic has to send custom HTTP response headers to a remote HTTP client. </li>
 
 </ul>
 
@@ -156,7 +173,7 @@
       <dt class="dt dlterm">Properties</dt>
 
       <dd class="dd">   <ul class="sl simple">
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__optional">Optional</a>: false
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__optional">Optional</a>: true
      </li>
 
    </ul>
@@ -188,7 +205,7 @@
    <dt class="dt dlterm">Ports (1)</dt>
 
    <dd class="dd">
-<p class="p">      	This port brings the new client whitelist..
+<p class="p">        This is the other optional input port. It is used to send a new client whitelist          into this operator to accept client connections only from the specified IP addresses.          This input port must have only one attribute named clientWhitelist that is of          type list&lt;rstring&gt;. This can be an empty list for accepting connections from          any client with no restrictions or a list with one or more remote client IP addresses          that are allowed to connect with this operator to send and receive data.
 </p>
 
 <div class="p">      	Attributes on this input port:
@@ -200,6 +217,9 @@
 </div>
 
 <p class="p">		All the extra input attributes will be ignored.  	
+</p>
+
+<p class="p">		As mentioned in the description for the other input port, ordering of these two ports can be 		at the discretion of the application developers. 
 </p>
 
    <dl class="dl">
@@ -216,7 +236,7 @@
      <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__controlport">ControlPort</a>: false
      </li>
 
-     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__tuplemutationallowed">TupleMutationAllowed</a>: false
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__tuplemutationallowed">TupleMutationAllowed</a>: true
      </li>
 
      <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__input_port_set__windowingmode">WindowingMode</a>: NonWindowed
@@ -240,18 +260,398 @@
 </div>
 
 <div class="section">
+<p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set">Output Ports</a></strong></p>
+<dl class="dl">
+  
+     <dt class="dt dlterm">Assignments</dt>
+
+     <dd class="dd">This operator allows any SPL expression of the correct type to be assigned to output attributes.</dd>
+
+  
+</dl>
+
+<dl class="dl">
+      <dt class="dt dlterm"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__customoutputfunctions">Output Functions</a></dt>
+
+    <dd class="dd">
+      <dl class="dl">
+      
+        <dt class="dt dlterm">WebSocketSourceFunctions</dt>
+
+        <dd class="dd">
+          <dl class="dl">
+            <dt class="dt dlterm"/>
+<dd class="dd"/>
+
+            
+              <dt class="dt dlterm">
+                <tt class="ph tt">   &lt;any T&gt; T AsIs(T)</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">The default function for output attributes. This function assigns the output attribute to the value of the input attribute with the same name.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   uint64 getClientSessionId()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns an uint64 value indicating the client session id that corresponds to the current output tuple.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   uint64 getTotalDataItemsReceived()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns an uint64 value indicating the total number of data items received so far from a remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   uint64 getTotalDataBytesReceived()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns an uint64 value indicating the total number of data bytes received so far from a remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   uint64 getTotalDataItemsSent()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns an uint64 value indicating the total number of data items sent so far to a remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   uint64 getTotalDataBytesSent()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns an uint64 value indicating the total number of data bytes sent so far to a remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getClientIpAddress()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the IP address of a remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getClientPort()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the port of a remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getUrlContextPath()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the context path present in the URL being accessed by the client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   boolean isWebSocketClient()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a boolean indicating whether a remote client holds a WebSocket connection.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   boolean isHttpClient()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a boolean indicating whether a remote client holds a Http connection.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   map&lt;rstring, rstring&gt; getHttpRequestHeaders()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns an SPL map holding the HTTP headers that were part of a client's HTTP GET/PUT/POST request.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getHttpRequestMethodName()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the method name (GET, PUT or POST) found in the client's HTTP request.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   map&lt;rstring, rstring&gt; getUrlQueryStringKeyValuePairs()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns an SPL map holding the key/value pairs found in the URL query string of a client's HTTP GET request.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getFullUrlBeingAccessedByTheClient()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the full URL being accessed by the remote client.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                        
+              <dt class="dt dlterm">
+                <tt class="ph tt">   rstring getFileNameInUrlForHttpGet()</tt>              </dt>
+
+            <dd class="dd">
+
+<p class="p">Returns a string indicating the file name in the URL for HTTP GET based requests.
+</p>
+              <p class="p"/>
+
+            </dd>
+
+                      </dl>
+        </dd>
+
+      
+      </dl>
+
+    </dd>
+
+  </dl>
+
+ <dl class="dl">
+  
+   <dt class="dt dlterm">Ports (0)</dt>
+
+   <dd class="dd">
+
+<p class="p">      	This port produces the output tuples that carry the text or binary data received from        	the remote WebSocket or HTTP GET/PUT/POST client. The schema for this port must either have an attribute named        	strData with an rstring data type to hold the received text data or an attribute named       	blobData with a blob data type to hold the received binary data or both. Remaining attributes can be        	of any type based on the needs of the application. This operator is capable of sending out data 		received from multiple WebSocket and HTTP GET/PUT/POST clients that can all communicate with this operator at the very same time.  		Please refer to the custom output functions provided by this operator to query the client session id 		and other client session specific metrics and assign such values to other optional attributes in this 		output port. Depending on the needs of a given application, this operator can perform more beyond being 		just a source operator. If applications are interested in receiving data from a remote client, process and 		then send a result a.k.a response back to that client, then this output port must have an additional  		attribute uint64 clientSessionId. As mentioned earlier, the value of this attribute can be queried by using  		a custom output function. When using this operator to send a result back to a client, there must be an 		input port present in this operator that has its own attribute uint64 clientSessionId. Application developers can 		arrange their application logic to receive data from a client, process it and then send a result along with the 		client session id for that client. This attribute present in both the input and output ports will let this 		operator to do the correlation of the result/response with the correct client before sending it to that client.
+</p>
+
+<p class="p">        <strong class="ph b">There are multiple available output functions</strong>, and output attributes can also be          assigned values with any SPL expression that evaluates to the proper type.      	
+</p>
+
+    <p class="p"/>
+
+    <dl class="dl">
+     
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__optional">Optional</a>: false
+     </li>
+
+   </ul>
+
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__tuplemutationallowed">TupleMutationAllowed</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__windowpunctuationoutputmode">WindowPunctuationOutputMode</a>: Free
+     </li>
+
+   </ul>
+
+</dd>
+     
+    </dl>
+
+    <p class="p"/>
+
+   </dd>
+
+  
+  
+   <dt class="dt dlterm">Ports (1)</dt>
+
+   <dd class="dd">
+
+<p class="p">      	This port produces periodic output tuples to give an indication about the end of a        	specific WebSocket client session that was in progress moments ago for        	the given client session id. The schema for this port must have one         	attribute with its correct data type as shown here.        	uint64 clientSessionId       	This source operator will set the appropriate value for this attribute to        	indicate which particular WebSocket client         	(i.e. session id) just ended the data exchange. Downstream operators can make        	use of this "End Of Client Session" signal as they see fit.
+</p>
+
+    <p class="p"/>
+
+    <dl class="dl">
+     
+      <dt class="dt dlterm">Properties</dt>
+
+      <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__optional">Optional</a>: false
+     </li>
+
+   </ul>
+
+   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__tuplemutationallowed">TupleMutationAllowed</a>: false
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__output_port_set__windowpunctuationoutputmode">WindowPunctuationOutputMode</a>: Free
+     </li>
+
+   </ul>
+
+</dd>
+     
+    </dl>
+
+    <p class="p"/>
+
+   </dd>
+
+  
+</dl>
+
+</div>
+
+<div class="section">
 <p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters">Parameters</a></strong></p>
-This operator supports 21 parameters.
+This operator supports 26 parameters.
 <p class="p"> Optional: 
-<a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__metricsResetInterval">metricsResetInterval</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
+<a class="xref" href="#spldoc_operator__parameter__allowHttpPost">allowHttpPost</a>, <a class="xref" href="#spldoc_operator__parameter__allowPersistentHttpConnections">allowPersistentHttpConnections</a>, <a class="xref" href="#spldoc_operator__parameter__certificateFileName">certificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__certificatePassword">certificatePassword</a>, <a class="xref" href="#spldoc_operator__parameter__clientWhitelist">clientWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__initDelay">initDelay</a>, <a class="xref" href="#spldoc_operator__parameter__ipv6Available">ipv6Available</a>, <a class="xref" href="#spldoc_operator__parameter__maxClientConnectionsAllowed">maxClientConnectionsAllowed</a>, <a class="xref" href="#spldoc_operator__parameter__metricsResetInterval">metricsResetInterval</a>, <a class="xref" href="#spldoc_operator__parameter__newDataCpuYieldTimeInSenderThread">newDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__noDataCpuYieldTimeInSenderThread">noDataCpuYieldTimeInSenderThread</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsEndpointNeeded">nonTlsEndpointNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__nonTlsPort">nonTlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__numberOfMessagesToReceiveBeforeAnAck">numberOfMessagesToReceiveBeforeAnAck</a>, <a class="xref" href="#spldoc_operator__parameter__responseTimeout">responseTimeout</a>, <a class="xref" href="#spldoc_operator__parameter__tcpNoDelay">tcpNoDelay</a>, <a class="xref" href="#spldoc_operator__parameter__tlsCipherWhitelist">tlsCipherWhitelist</a>, <a class="xref" href="#spldoc_operator__parameter__tlsPort">tlsPort</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientCertificateFileName">trustedClientCertificateFileName</a>, <a class="xref" href="#spldoc_operator__parameter__trustedClientX509SubjectIdentifiers">trustedClientX509SubjectIdentifiers</a>, <a class="xref" href="#spldoc_operator__parameter__urlContextPath">urlContextPath</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLiveMetricsUpdateNeeded">websocketLiveMetricsUpdateNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketLoggingNeeded">websocketLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__websocketStaleConnectionPurgeInterval">websocketStaleConnectionPurgeInterval</a>, <a class="xref" href="#spldoc_operator__parameter__wsClientSessionLoggingNeeded">wsClientSessionLoggingNeeded</a>, <a class="xref" href="#spldoc_operator__parameter__wsConnectionLoggingNeeded">wsConnectionLoggingNeeded</a>
 
 </p>
 <dl class="dl">
   
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__allowHttpPost"><!-- --></a><tt class="ph tt">allowHttpPost</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter indicates whether the client applications are allowed to send data via HTTP(S) GET/PUT/POST. (Default is false)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__allowPersistentHttpConnections"><!-- --></a><tt class="ph tt">allowPersistentHttpConnections</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter indicates whether this operator will allow the client applications to make persistent (Keep-Alive) HTTP connections. It is better to allow this only for non-browser based client applications. (Default is false)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: boolean
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
      <dt class="dt dlterm"><a name="spldoc_operator__parameter__certificateFileName"><!-- --></a><tt class="ph tt">certificateFileName</tt></dt>
 
      <dd class="dd">
-<p class="p">This parameter specifies the full path of the WebSocket server PEM certificate file name. Default is to read ws-server.pem from the etc sub-directory of the application that is invoking this operator.
+<p class="p">This parameter specifies the full path of the WebSocket server's private key and public certificate holding PEM file name. Default is to read ws-server.pem from the etc sub-directory of the application that is invoking this operator.
 </p>
 
   <dl class="dl">
@@ -353,10 +753,45 @@ This operator supports 21 parameters.
 
   
   
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__initDelay"><!-- --></a><tt class="ph tt">initDelay</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies a one time delay in seconds for which this source operator should wait before start generating its first tuple. Default delay is 0.0.
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: float64
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
      <dt class="dt dlterm"><a name="spldoc_operator__parameter__ipv6Available"><!-- --></a><tt class="ph tt">ipv6Available</tt></dt>
 
      <dd class="dd">
-<p class="p">This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSink operator is running. (Default is true)
+<p class="p">This parameter indicates whether the ipv6 protocol stack is available in the Linux machine where the WebSocketSource operator is running. (Default is true)
 </p>
 
   <dl class="dl">
@@ -567,6 +1002,76 @@ This operator supports 21 parameters.
 
      <dd class="dd">
 <p class="p">This parameter specifies the WebSocket (plain) non-TLS port number. Default port number is 80.
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__numberOfMessagesToReceiveBeforeAnAck"><!-- --></a><tt class="ph tt">numberOfMessagesToReceiveBeforeAnAck</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter indicates how many messages are to be received before sending an ack to the remote client. (Default is 0 i.e. no ack sent)
+</p>
+
+  <dl class="dl">
+    
+     <dt class="dt dlterm">Properties</dt>
+
+     <dd class="dd">   <ul class="sl simple">
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__type">Type</a>: uint32
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__cardinality">Cardinality</a>: 1
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__optional">Optional</a>: true
+     </li>
+
+     <li class="sli"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__parameters__parameter__expressionmode">ExpressionMode</a>: AttributeFree
+     </li>
+
+   </ul>
+
+     <p class="p"/>
+     </dd>
+
+    
+  </dl>
+
+     </dd>
+
+  
+  
+     <dt class="dt dlterm"><a name="spldoc_operator__parameter__responseTimeout"><!-- --></a><tt class="ph tt">responseTimeout</tt></dt>
+
+     <dd class="dd">
+<p class="p">This parameter specifies the time in seconds before which the application logic should send its pending response to a remote client. If this time expires, a timeout handler thread in this operator will do the necessary internal clean-up work. (Default is 20 seconds.)
 </p>
 
   <dl class="dl">
@@ -881,7 +1386,7 @@ This operator supports 21 parameters.
      <dt class="dt dlterm"><a name="spldoc_operator__parameter__websocketStaleConnectionPurgeInterval"><!-- --></a><tt class="ph tt">websocketStaleConnectionPurgeInterval</tt></dt>
 
      <dd class="dd">
-<p class="p">This parameter specifies periodic time interval in seconds during which any stale remote client connection should be purged to free up memory usage. (Default is 3<em class="ph i">60</em>60 seconds)
+<p class="p">This parameter specifies periodic time interval in seconds during which any stale remote client connection should be purged to free up memory usage. (Default is 0 i.e. no purging)
 </p>
 
   <dl class="dl">
@@ -990,11 +1495,11 @@ This operator supports 21 parameters.
 <p class="p splhead-1"><strong class="ph b"><a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics">Metrics</a></strong></p>
 <dl class="dl">
   
-    <dt class="dt dlterm"><tt class="ph tt">nBlobDataItemsWaitingToBeSentToRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+    <dt class="dt dlterm"><tt class="ph tt">nClientsConnected</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
 
     <dd class="dd">
 
-<p class="p">Total number of blob data items waiting to be sent to the remote clients.
+<p class="p">Number of remote clients currently connected to this operator instance.
 </p>
 
      <p class="p"/>
@@ -1003,11 +1508,11 @@ This operator supports 21 parameters.
 
   
   
-    <dt class="dt dlterm"><tt class="ph tt">nClientsConnected</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+    <dt class="dt dlterm"><tt class="ph tt">nDataBytesReceivedFromRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
 
     <dd class="dd">
 
-<p class="p">Number of remote clients currently connected to this operator instance.
+<p class="p">Total number of data bytes received by this operator instance.
 </p>
 
      <p class="p"/>
@@ -1029,11 +1534,50 @@ This operator supports 21 parameters.
 
   
   
+    <dt class="dt dlterm"><tt class="ph tt">nDataItemsReceivedFromRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Number of data items received from the remote clients thus far.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
     <dt class="dt dlterm"><tt class="ph tt">nDataItemsSentToRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
 
     <dd class="dd">
 
 <p class="p">Number of data items sent to the remote clients thus far.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nHttpMessagesReceivedFromRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Number of HTTP GET, PUT and POST messages received by this operator instance.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nHttpPostAllowed</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Does this operator allow HTTP GET/PUT/POST from clients?
 </p>
 
      <p class="p"/>
@@ -1068,11 +1612,11 @@ This operator supports 21 parameters.
 
   
   
-    <dt class="dt dlterm"><tt class="ph tt">nSizeOfMostRecentDataItemSent</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+    <dt class="dt dlterm"><tt class="ph tt">nResponseTimeoutOccurrences</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
 
     <dd class="dd">
 
-<p class="p">Size of the most recent data item sent to a remote client.
+<p class="p">Total number of response timeout occurrences thus far.
 </p>
 
      <p class="p"/>
@@ -1081,11 +1625,24 @@ This operator supports 21 parameters.
 
   
   
-    <dt class="dt dlterm"><tt class="ph tt">nStringDataItemsWaitingToBeSentToRemoteClients</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+    <dt class="dt dlterm"><tt class="ph tt">nSizeOfMostRecentDataItemReceived</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
 
     <dd class="dd">
 
-<p class="p">Total number of string data items waiting to be sent to the remote clients.
+<p class="p">Size of the most recent data item received from the remote server.
+</p>
+
+     <p class="p"/>
+
+     </dd>
+
+  
+  
+    <dt class="dt dlterm"><tt class="ph tt">nSizeOfMostRecentDataItemSent</tt> - <a class="xref" href="../references/OperatorModel.html#spldoc_reference_operator_model__context__metrics_kind_gauge">Gauge</a></dt>
+
+    <dd class="dd">
+
+<p class="p">Size of the most recent data item sent to the remote server.
 </p>
 
      <p class="p"/>
@@ -1111,7 +1668,7 @@ This operator supports 21 parameters.
 
     <dd class="dd">
 
-<p class="p">Time taken in milliseconds to send the most recent data item to a remote client.
+<p class="p">Time taken in milliseconds to send the most recent data item to the remote server.
 </p>
 
      <p class="p"/>
