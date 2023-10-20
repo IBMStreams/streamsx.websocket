@@ -9,7 +9,7 @@
 /*
 ==================================================================
 First created on: Mar/15/2020
-Last modified on: Oct/18/2023
+Last modified on: Oct/20/2023
 
 This Java operator is an utility operator available in the
 streamsx.websocket toolkit. It can be used to do HTTP(S) post of
@@ -441,6 +441,8 @@ public class HttpPost extends AbstractOperator {
 
         int retryAttemptCnt = -1;
         long bytesSent = 0;
+        int responseStatusCode = -1;
+        String responseStatusReason = "";
         OperatorContext context = getOperatorContext();
         
     	// Senthil added this while loop on Oct/02/2023 to support
@@ -466,12 +468,27 @@ public class HttpPost extends AbstractOperator {
     		if(maxRetryAttempts > 0 && retryAttemptCnt > maxRetryAttempts) {
     			// We are done with the maximum retry attempts that was 
     			// configured for this operator instance.
-    			Logger.getLogger(this.getClass()).error("Operator=" + context.getName() + ", PE=" + 
-    				context.getPE().getPEId() + ", Job=" + context.getPE().getJobId() +
-    				", Incoming tuple number=" + httpPostCnt + 
-    				". Giving up the HTTP " + httpMethod + 
-    				" operation for the current incoming tuple after making " + 
-    				maxRetryAttempts + " retry attempts.");
+    			String logMessage = "Operator=" + context.getName() + ", PE=" + 
+        			context.getPE().getPEId() + ", Job=" + context.getPE().getJobId() +
+        			", Incoming tuple number=" + httpPostCnt + 
+        			". Giving up the HTTP " + httpMethod + 
+        			" operation for the current incoming tuple after making " + 
+        			maxRetryAttempts + " retry attempts. url=" + url + 
+        			", statusCode=" + responseStatusCode + 
+        			", statusMessage=" + responseStatusReason + ".";
+    			Logger.getLogger(this.getClass()).error(logMessage);
+
+    			// Since we are giving up after the maximum allowed retries,
+    			// we can also send an output tuple with the details about 
+    			// our giving up.
+		        outTuple.setInt("statusCode", responseStatusCode);
+		        outTuple.setString("statusMessage", logMessage);
+		        // Set the string and blob data output attributes to none.
+		        outTuple.setString("strData", "");
+		        byte[] emptyBytes = new byte[0];
+		        outTuple.setBlob("blobData", 
+		        	ValueFactory.newBlob(emptyBytes, 0, 0));
+		        outStream.submit(outTuple);
 
     			// Set this operator metrics.
     			nHttpPostFailed.increment();
@@ -683,12 +700,27 @@ public class HttpPost extends AbstractOperator {
 		            // Update the operator metrics.
 		            nHttpPostFailed.increment();
 		            
-		            if(maxRetryAttempts == 0 || retryAttemptCnt == maxRetryAttempts) {
-		            	// Even in the case of an exception, we will emit an
+		            if(maxRetryAttempts == 0) {
+		            	// Even in the case of an exception with no retry option set, we will emit an
 		            	// output tuple to inform the application that invoked this operator.
 		            	outTuple.setInt("statusCode", 12345);
 		            	outTuple.setString("statusMessage", ex.getMessage());
+				        // Set the string and blob data output attributes to none.
+				        outTuple.setString("strData", "");
+				        byte[] emptyBytes = new byte[0];
+				        outTuple.setBlob("blobData", 
+				        	ValueFactory.newBlob(emptyBytes, 0, 0));
 		            	outStream.submit(outTuple);
+		            }
+		            
+		            // If the user has configured retry attempts to be made, then
+		            // we will have to send additional details via an output tuple in case
+		            // all retry attempts happen to fail. We will do that in the early
+		            // sections of the while loop we are in. To aid that, let us 
+		            // set these variables.
+		            if(maxRetryAttempts > 0) {
+		            	responseStatusCode = 12345;
+		            	responseStatusReason = ex.getMessage();
 		            }
 		            
 		            // Continue the while loop to decide if we must make a 
@@ -696,9 +728,8 @@ public class HttpPost extends AbstractOperator {
 		            continue;
 		        }
 
-		        int responseStatusCode = response.getStatusLine().getStatusCode();
-		        
-		        String responseStatusReason = response.getStatusLine().getReasonPhrase();
+		        responseStatusCode = response.getStatusLine().getStatusCode();	        
+		        responseStatusReason = response.getStatusLine().getReasonPhrase();
 		        // Let us now parse all the response headers and populate them in
 		        // a map to be sent in the output tuple later in the code below.
 		        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
@@ -924,22 +955,36 @@ public class HttpPost extends AbstractOperator {
 		        	// Update the operator metrics.
 		        	nHttpPostFailed.increment();
 		            
-		        	if(maxRetryAttempts == 0 || retryAttemptCnt == maxRetryAttempts) {
-		        		// Even in the case of an exception, we will emit an
+		        	if(maxRetryAttempts == 0) {
+		        		// Even in the case of an exception with no retry option set, we will emit an
 		        		// output tuple to inform the application that invoked this operator.
 		        		outTuple.setInt("statusCode", 12345);
 		        		outTuple.setString("statusMessage", ex.getMessage());
+				        // Set the string and blob data output attributes to none.
+				        outTuple.setString("strData", "");
+				        byte[] emptyBytes = new byte[0];
+				        outTuple.setBlob("blobData", 
+				        	ValueFactory.newBlob(emptyBytes, 0, 0));
 		        		outStream.submit(outTuple);
 		        	}
+
+		            // If the user has configured retry attempts to be made, then
+		            // we will have to send additional details via an output tuple in case
+		            // all retry attempts happen to fail. We will do that in the early
+		            // sections of the while loop we are in. To aid that, let us 
+		            // set these variables.
+		            if(maxRetryAttempts > 0) {
+		            	responseStatusCode = 12345;
+		            	responseStatusReason = ex.getMessage();
+		            }
 
 		        	// Continue the while loop to decide if we must make a 
 		        	// retry attempt after this GET exception.
 		        	continue;
 		        }
 		                
-		        int responseStatusCode = response.getStatusLine().getStatusCode();
-		        
-		        String responseStatusReason = response.getStatusLine().getReasonPhrase();
+		        responseStatusCode = response.getStatusLine().getStatusCode();
+		        responseStatusReason = response.getStatusLine().getReasonPhrase();
 		        // Let us now parse all the response headers and populate them in
 		        // a map to be sent in the output tuple later in the code below.
 		        HashMap<RString, RString> responseHeadersMap = new HashMap<RString, RString>();
