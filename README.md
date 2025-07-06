@@ -1,7 +1,7 @@
 # C++ WebSocket toolkit for IBM Streams
 
 ## Note from the toolkit author
-This toolkit created by Senthil Nathan is a value differentiator for key customers. He created it on his own initiative and with his inteelectual ideas and not out of any formally managed or funded work by IBM. He added more new features for this toolkit in his spare time even after IBM divested IBM Streams to an outside company around May/2021. He is now an independent software consultant. To benefit from the compelling features of this asset, for any enhancements, any need for a new powerful toolkit as well as for creating new streaming data analytics solutions, customers can email senthil@moonraytech.com to reach him. Thank you.
+This toolkit created by Senthil Nathan is a value differentiator for key customers. He created it on his own initiative and with his original intellectual ideas and not out of any formally managed or funded work by IBM. He added more new features for this toolkit in his spare time even after IBM divested IBM Streams to an outside company around May/2021. He is now an independent software consultant. To benefit from the compelling features of this asset, for any enhancements, any need for a new powerful toolkit as well as for creating new streaming data analytics solutions, customers can email senthil@moonraytech.com to reach him. Thank you.
 
 ## Purpose
 The streamsx.websocket toolkit provides the following C++ and Java operators that can help you to receive text or binary data from the remote client and server-based applications via WebSocket and HTTP (OR) send text or binary data from your IBM Streams applications to external client and server-based applications via WebSocket and HTTP.
